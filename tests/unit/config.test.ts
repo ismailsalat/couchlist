@@ -164,6 +164,17 @@ describe('test mode allowlists', () => {
     expect(isGuildAllowed(open, '999999999999999999')).toBe(true);
   });
 
+  it('ignores stale allowlist ids when TEST_MODE is explicitly off', () => {
+    const open = config({
+      TEST_MODE: 'false',
+      TEST_USER_IDS: '111111111111111111',
+      TEST_GUILD_IDS: '333333333333333333',
+    });
+
+    expect(isUserAllowed(open, '999999999999999999')).toBe(true);
+    expect(isGuildAllowed(open, '999999999999999999')).toBe(true);
+  });
+
   it('disables notifications while testing', () => {
     expect(notificationsAllowed(testing)).toBe(false);
     expect(notificationsAllowed(config())).toBe(true);

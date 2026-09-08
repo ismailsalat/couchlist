@@ -15,7 +15,7 @@ export const ratingSchema = z
   .number()
   .min(1, 'Ratings run from 1 to 10.')
   .max(10, 'Ratings run from 1 to 10.')
-  .multipleOf(0.5, 'Ratings go in half points.');
+  .multipleOf(0.1, 'Ratings use one decimal place.');
 
 export const progressSchema = z.number().int().min(0).max(100_000);
 

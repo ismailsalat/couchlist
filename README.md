@@ -20,13 +20,14 @@ server integration.
 
 - **Discord sign-in** — no separate password, minimum OAuth scopes
 - **Track** anime, movies and TV with three statuses: Watching, Completed, Plan to Watch
-- **Rate** 1–10 and record episode progress
+- **Rate** 1–10 with one decimal place and record episode progress
 - **Friends** — explicit Couchlist friend connections that work without a server
 - **Optional server hubs** — community taste, member activity, favorites and plan-to-watch overlap
 - **Taste match** — a plain, deterministic comparison between two people
 - **Watch Together** — overlapping picks from your Couchlist friends' Plan to Watch lists
 - **Privacy controls** — friends/shared connected servers or private, hide ratings, hide progress
 - **Test mode** — lock the whole product to a named list of accounts and servers
+- **PWA** — install Couchlist to a phone/home screen without a separate native app
 
 Not built, on purpose: XP, coins, achievements, followers, comments, public
 profiles, AI recommendations, a social feed.
@@ -288,3 +289,9 @@ Couchlist does not have access to your real Discord friends list. "Friends" are 
 
 Provided as-is for you to deploy and modify.
 
+
+## Product philosophy
+
+Couchlist follows a **stable core, small improvements** rule. The app should stay familiar instead of being redesigned every release, and new features should prefer simple, durable code over fragile integrations. See `PRODUCT_PRINCIPLES.md` and `SIMPLE_ROADMAP.md`.
+
+The web app is also installable as a lightweight PWA. PWA caching is intentionally limited to static assets; authenticated pages and API data are never cached by the service worker.

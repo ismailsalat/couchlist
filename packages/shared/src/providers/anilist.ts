@@ -1,6 +1,6 @@
-import { MediaProvider, MediaType } from '../media/identity.js';
-import type { MediaDetail, MediaSummary } from '../media/types.js';
-import { fetchJson } from './http.js';
+import { MediaProvider, MediaType } from "../media/identity.js";
+import type { MediaDetail, MediaSummary } from "../media/types.js";
+import { fetchJson } from "./http.js";
 
 /**
  * AniList adapter (anime only).
@@ -31,6 +31,14 @@ const SEARCH_QUERY = `
   }
 `;
 
+const TRENDING_QUERY = `
+  query ($perPage: Int!) {
+    Page(page: 1, perPage: $perPage) {
+      media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { ${MEDIA_FIELDS} }
+    }
+  }
+`;
+
 const BY_ID_QUERY = `
   query ($id: Int!) {
     Media(id: $id, type: ANIME) { ${MEDIA_FIELDS} }
@@ -39,7 +47,11 @@ const BY_ID_QUERY = `
 
 interface AniListMedia {
   id: number;
-  title: { romaji: string | null; english: string | null; native: string | null };
+  title: {
+    romaji: string | null;
+    english: string | null;
+    native: string | null;
+  };
   seasonYear: number | null;
   episodes: number | null;
   status: string | null;
@@ -60,10 +72,23 @@ export class AniListClient {
   constructor(private readonly options: AniListClientOptions) {}
 
   async search(query: string, limit = 10): Promise<MediaSummary[]> {
-    const data = await this.request<{ Page: { media: AniListMedia[] } }>(SEARCH_QUERY, {
-      search: query,
-      perPage: Math.min(limit, 25),
-    });
+    const data = await this.request<{ Page: { media: AniListMedia[] } }>(
+      SEARCH_QUERY,
+      {
+        search: query,
+        perPage: Math.min(limit, 25),
+      },
+    );
+    return (data.Page?.media ?? []).map(toSummary);
+  }
+
+  async trending(limit = 8): Promise<MediaSummary[]> {
+    const data = await this.request<{ Page: { media: AniListMedia[] } }>(
+      TRENDING_QUERY,
+      {
+        perPage: Math.min(limit, 25),
+      },
+    );
     return (data.Page?.media ?? []).map(toSummary);
   }
 
@@ -71,26 +96,37 @@ export class AniListClient {
     const numeric = Number.parseInt(id, 10);
     if (!Number.isFinite(numeric)) return null;
 
-    const data = await this.request<{ Media: AniListMedia | null }>(BY_ID_QUERY, { id: numeric });
+    const data = await this.request<{ Media: AniListMedia | null }>(
+      BY_ID_QUERY,
+      { id: numeric },
+    );
     return data.Media ? toDetail(data.Media) : null;
   }
 
-  private async request<T>(query: string, variables: Record<string, unknown>): Promise<T> {
-    const payload = await fetchJson<{ data: T; errors?: Array<{ message: string }> }>(
-      this.options.apiUrl,
-      {
-        method: 'POST',
-        body: { query, variables },
-        timeoutMs: this.options.timeoutMs,
-        providerName: 'anilist',
-      },
-    );
+  private async request<T>(
+    query: string,
+    variables: Record<string, unknown>,
+  ): Promise<T> {
+    const payload = await fetchJson<{
+      data: T;
+      errors?: Array<{ message: string }>;
+    }>(this.options.apiUrl, {
+      method: "POST",
+      body: { query, variables },
+      timeoutMs: this.options.timeoutMs,
+      providerName: "anilist",
+    });
     return payload.data;
   }
 }
 
 function preferredTitle(media: AniListMedia): string {
-  return media.title.english ?? media.title.romaji ?? media.title.native ?? `AniList #${media.id}`;
+  return (
+    media.title.english ??
+    media.title.romaji ??
+    media.title.native ??
+    `AniList #${media.id}`
+  );
 }
 
 function toSummary(media: AniListMedia): MediaSummary {
@@ -122,16 +158,16 @@ function toDetail(media: AniListMedia): MediaDetail {
 /** AniList descriptions contain light HTML even with asHtml:false. */
 function stripHtml(value: string): string {
   return value
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
 function titleCase(value: string): string {
   return value
     .toLowerCase()
-    .split('_')
+    .split("_")
     .map((part) => (part ? part[0]!.toUpperCase() + part.slice(1) : part))
-    .join(' ');
+    .join(" ");
 }

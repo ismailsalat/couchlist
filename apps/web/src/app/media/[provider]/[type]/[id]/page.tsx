@@ -1,20 +1,20 @@
-import { notFound, redirect } from 'next/navigation';
-import Link from 'next/link';
+import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import {
   AppError,
   MEDIA_TYPE_LABEL,
   isValidIdentity,
   mediaIdentitySchema,
   supportsEpisodeProgress,
-} from '@couchlist/shared';
-import { Nav } from '@/components/nav';
-import { EntryControls } from '@/components/entry-controls';
-import { currentUser } from '@/lib/auth/session';
-import { repos } from '@/lib/db';
-import { getMediaDetail } from '@/lib/services/media';
-import { visibleMemberIds } from '@/lib/api/guards';
+} from "@couchlist/shared";
+import { Nav } from "@/components/nav";
+import { EntryControls } from "@/components/entry-controls";
+import { currentUser } from "@/lib/auth/session";
+import { repos } from "@/lib/db";
+import { getMediaDetail } from "@/lib/services/media";
+import { visibleMemberIds } from "@/lib/api/guards";
 
-export const dynamic = 'force-dynamic';
+export const dynamic = "force-dynamic";
 
 /**
  * Title page: personal friend context first, optional connected-server context
@@ -26,7 +26,7 @@ export default async function MediaPage({
   params: Promise<{ provider: string; type: string; id: string }>;
 }) {
   const user = await currentUser();
-  if (!user) redirect('/');
+  if (!user) redirect("/");
 
   const raw = await params;
   const parsed = mediaIdentitySchema.safeParse({
@@ -40,14 +40,20 @@ export default async function MediaPage({
 
   let detail;
   try {
-    detail = await getMediaDetail(identity.provider, identity.mediaType, identity.providerMediaId);
+    detail = await getMediaDetail(
+      identity.provider,
+      identity.mediaType,
+      identity.providerMediaId,
+    );
   } catch (error) {
-    if (error instanceof AppError && error.code === 'CL_NOT_FOUND') notFound();
+    if (error instanceof AppError && error.code === "CL_NOT_FOUND") notFound();
     return (
       <>
         <Nav avatarUrl={user.avatarUrl} username={user.username} />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
-          <p className="muted">We couldn&apos;t load this title right now. Try again shortly.</p>
+          <p className="muted">
+            We couldn&apos;t load this title right now. Try again shortly.
+          </p>
         </main>
       </>
     );
@@ -81,7 +87,11 @@ export default async function MediaPage({
       {detail.bannerUrl ? (
         <div className="relative h-48 w-full overflow-hidden border-b border-border sm:h-64">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={detail.bannerUrl} alt="" className="h-full w-full object-cover opacity-60" />
+          <img
+            src={detail.bannerUrl}
+            alt=""
+            className="h-full w-full object-cover opacity-60"
+          />
           <div className="absolute inset-0 bg-gradient-to-t from-background to-transparent" />
         </div>
       ) : null}
@@ -92,7 +102,11 @@ export default async function MediaPage({
             <div className="aspect-[2/3] overflow-hidden rounded-2xl border border-border bg-card">
               {detail.posterUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={detail.posterUrl} alt="" className="h-full w-full object-cover" />
+                <img
+                  src={detail.posterUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               ) : null}
             </div>
           </div>
@@ -101,15 +115,23 @@ export default async function MediaPage({
             <h1 className="font-display text-3xl font-bold">{detail.title}</h1>
             <p className="muted mt-1">
               {MEDIA_TYPE_LABEL[detail.mediaType]}
-              {detail.year ? ` · ${detail.year}` : ''}
-              {detail.episodeCount ? ` · ${detail.episodeCount} episodes` : ''}
-              {detail.seasonCount ? ` · ${detail.seasonCount} seasons` : ''}
-              {detail.runtimeMinutes ? ` · ${detail.runtimeMinutes}m` : ''}
+              {detail.year ? ` · ${detail.year}` : ""}
+              {detail.episodeCount ? ` · ${detail.episodeCount} episodes` : ""}
+              {detail.seasonCount ? ` · ${detail.seasonCount} seasons` : ""}
+              {detail.runtimeMinutes ? ` · ${detail.runtimeMinutes}m` : ""}
             </p>
 
             <EntryControls
               media={identity}
-              initial={own ? { status: own.status, rating: own.rating, progress: own.progress } : null}
+              initial={
+                own
+                  ? {
+                      status: own.status,
+                      rating: own.rating,
+                      progress: own.progress,
+                    }
+                  : null
+              }
               supportsProgress={supportsEpisodeProgress(identity.mediaType)}
               episodeCount={detail.episodeCount}
             />
@@ -117,7 +139,7 @@ export default async function MediaPage({
             {detail.description ? (
               <p className="mt-6 whitespace-pre-line text-sm leading-relaxed text-text-secondary">
                 {detail.description.slice(0, 600)}
-                {detail.description.length > 600 ? '…' : ''}
+                {detail.description.length > 600 ? "…" : ""}
               </p>
             ) : null}
 
@@ -139,10 +161,17 @@ export default async function MediaPage({
         <section className="mt-10">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <h2 className="font-display text-lg font-bold">With Your Friends</h2>
-              <p className="muted mt-1">Your personal Couchlist circle — no server required.</p>
+              <h2 className="font-display text-lg font-bold">
+                With Your Friends
+              </h2>
+              <p className="muted mt-1">
+                Your personal Couchlist circle — no server required.
+              </p>
             </div>
-            <Link href="/friends" className="text-xs font-bold text-primary hover:text-primary-hover">
+            <Link
+              href="/friends"
+              className="text-xs font-bold text-primary hover:text-primary-hover"
+            >
               Friends →
             </Link>
           </div>
@@ -154,23 +183,38 @@ export default async function MediaPage({
 
           {friendStats.averageRating !== null ? (
             <p className="mt-4 text-sm">
-              <span className="muted">Friend-circle average</span>{' '}
-              <span className="ml-2 text-lg font-bold">★ {friendStats.averageRating.toFixed(1)}</span>
-              <span className="muted"> / 10 · {friendStats.ratingCount} ratings</span>
+              <span className="muted">Friend-circle average</span>{" "}
+              <span className="ml-2 text-lg font-bold">
+                ★ {friendStats.averageRating.toFixed(1)}
+              </span>
+              <span className="muted">
+                {" "}
+                / 10 · {friendStats.ratingCount} ratings
+              </span>
             </p>
           ) : null}
         </section>
 
         {friendRatings.length > 0 ? (
           <section className="mt-10">
-            <h2 className="font-display mb-4 text-lg font-bold">What Friends Rated It</h2>
+            <h2 className="font-display mb-4 text-lg font-bold">
+              What Friends Rated It
+            </h2>
             <ul className="card divide-y divide-border">
               {friendRatings.slice(0, 8).map((row) => (
-                <li key={row.userId} className="flex items-center justify-between px-4 py-3">
-                  <Link href={`/profile/${row.userId}`} className="text-sm font-bold hover:underline">
+                <li
+                  key={row.userId}
+                  className="flex items-center justify-between px-4 py-3"
+                >
+                  <Link
+                    href={`/profile/${row.userId}`}
+                    className="text-sm font-bold hover:underline"
+                  >
                     {row.globalName ?? row.username}
                   </Link>
-                  <span className="text-sm font-bold">{row.rating.toFixed(1)} / 10</span>
+                  <span className="text-sm font-bold">
+                    {row.rating.toFixed(1)} / 10
+                  </span>
                 </li>
               ))}
             </ul>
@@ -180,22 +224,62 @@ export default async function MediaPage({
         {serverStats.length > 0 ? (
           <section className="mt-10">
             <div className="mb-4">
-              <h2 className="font-display text-lg font-bold">Connected Server Taste ✦</h2>
-              <p className="muted mt-1">Extra community context unlocked by server owners.</p>
+              <h2 className="font-display text-lg font-bold">
+                Connected Server Taste ✦
+              </h2>
+              <p className="muted mt-1">
+                Extra community context unlocked by server owners.
+              </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               {serverStats.map(({ guild, stats }) => (
-                <Link key={guild.id} href={`/server/${guild.discordId}`} className="card px-4 py-4 transition hover:border-primary/50">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="font-bold">{guild.name}</p>
-                    {stats.averageRating !== null ? (
-                      <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-[#bcc8ff]">
-                        ★ {stats.averageRating.toFixed(1)}
+                <Link
+                  key={guild.id}
+                  href={`/server/${guild.discordId}`}
+                  className="card px-4 py-4 transition hover:border-primary/50"
+                >
+                  <div className="flex items-center gap-3">
+                    {guild.iconUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={guild.iconUrl}
+                        alt={`${guild.name} server icon`}
+                        loading="lazy"
+                        decoding="async"
+                        fetchPriority="low"
+                        className="h-11 w-11 shrink-0 rounded-xl border border-border object-cover"
+                      />
+                    ) : (
+                      <span
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-background font-display font-bold"
+                        aria-hidden="true"
+                      >
+                        {guild.name.slice(0, 1).toUpperCase()}
                       </span>
-                    ) : null}
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate font-display font-bold">
+                          {guild.name}
+                        </p>
+                        {stats.averageRating !== null ? (
+                          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-bold text-[#bcc8ff]">
+                            ★ {stats.averageRating.toFixed(1)}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="muted mt-0.5 text-xs">
+                        How this Discord community feels about this title
+                      </p>
+                    </div>
                   </div>
-                  <p className="muted mt-2">
-                    {stats.watching} watching · {stats.completed} watched · {stats.planToWatch} want to watch
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <ServerStat value={stats.watching} label="watching" />
+                    <ServerStat value={stats.completed} label="watched" />
+                    <ServerStat value={stats.planToWatch} label="want it" />
+                  </div>
+                  <p className="mt-3 text-xs font-bold text-primary">
+                    Open community →
                   </p>
                 </Link>
               ))}
@@ -204,6 +288,15 @@ export default async function MediaPage({
         ) : null}
       </main>
     </>
+  );
+}
+
+function ServerStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-border/80 bg-background/45 px-2 py-2 text-center">
+      <p className="font-display text-base font-bold">{value}</p>
+      <p className="text-[10px] font-semibold text-text-secondary">{label}</p>
+    </div>
   );
 }
 

@@ -28,7 +28,7 @@ export function errorResponse(error: unknown, requestId = newRequestId()): NextR
   const level = config().LOG_LEVEL;
   const log = createLogger({ service: 'web', level, json: config().LOG_JSON });
 
-  if (error instanceof ZodError) {
+  if (isZodError(error)) {
     log.warn('validation_failed', { requestId, issues: error.issues.length });
     return NextResponse.json<ApiErrorBody>(
       {
@@ -92,9 +92,32 @@ export function apiRoute<T>(
   };
 }
 
-function firstZodMessage(error: ZodError): string {
+type ZodIssueLike = { message?: unknown };
+type ZodErrorLike = { name?: unknown; issues: ZodIssueLike[] };
+
+/**
+ * Next can bundle a workspace package and the web app into separate module
+ * graphs. In that case a ZodError thrown by @couchlist/shared may come from a
+ * different Zod constructor than the one imported by the web bundle, making a
+ * plain `instanceof ZodError` check fail even though the error is valid.
+ *
+ * Keep the normal instanceof fast path, then use Zod's stable public shape as
+ * a cross-bundle fallback. This prevents client validation mistakes from being
+ * misreported as HTTP 500 errors.
+ */
+function isZodError(error: unknown): error is ZodErrorLike {
+  if (error instanceof ZodError) return true;
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as { name?: unknown; issues?: unknown };
+  return candidate.name === 'ZodError' && Array.isArray(candidate.issues);
+}
+
+function firstZodMessage(error: ZodErrorLike): string {
   const issue = error.issues[0];
-  if (!issue) return ERROR_MESSAGES.CL_VALIDATION_FAILED;
+  if (!issue || typeof issue.message !== 'string' || issue.message.length === 0) {
+    return ERROR_MESSAGES.CL_VALIDATION_FAILED;
+  }
   // Zod's default messages are readable; custom ones are written for users.
   return issue.message;
 }

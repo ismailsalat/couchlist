@@ -1,4 +1,4 @@
-import 'server-only';
+import "server-only";
 import {
   AniListClient,
   AppError,
@@ -9,9 +9,9 @@ import {
   type MediaDetail,
   type MediaSummary,
   type SearchResult,
-} from '@couchlist/shared';
-import { config } from '../config';
-import { repos } from '../db';
+} from "@couchlist/shared";
+import { config } from "../config";
+import { repos } from "../db";
 
 /**
  * Media lookup across AniList and TMDB.
@@ -22,31 +22,44 @@ import { repos } from '../db';
  *  2. Results are cached, so a user refreshing repeatedly does not hammer an
  *     upstream API.
  */
-const log = createLogger({ service: 'web' });
+const log = createLogger({ service: "web" });
 
-function clients() {
+function clients(timeoutMs?: number) {
   const settings = config();
+  const providerTimeout = timeoutMs ?? settings.PROVIDER_TIMEOUT_MS;
   return {
     anilist: new AniListClient({
       apiUrl: settings.ANILIST_API_URL,
-      timeoutMs: settings.PROVIDER_TIMEOUT_MS,
+      timeoutMs: providerTimeout,
     }),
     tmdb: new TmdbClient({
       apiKey: settings.TMDB_API_KEY,
       baseUrl: settings.TMDB_API_BASE_URL,
-      timeoutMs: settings.PROVIDER_TIMEOUT_MS,
+      timeoutMs: providerTimeout,
     }),
   };
 }
 
-export type SearchFilter = 'all' | 'anime' | 'movie' | 'tv';
+export type SearchFilter = "all" | "anime" | "movie" | "tv";
 
-export async function searchMedia(query: string, filter: SearchFilter = 'all'): Promise<SearchResult> {
+export interface GlobalTrending {
+  anime: MediaSummary[];
+  moviesAndTv: MediaSummary[];
+  degraded: boolean;
+}
+
+const TRENDING_CACHE_MS = 10 * 60 * 1000;
+let trendingCache: { expiresAt: number; value: GlobalTrending } | null = null;
+
+export async function searchMedia(
+  query: string,
+  filter: SearchFilter = "all",
+): Promise<SearchResult> {
   const { anilist, tmdb } = clients();
   const failed: string[] = [];
 
-  const wantAnime = filter === 'all' || filter === 'anime';
-  const wantTmdb = filter === 'all' || filter === 'movie' || filter === 'tv';
+  const wantAnime = filter === "all" || filter === "anime";
+  const wantTmdb = filter === "all" || filter === "movie" || filter === "tv";
 
   // Both providers are queried in parallel and settled independently, so a
   // slow or broken one cannot take the other down with it.
@@ -57,24 +70,30 @@ export async function searchMedia(query: string, filter: SearchFilter = 'all'): 
 
   const results: MediaSummary[] = [];
 
-  if (animeResult.status === 'fulfilled') {
+  if (animeResult.status === "fulfilled") {
     results.push(...animeResult.value);
   } else {
-    failed.push('anilist');
-    log.warn('provider_search_failed', { provider: 'anilist', reason: reason(animeResult) });
+    failed.push("anilist");
+    log.warn("provider_search_failed", {
+      provider: "anilist",
+      reason: reason(animeResult),
+    });
   }
 
-  if (tmdbResult.status === 'fulfilled') {
+  if (tmdbResult.status === "fulfilled") {
     const filtered =
-      filter === 'movie'
+      filter === "movie"
         ? tmdbResult.value.filter((item) => item.mediaType === MediaType.MOVIE)
-        : filter === 'tv'
+        : filter === "tv"
           ? tmdbResult.value.filter((item) => item.mediaType === MediaType.TV)
           : tmdbResult.value;
     results.push(...filtered);
   } else {
-    failed.push('tmdb');
-    log.warn('provider_search_failed', { provider: 'tmdb', reason: reason(tmdbResult) });
+    failed.push("tmdb");
+    log.warn("provider_search_failed", {
+      provider: "tmdb",
+      reason: reason(tmdbResult),
+    });
   }
 
   // Interleave so neither provider dominates the top of the list.
@@ -83,6 +102,50 @@ export async function searchMedia(query: string, filter: SearchFilter = 'all'): 
     degraded: failed.length > 0,
     failedProviders: failed,
   };
+}
+
+/**
+ * Small global discovery shelf for Home. It is optional: provider trouble
+ * never prevents Home from rendering. A short in-process cache avoids calling
+ * AniList/TMDB on every page view without adding another database table or job.
+ */
+export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
+  const now = Date.now();
+  if (trendingCache && trendingCache.expiresAt > now)
+    return trendingCache.value;
+
+  // Discovery should never make Home feel broken when an upstream provider is slow.
+  const { anilist, tmdb } = clients(
+    Math.min(config().PROVIDER_TIMEOUT_MS, 3000),
+  );
+  const [animeResult, tmdbResult] = await Promise.allSettled([
+    anilist.trending(limit),
+    tmdb.trending(limit),
+  ]);
+
+  const value: GlobalTrending = {
+    anime: animeResult.status === "fulfilled" ? animeResult.value : [],
+    moviesAndTv: tmdbResult.status === "fulfilled" ? tmdbResult.value : [],
+    degraded:
+      animeResult.status === "rejected" || tmdbResult.status === "rejected",
+  };
+
+  if (animeResult.status === "rejected") {
+    log.warn("provider_trending_failed", {
+      provider: "anilist",
+      reason: reason(animeResult),
+    });
+  }
+  if (tmdbResult.status === "rejected") {
+    log.warn("provider_trending_failed", {
+      provider: "tmdb",
+      reason: reason(tmdbResult),
+    });
+  }
+
+  const cacheMs = value.degraded ? 60_000 : TRENDING_CACHE_MS;
+  trendingCache = { expiresAt: now + cacheMs, value };
+  return value;
 }
 
 /** Title detail, served from cache when fresh. */
@@ -104,7 +167,7 @@ export async function getMediaDetail(
       ? await anilist.byId(providerMediaId)
       : await tmdb.byId(providerMediaId, mediaType);
 
-  if (!detail) throw AppError.notFound('title');
+  if (!detail) throw AppError.notFound("title");
 
   await cache.set(
     identity,
@@ -123,32 +186,42 @@ export async function getMediaDetail(
 
 /** Health probe used by /api/health. Never throws. */
 export async function providerHealth(): Promise<{
-  anilist: 'healthy' | 'degraded';
-  tmdb: 'healthy' | 'degraded' | 'not_configured';
+  anilist: "healthy" | "degraded";
+  tmdb: "healthy" | "degraded" | "not_configured";
 }> {
   const { anilist, tmdb } = clients();
 
   const [animeCheck, tmdbCheck] = await Promise.allSettled([
-    anilist.search('a', 1),
-    tmdb.configured ? tmdb.search('a', 1) : Promise.reject(new Error('not configured')),
+    anilist.search("a", 1),
+    tmdb.configured
+      ? tmdb.search("a", 1)
+      : Promise.reject(new Error("not configured")),
   ]);
 
   return {
-    anilist: animeCheck.status === 'fulfilled' ? 'healthy' : 'degraded',
+    anilist: animeCheck.status === "fulfilled" ? "healthy" : "degraded",
     tmdb: !tmdb.configured
-      ? 'not_configured'
-      : tmdbCheck.status === 'fulfilled'
-        ? 'healthy'
-        : 'degraded',
+      ? "not_configured"
+      : tmdbCheck.status === "fulfilled"
+        ? "healthy"
+        : "degraded",
   };
 }
 
 function interleave(results: MediaSummary[]): MediaSummary[] {
-  const anime = results.filter((item) => item.provider === MediaProvider.ANILIST);
-  const other = results.filter((item) => item.provider !== MediaProvider.ANILIST);
+  const anime = results.filter(
+    (item) => item.provider === MediaProvider.ANILIST,
+  );
+  const other = results.filter(
+    (item) => item.provider !== MediaProvider.ANILIST,
+  );
   const merged: MediaSummary[] = [];
 
-  for (let index = 0; index < Math.max(anime.length, other.length); index += 1) {
+  for (
+    let index = 0;
+    index < Math.max(anime.length, other.length);
+    index += 1
+  ) {
     const a = anime[index];
     const b = other[index];
     if (a) merged.push(a);
@@ -159,5 +232,7 @@ function interleave(results: MediaSummary[]): MediaSummary[] {
 
 function reason(result: PromiseRejectedResult): string {
   const error = result.reason;
-  return error instanceof AppError ? error.code : ((error as Error)?.name ?? 'unknown');
+  return error instanceof AppError
+    ? error.code
+    : ((error as Error)?.name ?? "unknown");
 }
