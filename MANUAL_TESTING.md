@@ -187,7 +187,7 @@ user with `docker run --rm couchlist-web whoami` → `couchlist`.
 After any change, before deploying:
 
 ```bash
-npm run check     # lint + typecheck + 156 tests
+npm run check     # lint + typecheck + tests
 npm run build
 ```
 
@@ -213,13 +213,15 @@ Use at least one iPhone-sized viewport and one Android-sized viewport.
 6. Confirm the page copy makes it clear the shelves are starter picks rather than the entire Couchlist catalog.
 7. On a phone/PWA, horizontally swipe each poster shelf and confirm the page itself does not scroll sideways.
 
-## v10.5 long browse
+## v10.6 browse reliability + automatic scrolling
 
-- Open Search with no query. Confirm All clearly says the shelves are starting points, not the whole catalog.
-- Confirm All shows Anime, Movies, and TV shelves with `See more` links.
-- Open Anime, Movies, and TV tabs. Confirm each has Trending / Popular / Top Rated.
-- Confirm the category page starts with 20 posters and `Load 20 more` appends the next page without replacing the first 20.
-- Load at least three pages and confirm earlier posters remain on screen.
-- Confirm switching ranking starts a fresh list instead of mixing rankings.
-- Confirm searching a specific title still uses the normal search results path.
-- On iPhone/PWA, confirm poster grids are three columns and the Load More button is comfortably above the bottom navigation safe area.
+- Open Search with no query. Confirm All shows an Anime shelf plus Movies and TV when providers are healthy.
+- Click Anime, then Movies, then TV Shows, then Anime again. Every tab must replace the previous grid immediately; an empty Anime request must never leave Movies/TV stuck empty.
+- In Anime, confirm the small `All Anime / Series / Movies` row works and that Anime Movies contains only AniList movie-format titles.
+- Switch Trending / Popular / Top Rated in every category and confirm each ranking starts a fresh grid.
+- Do **not** press a Load More button: there should not be one. Scroll near the bottom and confirm the next page appears automatically.
+- Scroll back up after several pages load and confirm earlier posters are still there; Couchlist should append, not recycle/unload the list.
+- If the first provider request fails, confirm the page automatically retries once. A manual Retry button should appear only if the provider is still unavailable.
+- Confirm `See more` from the All page lands on the same working long-browse view as clicking the category tabs directly.
+- Search a specific anime/movie/show and confirm normal search still works independently of browse.
+- On iPhone/PWA, scroll several browse pages and confirm the fixed bottom nav does not cover posters or trigger accidental home gestures.

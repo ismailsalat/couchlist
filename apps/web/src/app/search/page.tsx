@@ -15,6 +15,7 @@ import {
   getBrowseCatalog,
   getBrowsePage,
   searchMedia,
+  type AnimeBrowseKind,
   type BrowseCatalog,
   type BrowseFilter,
   type BrowseSort,
@@ -36,6 +37,12 @@ const SORTS: Array<{ value: BrowseSort; label: string }> = [
   { value: "top-rated", label: "Top Rated" },
 ];
 
+const ANIME_KINDS: Array<{ value: AnimeBrowseKind; label: string }> = [
+  { value: "all", label: "All Anime" },
+  { value: "series", label: "Series" },
+  { value: "movies", label: "Movies" },
+];
+
 const CATEGORY_NAME: Record<BrowseFilter, string> = {
   anime: "Anime",
   movie: "Movies",
@@ -45,35 +52,51 @@ const CATEGORY_NAME: Record<BrowseFilter, string> = {
 export default async function SearchPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; sort?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    type?: string;
+    sort?: string;
+    anime?: string;
+  }>;
 }) {
   const user = await currentUser();
   if (!user) redirect("/");
 
-  const { q = "", type = "all", sort = "trending" } = await searchParams;
+  const {
+    q = "",
+    type = "all",
+    sort = "trending",
+    anime = "all",
+  } = await searchParams;
   const filter = (FILTERS.find((item) => item.value === type)?.value ??
     "all") as SearchFilter;
   const browseSort = (SORTS.find((item) => item.value === sort)?.value ??
     "trending") as BrowseSort;
+  const animeKind = (ANIME_KINDS.find((item) => item.value === anime)?.value ??
+    "all") as AnimeBrowseKind;
   const query = q.trim();
 
   const [result, discovery, browsePage] = await Promise.all([
     query ? searchMedia(query, filter) : Promise.resolve(null),
     !query && filter === "all" ? getBrowseCatalog(12) : Promise.resolve(null),
     !query && filter !== "all"
-      ? getBrowsePage(filter as BrowseFilter, browseSort, 1)
+      ? getBrowsePage(filter as BrowseFilter, browseSort, 1, animeKind)
       : Promise.resolve(null),
   ]);
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} showSearch={false} />
+      <Nav
+        avatarUrl={user.avatarUrl}
+        username={user.username}
+        showSearch={false}
+      />
 
       <main className="mx-auto max-w-5xl px-5 pb-20">
         <div className="mt-6">
           <SearchBar initial={query} />
           <p className="muted mt-2 text-xs">
-            Search any title, or browse popular picks below.
+            Search any title, or choose a category to browse.
           </p>
         </div>
 
@@ -93,21 +116,43 @@ export default async function SearchPage({
           ))}
         </div>
 
-        {!query && filter !== "all" ? (
+        {!query && filter === "anime" ? (
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-            {SORTS.map((item) => (
+            {ANIME_KINDS.map((item) => (
               <Link
                 key={item.value}
-                href={`/search?type=${filter}&sort=${item.value}`}
+                href={`/search?type=anime&anime=${item.value}&sort=${browseSort}`}
                 className={
-                  item.value === browseSort
-                    ? "shrink-0 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-[#c6d0ff]"
+                  item.value === animeKind
+                    ? "shrink-0 rounded-full border border-[#65b9ff]/40 bg-[#65b9ff]/10 px-3 py-1.5 text-xs font-bold text-[#b8ddff]"
                     : "shrink-0 rounded-full border border-border/80 px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary"
                 }
               >
                 {item.label}
               </Link>
             ))}
+          </div>
+        ) : null}
+
+        {!query && filter !== "all" ? (
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {SORTS.map((item) => {
+              const animeParam =
+                filter === "anime" ? `&anime=${animeKind}` : "";
+              return (
+                <Link
+                  key={item.value}
+                  href={`/search?type=${filter}&sort=${item.value}${animeParam}`}
+                  className={
+                    item.value === browseSort
+                      ? "shrink-0 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-[#c6d0ff]"
+                      : "shrink-0 rounded-full border border-border/80 px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary"
+                  }
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
         ) : null}
 
@@ -124,12 +169,15 @@ export default async function SearchPage({
             <CategoryBrowse
               filter={filter as BrowseFilter}
               sort={browseSort}
+              animeKind={animeKind}
               initial={browsePage}
             />
           ) : result && result.results.length > 0 ? (
             <ul className="card divide-y divide-border">
               {result.results.map((item) => (
-                <li key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}>
+                <li
+                  key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}
+                >
                   <Link
                     href={mediaPath(item)}
                     className="flex min-h-[76px] items-center gap-4 px-4 py-3 hover:bg-background/40"
@@ -137,7 +185,11 @@ export default async function SearchPage({
                     <div className="h-16 w-11 shrink-0 overflow-hidden rounded border border-border bg-background">
                       {item.posterUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.posterUrl} alt="" className="h-full w-full object-cover" />
+                        <img
+                          src={item.posterUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
                       ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -145,8 +197,12 @@ export default async function SearchPage({
                       <p className="muted">
                         {MEDIA_TYPE_LABEL[item.mediaType]}
                         {item.year ? ` · ${item.year}` : ""}
-                        {item.episodeCount ? ` · ${item.episodeCount} episodes` : ""}
-                        {item.runtimeMinutes ? ` · ${item.runtimeMinutes}m` : ""}
+                        {item.episodeCount
+                          ? ` · ${item.episodeCount} episodes`
+                          : ""}
+                        {item.runtimeMinutes
+                          ? ` · ${item.runtimeMinutes}m`
+                          : ""}
                       </p>
                     </div>
                     <span className="muted shrink-0">›</span>
@@ -166,13 +222,17 @@ export default async function SearchPage({
 function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
   if (!discovery) return null;
 
+  const animeItems =
+    discovery.animeTrending.length > 0
+      ? discovery.animeTrending
+      : discovery.animePopular;
   const rows = [
     {
       key: "anime",
-      title: "Trending Anime",
+      title: "Anime Right Now",
       subtitle: "Anime people are into right now.",
-      items: discovery.animeTrending,
-      href: "/search?type=anime&sort=trending",
+      items: animeItems,
+      href: "/search?type=anime&anime=all&sort=trending",
     },
     {
       key: "movie",
@@ -194,15 +254,16 @@ function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
   return (
     <section>
       <div className="mb-6">
-        <h1 className="font-display text-xl font-bold">Explore Couchlist</h1>
+        <h1 className="font-display text-xl font-bold">Browse or search</h1>
         <p className="muted mt-1 max-w-2xl">
-          These are popular starting points, not the whole catalog. Search above for anything specific.
+          Scroll through popular picks below, or search the full catalog above.
         </p>
       </div>
 
       {!hasAnything ? (
         <EmptyState>
-          Popular picks could not load right now. Search above still works for any title.
+          Popular picks could not load right now. Search above still works for
+          any title.
         </EmptyState>
       ) : (
         <div className="space-y-8">
@@ -222,7 +283,8 @@ function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
 
       {discovery.degraded ? (
         <p className="muted mt-5 text-xs">
-          One starter shelf may be shorter right now. Search still works normally.
+          One shelf is refreshing. The other categories and search still work
+          normally.
         </p>
       ) : null}
     </section>
@@ -232,31 +294,43 @@ function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
 function CategoryBrowse({
   filter,
   sort,
+  animeKind,
   initial,
 }: {
   filter: BrowseFilter;
   sort: BrowseSort;
+  animeKind: AnimeBrowseKind;
   initial: Awaited<ReturnType<typeof getBrowsePage>>;
 }) {
-  const sortLabel = SORTS.find((item) => item.value === sort)?.label ?? "Trending";
+  const sortLabel =
+    SORTS.find((item) => item.value === sort)?.label ?? "Trending";
+  const animeLabel =
+    animeKind === "movies"
+      ? "Anime Movies"
+      : animeKind === "series"
+        ? "Anime Series"
+        : "Anime";
+  const categoryLabel = filter === "anime" ? animeLabel : CATEGORY_NAME[filter];
 
   return (
     <section>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-xl font-bold">
-            {sortLabel} {CATEGORY_NAME[filter]}
-          </h1>
-          <p className="muted mt-1">
-            Start with 20. Load more as you scroll — up to 500 picks without loading them all at once.
-          </p>
-        </div>
-        <span className="rounded-full border border-border bg-card/70 px-3 py-1.5 text-xs font-bold text-text-secondary">
-          Search = full catalog ↑
-        </span>
+      <div className="mb-5">
+        <h1 className="font-display text-xl font-bold">
+          {sortLabel} {categoryLabel}
+        </h1>
+        <p className="muted mt-1">
+          Keep scrolling to browse more. Search above when you want something
+          specific.
+        </p>
       </div>
 
-      <BrowseGrid filter={filter} sort={sort} initial={initial} />
+      <BrowseGrid
+        key={`${filter}:${sort}:${filter === "anime" ? animeKind : "all"}`}
+        filter={filter}
+        sort={sort}
+        animeKind={animeKind}
+        initial={initial}
+      />
     </section>
   );
 }
@@ -277,12 +351,20 @@ function DiscoveryShelf({
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-[#7fc8ff]" aria-hidden="true" />
-            <h2 className="font-display text-base font-bold text-[#e4edf7]">{title}</h2>
+            <span
+              className="h-2 w-2 rounded-full bg-[#7fc8ff]"
+              aria-hidden="true"
+            />
+            <h2 className="font-display text-base font-bold text-[#e4edf7]">
+              {title}
+            </h2>
           </div>
           <p className="muted mt-1 text-xs">{subtitle}</p>
         </div>
-        <Link href={href} className="shrink-0 text-xs font-bold text-primary hover:text-primary-hover">
+        <Link
+          href={href}
+          className="shrink-0 text-xs font-bold text-primary hover:text-primary-hover"
+        >
           See more →
         </Link>
       </div>

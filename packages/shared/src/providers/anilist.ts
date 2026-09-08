@@ -1,3 +1,4 @@
+import { AppError, ERROR_CODES } from "../errors/index.js";
 import { MediaProvider, MediaType } from "../media/identity.js";
 import type { MediaDetail, MediaSummary } from "../media/types.js";
 import { fetchJson } from "./http.js";
@@ -6,8 +7,9 @@ import { fetchJson } from "./http.js";
  * AniList adapter (anime only).
  *
  * Browse/search requests intentionally ask for summary fields only. Detail-only
- * fields are fetched when somebody opens a title page. This keeps discovery
- * light and makes the public browse shelves less likely to time out.
+ * fields are fetched when somebody opens a title page. Discovery uses one
+ * provider-native paged query for every ranking so the same path powers Home,
+ * Search, long browse, anime series, and anime movies.
  */
 
 const SUMMARY_FIELDS = `
@@ -36,43 +38,38 @@ const SEARCH_QUERY = `
   }
 `;
 
-const TRENDING_QUERY = `
-  query ($perPage: Int!) {
-    Page(page: 1, perPage: $perPage) {
-      media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { ${SUMMARY_FIELDS} }
-    }
-  }
-`;
-
-const BROWSE_QUERY = `
-  query ($perPage: Int!) {
-    trending: Page(page: 1, perPage: $perPage) {
-      media(type: ANIME, sort: TRENDING_DESC, isAdult: false) { ${SUMMARY_FIELDS} }
-    }
-    popular: Page(page: 1, perPage: $perPage) {
-      media(type: ANIME, sort: POPULARITY_DESC, isAdult: false) { ${SUMMARY_FIELDS} }
-    }
-  }
-`;
-
 export type AniListBrowseSort = "trending" | "popular" | "top-rated";
+export type AniListBrowseFormat = "all" | "series" | "movies";
 
-const BROWSE_SORT: Record<AniListBrowseSort, string> = {
-  trending: "TRENDING_DESC",
-  popular: "POPULARITY_DESC",
-  "top-rated": "SCORE_DESC",
+const BROWSE_SORT: Record<AniListBrowseSort, string[]> = {
+  trending: ["TRENDING_DESC"],
+  popular: ["POPULARITY_DESC"],
+  "top-rated": ["SCORE_DESC"],
 };
 
-function browsePageQuery(sort: AniListBrowseSort): string {
-  const mediaSort = BROWSE_SORT[sort];
-  return `
-    query ($page: Int!, $perPage: Int!) {
-      Page(page: $page, perPage: $perPage) {
-        media(type: ANIME, sort: ${mediaSort}, isAdult: false) { ${SUMMARY_FIELDS} }
-      }
+/**
+ * Keep music-video entries out of normal browsing. "All" means the formats a
+ * Couchlist user would reasonably think of as an anime title: series, OVAs,
+ * ONAs, specials, and theatrical movies.
+ */
+const BROWSE_FORMATS: Record<AniListBrowseFormat, string[]> = {
+  all: ["TV", "TV_SHORT", "OVA", "ONA", "SPECIAL", "MOVIE"],
+  series: ["TV", "TV_SHORT", "OVA", "ONA", "SPECIAL"],
+  movies: ["MOVIE"],
+};
+
+const BROWSE_PAGE_QUERY = `
+  query ($page: Int!, $perPage: Int!, $sort: [MediaSort], $formats: [MediaFormat]) {
+    Page(page: $page, perPage: $perPage) {
+      media(
+        type: ANIME
+        sort: $sort
+        format_in: $formats
+        isAdult: false
+      ) { ${SUMMARY_FIELDS} }
     }
-  `;
-}
+  }
+`;
 
 const BY_ID_QUERY = `
   query ($id: Int!) {
@@ -123,45 +120,33 @@ export class AniListClient {
   }
 
   async trending(limit = 8): Promise<MediaSummary[]> {
-    const data = await this.request<{ Page: { media: AniListMedia[] } }>(
-      TRENDING_QUERY,
-      {
-        perPage: Math.min(limit, 25),
-      },
-    );
-    return (data.Page?.media ?? []).map(toSummary);
+    return this.browsePage("trending", 1, limit, "all");
   }
 
-  /** One GraphQL request powers both anime starter shelves. */
+  /** Both starter shelves use the exact same reliable paged query as long browse. */
   async browse(limit = 10): Promise<AniListBrowse> {
-    const data = await this.request<{
-      trending: { media: AniListMedia[] };
-      popular: { media: AniListMedia[] };
-    }>(BROWSE_QUERY, {
-      perPage: Math.min(limit, 25),
-    });
-
-    return {
-      trending: (data.trending?.media ?? []).map(toSummary),
-      popular: (data.popular?.media ?? []).map(toSummary),
-    };
+    const [trending, popular] = await Promise.all([
+      this.browsePage("trending", 1, limit, "all"),
+      this.browsePage("popular", 1, limit, "all"),
+    ]);
+    return { trending, popular };
   }
 
-  /**
-   * Paged browse used by the long catalog view. One click = one provider page.
-   * Keeping this provider-native avoids a local catalog database or sync job.
-   */
+  /** Provider-native page used by the long catalog view. */
   async browsePage(
     sort: AniListBrowseSort,
     page = 1,
     limit = 20,
+    format: AniListBrowseFormat = "all",
   ): Promise<MediaSummary[]> {
     const safePage = Math.max(1, Math.floor(page));
     const data = await this.request<{ Page: { media: AniListMedia[] } }>(
-      browsePageQuery(sort),
+      BROWSE_PAGE_QUERY,
       {
         page: safePage,
         perPage: Math.min(Math.max(1, limit), 50),
+        sort: BROWSE_SORT[sort],
+        formats: BROWSE_FORMATS[format],
       },
     );
     return (data.Page?.media ?? []).map(toSummary);
@@ -183,7 +168,7 @@ export class AniListClient {
     variables: Record<string, unknown>,
   ): Promise<T> {
     const payload = await fetchJson<{
-      data: T;
+      data?: T;
       errors?: Array<{ message: string }>;
     }>(this.options.apiUrl, {
       method: "POST",
@@ -191,6 +176,17 @@ export class AniListClient {
       timeoutMs: this.options.timeoutMs,
       providerName: "anilist",
     });
+
+    if (!payload.data) {
+      throw new AppError(ERROR_CODES.CL_MEDIA_PROVIDER_ERROR, {
+        message: "AniList returned no usable data",
+        context: {
+          providerName: "anilist",
+          graphqlErrors: payload.errors?.length ?? 0,
+        },
+      });
+    }
+
     return payload.data;
   }
 }

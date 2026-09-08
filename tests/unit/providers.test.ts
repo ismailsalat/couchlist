@@ -63,38 +63,45 @@ describe("AniList adapter", () => {
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as {
       query: string;
-      variables: { perPage: number };
+      variables: {
+        perPage: number;
+        sort: string[];
+        formats: string[];
+      };
     };
-    expect(body.query).toContain("TRENDING_DESC");
+    expect(body.query).toContain("format_in: $formats");
     expect(body.variables.perPage).toBe(2);
+    expect(body.variables.sort).toEqual(["TRENDING_DESC"]);
+    expect(body.variables.formats).toContain("MOVIE");
+    expect(body.variables.formats).toContain("TV");
   });
 
-
-  it("loads anime browse shelves in one lightweight GraphQL request", async () => {
-    const media = aniListSearchFixture.data.Page.media;
+  it("loads anime browse shelves through the same paged query", async () => {
     const spy = vi.fn(
       async () =>
-        new Response(
-          JSON.stringify({
-            data: {
-              trending: { media },
-              popular: { media },
-            },
-          }),
-          { status: 200, headers: { "content-type": "application/json" } },
-        ),
+        new Response(JSON.stringify(aniListSearchFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
     );
     globalThis.fetch = spy as unknown as typeof fetch;
 
     const result = await client.browse(2);
     expect(result.trending).toHaveLength(2);
     expect(result.popular).toHaveLength(2);
+    expect(spy).toHaveBeenCalledTimes(2);
 
-    const [, init] = spy.mock.calls[0] as [string, RequestInit];
-    const body = JSON.parse(String(init.body)) as { query: string };
-    expect(body.query).toContain("TRENDING_DESC");
-    expect(body.query).toContain("POPULARITY_DESC");
-    expect(body.query).not.toContain("description(asHtml: false)");
+    const bodies = spy.mock.calls.map(([, init]) =>
+      JSON.parse(String((init as RequestInit).body)) as {
+        query: string;
+        variables: { sort: string[] };
+      },
+    );
+    expect(bodies[0]?.query).not.toContain("description(asHtml: false)");
+    expect(bodies.map((body) => body.variables.sort)).toEqual([
+      ["TRENDING_DESC"],
+      ["POPULARITY_DESC"],
+    ]);
   });
 
   it("pages through anime browse rankings", async () => {
@@ -113,10 +120,48 @@ describe("AniList adapter", () => {
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as {
       query: string;
-      variables: { page: number; perPage: number };
+      variables: {
+        page: number;
+        perPage: number;
+        sort: string[];
+        formats: string[];
+      };
     };
-    expect(body.query).toContain("SCORE_DESC");
     expect(body.variables).toMatchObject({ page: 3, perPage: 20 });
+    expect(body.variables.sort).toEqual(["SCORE_DESC"]);
+    expect(body.variables.formats).toContain("MOVIE");
+  });
+
+  it("separates anime series and anime movies at the provider", async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response(JSON.stringify(aniListSearchFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    await client.browsePage("popular", 1, 20, "series");
+    await client.browsePage("popular", 1, 20, "movies");
+
+    const first = JSON.parse(
+      String((spy.mock.calls[0]?.[1] as RequestInit).body),
+    ) as { variables: { formats: string[] } };
+    const second = JSON.parse(
+      String((spy.mock.calls[1]?.[1] as RequestInit).body),
+    ) as { variables: { formats: string[] } };
+
+    expect(first.variables.formats).toContain("TV");
+    expect(first.variables.formats).not.toContain("MOVIE");
+    expect(second.variables.formats).toEqual(["MOVIE"]);
+  });
+
+  it("turns a GraphQL response without data into a provider error", async () => {
+    stubJson({ errors: [{ message: "temporary" }] });
+    await expect(client.browsePage("trending", 1, 20)).rejects.toBeInstanceOf(
+      AppError,
+    );
   });
 
   it("prefers the English title but falls back", async () => {
