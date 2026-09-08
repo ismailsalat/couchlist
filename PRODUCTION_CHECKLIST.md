@@ -6,6 +6,7 @@ Couchlist is ready for a private beta once the live checks below pass. Do not tr
 
 - `npm audit` reports 0 vulnerabilities.
 - `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
+- After any Search/Browse/media-provider change, run `npm run test:providers-live` from a machine with internet access and confirm AniList **browse** plus TMDB browse pass. This is intentionally separate from deterministic CI tests.
 - Discord OAuth works with a brand-new Discord account that has never authorized Couchlist.
 - Main + two alt accounts can find each other, send/accept Couchlist friend requests, and remain friends even without a connected server.
 - Friends Watching is driven by direct Couchlist friends. If two friends also share a connected server, that server is shown as extra context.

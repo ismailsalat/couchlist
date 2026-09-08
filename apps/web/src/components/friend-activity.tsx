@@ -6,7 +6,7 @@ export interface ActivityItem {
   username: string;
   globalName: string | null;
   avatarUrl: string | null;
-  provider: 'ANILIST' | 'TMDB';
+  provider: 'ANILIST' | 'JIKAN' | 'TMDB';
   mediaType: 'ANIME' | 'MOVIE' | 'TV';
   providerMediaId: string;
   title: string;

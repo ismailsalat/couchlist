@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(): Promise<NextResponse> {
   const database = await checkDatabaseHealth(repos().db).catch(() => ({ ok: false, latencyMs: 0 }));
   const providers = await providerHealth().catch(() => ({
-    anilist: 'degraded' as const,
+    jikan: 'degraded' as const,
     tmdb: 'degraded' as const,
   }));
 
@@ -25,7 +25,7 @@ export async function GET(): Promise<NextResponse> {
     {
       web: 'healthy',
       database: database.ok ? 'healthy' : 'unhealthy',
-      anilist: providers.anilist,
+      jikan: providers.jikan,
       tmdb: providers.tmdb,
       testMode: config().TEST_MODE,
     },

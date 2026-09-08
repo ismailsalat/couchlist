@@ -53,6 +53,7 @@ export const environmentSchema = z.object({
   AUTH_SECRET: z.string().default(''),
 
   ANILIST_API_URL: z.string().default('https://graphql.anilist.co'),
+  JIKAN_API_BASE_URL: z.string().default('https://api.jikan.moe/v4'),
   TMDB_API_KEY: z.string().default(''),
   TMDB_API_BASE_URL: z.string().default('https://api.themoviedb.org/3'),
 

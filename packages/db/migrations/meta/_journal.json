@@ -15,6 +15,13 @@
       "when": 1788816000000,
       "tag": "0001_couchlist_friends",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788900524191,
+      "tag": "0002_jikan_anime_provider",
+      "breakpoints": true
     }
   ]
 }

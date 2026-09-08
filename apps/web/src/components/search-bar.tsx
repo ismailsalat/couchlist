@@ -9,7 +9,7 @@ export function SearchBar({ compact = false, initial = '' }: { compact?: boolean
   const [value, setValue] = useState(initial);
   const [hint, setHint] = useState<string | null>(null);
 
-  // Search runs on submit rather than per keystroke, so AniList and TMDB are
+  // Search runs on submit rather than per keystroke, so Jikan and TMDB are
   // never called while someone is still typing.
   const MIN_LENGTH = 2;
 

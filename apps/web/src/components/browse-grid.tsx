@@ -123,7 +123,7 @@ export function BrowseGrid({
 
   // If the server-side first request hit a temporary provider problem, retry
   // once in the browser automatically. The user should not have to refresh the
-  // whole page just because AniList/TMDB had a bad second.
+  // whole page just because Jikan/TMDB had a bad second.
   useEffect(() => {
     if (!initial.degraded) return;
     const timer = window.setTimeout(() => {

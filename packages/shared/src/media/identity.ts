@@ -9,6 +9,7 @@ import { z } from 'zod';
  */
 export const MediaProvider = {
   ANILIST: 'ANILIST',
+  JIKAN: 'JIKAN',
   TMDB: 'TMDB',
 } as const;
 export type MediaProvider = (typeof MediaProvider)[keyof typeof MediaProvider];
@@ -34,6 +35,7 @@ export type MediaIdentity = z.infer<typeof mediaIdentitySchema>;
 /** Provider/type pairs that actually exist. Anything else is a client bug. */
 const VALID_COMBINATIONS: Record<MediaProvider, MediaType[]> = {
   ANILIST: [MediaType.ANIME],
+  JIKAN: [MediaType.ANIME],
   TMDB: [MediaType.MOVIE, MediaType.TV],
 };
 

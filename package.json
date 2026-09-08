@@ -29,7 +29,8 @@
     "db:seed": "npm run seed --workspace @couchlist/db",
     "db:reset": "npm run reset --workspace @couchlist/db",
     "bot:register": "npm run register --workspace @couchlist/bot",
-    "check": "npm run lint && npm run typecheck && npm run test"
+    "check": "npm run lint && npm run typecheck && npm run test",
+    "test:providers-live": "node scripts/provider-smoke.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

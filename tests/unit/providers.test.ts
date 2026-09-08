@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AniListClient, AppError, TmdbClient } from "@couchlist/shared";
+import { AniListClient, AppError, JikanClient, TmdbClient } from "@couchlist/shared";
 import {
   aniListSearchFixture,
   tmdbSearchFixture,
@@ -47,7 +47,7 @@ describe("AniList adapter", () => {
     });
   });
 
-  it("loads global anime trending without a search term", async () => {
+  it("loads global anime trending with the simple all-anime query", async () => {
     const spy = vi.fn(
       async () =>
         new Response(JSON.stringify(aniListSearchFixture), {
@@ -63,48 +63,52 @@ describe("AniList adapter", () => {
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as {
       query: string;
-      variables: {
-        perPage: number;
-        sort: string[];
-        formats: string[];
-      };
+      variables: { page: number; perPage: number };
     };
-    expect(body.query).toContain("format_in: $formats");
-    expect(body.variables.perPage).toBe(2);
-    expect(body.variables.sort).toEqual(["TRENDING_DESC"]);
-    expect(body.variables.formats).toContain("MOVIE");
-    expect(body.variables.formats).toContain("TV");
+    expect(body.query).toContain("sort: TRENDING_DESC");
+    expect(body.query).toContain("format_not: MUSIC");
+    expect(body.query).not.toContain("format_in: $formats");
+    expect(body.variables).toEqual({ page: 1, perPage: 2 });
   });
 
-  it("loads anime browse shelves through the same paged query", async () => {
+  it("loads both anime starter shelves in one GraphQL request", async () => {
+    const media = aniListSearchFixture.data.Page.media;
     const spy = vi.fn(
       async () =>
-        new Response(JSON.stringify(aniListSearchFixture), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
+        new Response(
+          JSON.stringify({
+            data: {
+              trending: { media },
+              popular: { media },
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        ),
     );
     globalThis.fetch = spy as unknown as typeof fetch;
 
     const result = await client.browse(2);
     expect(result.trending).toHaveLength(2);
     expect(result.popular).toHaveLength(2);
-    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledTimes(1);
 
-    const bodies = spy.mock.calls.map(([, init]) =>
-      JSON.parse(String((init as RequestInit).body)) as {
-        query: string;
-        variables: { sort: string[] };
-      },
-    );
-    expect(bodies[0]?.query).not.toContain("description(asHtml: false)");
-    expect(bodies.map((body) => body.variables.sort)).toEqual([
-      ["TRENDING_DESC"],
-      ["POPULARITY_DESC"],
-    ]);
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as {
+      query: string;
+      variables: { perPage: number };
+    };
+    expect(body.query).toContain("trending: Page");
+    expect(body.query).toContain("popular: Page");
+    expect(body.query).toContain("TRENDING_DESC");
+    expect(body.query).toContain("POPULARITY_DESC");
+    expect(body.query).not.toContain("description(asHtml: false)");
+    expect(body.variables.perPage).toBe(2);
   });
 
-  it("pages through anime browse rankings", async () => {
+  it("pages through anime browse rankings without enum-array variables", async () => {
     const spy = vi.fn(
       async () =>
         new Response(JSON.stringify(aniListSearchFixture), {
@@ -120,19 +124,16 @@ describe("AniList adapter", () => {
     const [, init] = spy.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(String(init.body)) as {
       query: string;
-      variables: {
-        page: number;
-        perPage: number;
-        sort: string[];
-        formats: string[];
-      };
+      variables: { page: number; perPage: number };
     };
-    expect(body.variables).toMatchObject({ page: 3, perPage: 20 });
-    expect(body.variables.sort).toEqual(["SCORE_DESC"]);
-    expect(body.variables.formats).toContain("MOVIE");
+    expect(body.variables).toEqual({ page: 3, perPage: 20 });
+    expect(body.query).toContain("sort: SCORE_DESC");
+    expect(body.query).toContain("format_not: MUSIC");
+    expect(body.query).not.toContain("$sort");
+    expect(body.query).not.toContain("$formats");
   });
 
-  it("separates anime series and anime movies at the provider", async () => {
+  it("separates anime series and anime movies with direct query filters", async () => {
     const spy = vi.fn(
       async () =>
         new Response(JSON.stringify(aniListSearchFixture), {
@@ -147,14 +148,46 @@ describe("AniList adapter", () => {
 
     const first = JSON.parse(
       String((spy.mock.calls[0]?.[1] as RequestInit).body),
-    ) as { variables: { formats: string[] } };
+    ) as { query: string };
     const second = JSON.parse(
       String((spy.mock.calls[1]?.[1] as RequestInit).body),
-    ) as { variables: { formats: string[] } };
+    ) as { query: string };
 
-    expect(first.variables.formats).toContain("TV");
-    expect(first.variables.formats).not.toContain("MOVIE");
-    expect(second.variables.formats).toEqual(["MOVIE"]);
+    expect(first.query).toContain(
+      "format_in: [TV, TV_SHORT, OVA, ONA, SPECIAL]",
+    );
+    expect(first.query).not.toContain("format: MOVIE");
+    expect(second.query).toContain("format: MOVIE");
+    expect(second.query).not.toContain("format_in:");
+  });
+
+  it("surfaces AniList rate-limit metadata without waiting a full Retry-After", async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ errors: [{ message: "Too Many Requests" }] }), {
+          status: 429,
+          headers: {
+            "content-type": "application/json",
+            "retry-after": "30",
+            "x-ratelimit-limit": "30",
+            "x-ratelimit-remaining": "0",
+          },
+        }),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const started = Date.now();
+    await expect(client.browsePage("trending", 1, 20)).rejects.toMatchObject({
+      code: "CL_MEDIA_PROVIDER_ERROR",
+      context: {
+        status: 429,
+        retryAfterSeconds: 30,
+        rateLimitLimit: 30,
+        rateLimitRemaining: 0,
+      },
+    });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("turns a GraphQL response without data into a provider error", async () => {
@@ -247,6 +280,87 @@ describe("AniList adapter", () => {
       code: "CL_MEDIA_PROVIDER_TIMEOUT",
     });
   }, 10_000);
+});
+
+
+describe("Jikan adapter", () => {
+  const client = new JikanClient({ baseUrl: "https://api.jikan.moe/v4" });
+
+  const anime = {
+    mal_id: 5114,
+    title: "Fullmetal Alchemist: Brotherhood",
+    title_english: "Fullmetal Alchemist: Brotherhood",
+    year: 2009,
+    episodes: 64,
+    type: "TV",
+    status: "Finished Airing",
+    synopsis: "Two brothers search for a way to restore what they lost.",
+    source: "Manga",
+    images: {
+      jpg: {
+        image_url: "https://cdn.myanimelist.net/images/anime/1223/96541.jpg",
+        large_image_url: "https://cdn.myanimelist.net/images/anime/1223/96541l.jpg",
+      },
+    },
+    trailer: { images: { maximum_image_url: "https://example.com/banner.jpg" } },
+    genres: [{ name: "Action" }, { name: "Adventure" }],
+    studios: [{ name: "Bones" }],
+  };
+
+  it("maps anime search results to Jikan media identities", async () => {
+    stubJson({ data: [anime], pagination: { has_next_page: false } });
+
+    const [result] = await client.search("fullmetal", 8);
+    expect(result).toMatchObject({
+      provider: "JIKAN",
+      mediaType: "ANIME",
+      providerMediaId: "5114",
+      title: "Fullmetal Alchemist: Brotherhood",
+      year: 2009,
+      episodeCount: 64,
+    });
+  });
+
+  it("uses provider-native ranking filters for Anime browse", async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [anime], pagination: { has_next_page: true } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const page = await client.browsePage("popular", 2, 20, "movies");
+    expect(page.items).toHaveLength(1);
+    expect(page.hasMore).toBe(true);
+
+    const url = new URL(String(spy.mock.calls[0]?.[0]));
+    expect(url.pathname).toBe("/v4/top/anime");
+    expect(url.searchParams.get("filter")).toBe("bypopularity");
+    expect(url.searchParams.get("type")).toBe("movie");
+    expect(url.searchParams.get("page")).toBe("2");
+    expect(url.searchParams.get("limit")).toBe("20");
+    expect(url.searchParams.get("sfw")).toBe("true");
+  });
+
+  it("loads title detail without AniList", async () => {
+    stubJson({ data: anime });
+    const detail = await client.byId("5114");
+
+    expect(detail).toMatchObject({
+      provider: "JIKAN",
+      providerMediaId: "5114",
+      studio: "Bones",
+      source: "Manga",
+      genres: ["Action", "Adventure"],
+    });
+  });
+
+  it("rejects a failed Jikan request as a provider error", async () => {
+    stubJson({ message: "Service unavailable" }, 503);
+    await expect(client.search("x")).rejects.toBeInstanceOf(AppError);
+  });
 });
 
 describe("TMDB adapter", () => {

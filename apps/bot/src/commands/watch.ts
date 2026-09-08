@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { AniListClient, TmdbClient, mediaPath } from '@couchlist/shared';
+import { JikanClient, TmdbClient, mediaPath } from '@couchlist/shared';
 import { baseEmbed, errorEmbed, linkRow } from '../lib/embeds.js';
 import type { BotCommand } from './types.js';
 
@@ -21,8 +21,8 @@ export const watchCommand: BotCommand = {
     const query = interaction.options.getString('query', true);
     await interaction.deferReply({ ephemeral: true });
 
-    const anilist = new AniListClient({
-      apiUrl: context.config.ANILIST_API_URL,
+    const jikan = new JikanClient({
+      baseUrl: context.config.JIKAN_API_BASE_URL,
       timeoutMs: context.config.PROVIDER_TIMEOUT_MS,
     });
     const tmdb = new TmdbClient({
@@ -33,7 +33,7 @@ export const watchCommand: BotCommand = {
 
     // A provider being down should degrade the answer, not fail the command.
     const [animeResult, tmdbResult] = await Promise.allSettled([
-      anilist.search(query, 3),
+      jikan.search(query, 3),
       tmdb.search(query, 3),
     ]);
 

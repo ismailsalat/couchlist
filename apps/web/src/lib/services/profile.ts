@@ -11,7 +11,7 @@ import { repos } from '../db';
  */
 export interface ProfileEntry {
   id: string;
-  provider: 'ANILIST' | 'TMDB';
+  provider: 'ANILIST' | 'JIKAN' | 'TMDB';
   providerMediaId: string;
   mediaType: 'ANIME' | 'MOVIE' | 'TV';
   status: 'WATCHING' | 'COMPLETED' | 'PLAN_TO_WATCH';

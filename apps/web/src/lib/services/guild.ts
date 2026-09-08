@@ -21,7 +21,7 @@ export interface GuildMemberPreview {
 }
 
 export interface TitleTally {
-  provider: 'ANILIST' | 'TMDB';
+  provider: 'ANILIST' | 'JIKAN' | 'TMDB';
   providerMediaId: string;
   mediaType: 'ANIME' | 'MOVIE' | 'TV';
   title: string;

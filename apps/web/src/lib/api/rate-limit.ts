@@ -6,7 +6,7 @@ import { AppError } from '@couchlist/shared';
  *
  * Per-process, which is the right trade for a single Railway instance. It is
  * keyed by user id where possible so one noisy account cannot spend everyone
- * else's budget, and it protects AniList/TMDB as much as it protects us.
+ * else's budget, and it protects Jikan/TMDB as much as it protects us.
  */
 interface Window {
   hits: number[];

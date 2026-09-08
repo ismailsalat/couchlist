@@ -6,10 +6,12 @@ import { fetchJson } from "./http.js";
 /**
  * AniList adapter (anime only).
  *
- * Browse/search requests intentionally ask for summary fields only. Detail-only
- * fields are fetched when somebody opens a title page. Discovery uses one
- * provider-native paged query for every ranking so the same path powers Home,
- * Search, long browse, anime series, and anime movies.
+ * Search and browse intentionally request summary fields only. Detail-only
+ * fields are fetched when somebody opens a title page. Browse queries keep the
+ * GraphQL shape deliberately boring: sort and format filters are written into
+ * the query as known enum values instead of being passed as enum arrays. That
+ * mirrors AniList's documented browse examples and removes one more moving part
+ * from the most important discovery path.
  */
 
 const SUMMARY_FIELDS = `
@@ -41,32 +43,55 @@ const SEARCH_QUERY = `
 export type AniListBrowseSort = "trending" | "popular" | "top-rated";
 export type AniListBrowseFormat = "all" | "series" | "movies";
 
-const BROWSE_SORT: Record<AniListBrowseSort, string[]> = {
-  trending: ["TRENDING_DESC"],
-  popular: ["POPULARITY_DESC"],
-  "top-rated": ["SCORE_DESC"],
+const BROWSE_SORT: Record<AniListBrowseSort, string> = {
+  trending: "TRENDING_DESC",
+  popular: "POPULARITY_DESC",
+  "top-rated": "SCORE_DESC",
 };
+
+function formatClause(format: AniListBrowseFormat): string {
+  if (format === "movies") return "format: MOVIE";
+  if (format === "series") {
+    return "format_in: [TV, TV_SHORT, OVA, ONA, SPECIAL]";
+  }
+  // All Anime means every normal anime format except music-video entries.
+  return "format_not: MUSIC";
+}
+
+function browsePageQuery(
+  sort: AniListBrowseSort,
+  format: AniListBrowseFormat,
+): string {
+  return `
+    query ($page: Int!, $perPage: Int!) {
+      Page(page: $page, perPage: $perPage) {
+        media(
+          type: ANIME
+          sort: ${BROWSE_SORT[sort]}
+          ${formatClause(format)}
+          isAdult: false
+        ) { ${SUMMARY_FIELDS} }
+      }
+    }
+  `;
+}
 
 /**
- * Keep music-video entries out of normal browsing. "All" means the formats a
- * Couchlist user would reasonably think of as an anime title: series, OVAs,
- * ONAs, specials, and theatrical movies.
+ * One request powers both Anime shelves on the All browse page. During AniList's
+ * current lower rate limit this matters: opening Search should cost one Anime
+ * request, not two simultaneous requests.
  */
-const BROWSE_FORMATS: Record<AniListBrowseFormat, string[]> = {
-  all: ["TV", "TV_SHORT", "OVA", "ONA", "SPECIAL", "MOVIE"],
-  series: ["TV", "TV_SHORT", "OVA", "ONA", "SPECIAL"],
-  movies: ["MOVIE"],
-};
-
-const BROWSE_PAGE_QUERY = `
-  query ($page: Int!, $perPage: Int!, $sort: [MediaSort], $formats: [MediaFormat]) {
-    Page(page: $page, perPage: $perPage) {
-      media(
-        type: ANIME
-        sort: $sort
-        format_in: $formats
-        isAdult: false
-      ) { ${SUMMARY_FIELDS} }
+const BROWSE_OVERVIEW_QUERY = `
+  query ($perPage: Int!) {
+    trending: Page(page: 1, perPage: $perPage) {
+      media(type: ANIME, sort: TRENDING_DESC, format_not: MUSIC, isAdult: false) {
+        ${SUMMARY_FIELDS}
+      }
+    }
+    popular: Page(page: 1, perPage: $perPage) {
+      media(type: ANIME, sort: POPULARITY_DESC, format_not: MUSIC, isAdult: false) {
+        ${SUMMARY_FIELDS}
+      }
     }
   }
 `;
@@ -93,6 +118,11 @@ interface AniListMedia {
   coverImage: { large: string | null; extraLarge: string | null } | null;
   source?: string | null;
   studios?: { nodes: Array<{ name: string }> } | null;
+}
+
+interface GraphQlError {
+  message?: string;
+  status?: number;
 }
 
 export interface AniListClientOptions {
@@ -123,13 +153,19 @@ export class AniListClient {
     return this.browsePage("trending", 1, limit, "all");
   }
 
-  /** Both starter shelves use the exact same reliable paged query as long browse. */
+  /** Both starter shelves use one GraphQL request. */
   async browse(limit = 10): Promise<AniListBrowse> {
-    const [trending, popular] = await Promise.all([
-      this.browsePage("trending", 1, limit, "all"),
-      this.browsePage("popular", 1, limit, "all"),
-    ]);
-    return { trending, popular };
+    const data = await this.request<{
+      trending: { media: AniListMedia[] };
+      popular: { media: AniListMedia[] };
+    }>(BROWSE_OVERVIEW_QUERY, {
+      perPage: Math.min(Math.max(1, limit), 25),
+    });
+
+    return {
+      trending: (data.trending?.media ?? []).map(toSummary),
+      popular: (data.popular?.media ?? []).map(toSummary),
+    };
   }
 
   /** Provider-native page used by the long catalog view. */
@@ -141,12 +177,10 @@ export class AniListClient {
   ): Promise<MediaSummary[]> {
     const safePage = Math.max(1, Math.floor(page));
     const data = await this.request<{ Page: { media: AniListMedia[] } }>(
-      BROWSE_PAGE_QUERY,
+      browsePageQuery(sort, format),
       {
         page: safePage,
         perPage: Math.min(Math.max(1, limit), 50),
-        sort: BROWSE_SORT[sort],
-        formats: BROWSE_FORMATS[format],
       },
     );
     return (data.Page?.media ?? []).map(toSummary);
@@ -169,20 +203,30 @@ export class AniListClient {
   ): Promise<T> {
     const payload = await fetchJson<{
       data?: T;
-      errors?: Array<{ message: string }>;
+      errors?: GraphQlError[];
     }>(this.options.apiUrl, {
       method: "POST",
       body: { query, variables },
       timeoutMs: this.options.timeoutMs,
+      // A second or third immediate POST is usually counterproductive when
+      // AniList is burst/rate limited. Let the web layer use stale data and its
+      // short cooldown instead of multiplying the same failed request.
+      retries: 1,
       providerName: "anilist",
     });
 
     if (!payload.data) {
+      const firstStatus = payload.errors?.find(
+        (error) => typeof error.status === "number",
+      )?.status;
       throw new AppError(ERROR_CODES.CL_MEDIA_PROVIDER_ERROR, {
         message: "AniList returned no usable data",
         context: {
           providerName: "anilist",
           graphqlErrors: payload.errors?.length ?? 0,
+          ...(typeof firstStatus === "number"
+            ? { providerStatus: firstStatus }
+            : {}),
         },
       });
     }

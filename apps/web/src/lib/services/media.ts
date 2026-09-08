@@ -1,6 +1,7 @@
 import "server-only";
 import {
   AniListClient,
+  JikanClient,
   AppError,
   MediaProvider,
   MediaType,
@@ -14,7 +15,9 @@ import { config } from "../config";
 import { repos } from "../db";
 
 /**
- * Media lookup across AniList and TMDB.
+ * Media lookup across Jikan (Anime) and TMDB (Movies/TV).
+ * AniList is retained only for legacy title identities created before the
+ * Anime catalog provider switch.
  *
  * One provider failing must never break unrelated media. Browse data is kept in
  * tiny in-process caches so Couchlist stays simple and does not need a worker,
@@ -28,6 +31,10 @@ function clients(timeoutMs?: number) {
   return {
     anilist: new AniListClient({
       apiUrl: settings.ANILIST_API_URL,
+      timeoutMs: providerTimeout,
+    }),
+    jikan: new JikanClient({
+      baseUrl: settings.JIKAN_API_BASE_URL,
       timeoutMs: providerTimeout,
     }),
     tmdb: new TmdbClient({
@@ -82,14 +89,14 @@ export async function searchMedia(
   query: string,
   filter: SearchFilter = "all",
 ): Promise<SearchResult> {
-  const { anilist, tmdb } = clients();
+  const { jikan, tmdb } = clients();
   const failed: string[] = [];
 
   const wantAnime = filter === "all" || filter === "anime";
   const wantTmdb = filter === "all" || filter === "movie" || filter === "tv";
 
   const [animeResult, tmdbResult] = await Promise.allSettled([
-    wantAnime ? anilist.search(query, 8) : Promise.resolve([]),
+    wantAnime ? jikan.search(query, 8) : Promise.resolve([]),
     wantTmdb ? tmdb.search(query, 8) : Promise.resolve([]),
   ]);
 
@@ -98,9 +105,9 @@ export async function searchMedia(
   if (animeResult.status === "fulfilled") {
     results.push(...animeResult.value);
   } else {
-    failed.push("anilist");
+    failed.push("jikan");
     log.warn("provider_search_failed", {
-      provider: "anilist",
+      provider: "jikan",
       reason: reason(animeResult),
     });
   }
@@ -138,10 +145,10 @@ export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
     return trendingCache.value;
 
   const stale = trendingCache?.value;
-  const { anilist } = clients();
+  const { jikan } = clients();
   const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 3000));
   const [animeResult, tmdbResult] = await Promise.allSettled([
-    anilist.trending(limit),
+    jikan.trending(limit),
     tmdb.trending(limit),
   ]);
 
@@ -160,7 +167,7 @@ export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
 
   if (animeResult.status === "rejected") {
     log.warn("provider_trending_failed", {
-      provider: "anilist",
+      provider: "jikan",
       reason: reason(animeResult),
     });
   }
@@ -187,23 +194,19 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
 
   const stale = browseCache?.value;
 
-  // AniList gets the normal provider timeout. Its public GraphQL endpoint can
-  // occasionally take longer than TMDB, and an empty Anime shelf is much more
-  // confusing than waiting another moment for the first page. TMDB keeps the
-  // shorter discovery timeout so the rest of Search remains snappy.
-  const { anilist } = clients();
+  // Jikan is the primary Anime catalog. It does not require credentials and
+  // keeps Anime discovery independent from AniList API suspensions/blocks.
+  const { jikan } = clients();
   const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 4500));
 
   const [
-    animeTrendingResult,
-    animePopularResult,
+    animeOverviewResult,
     movieNowResult,
     movieTopResult,
     tvNowResult,
     tvPopularResult,
   ] = await Promise.allSettled([
-    anilist.browsePage("trending", 1, limit, "all"),
-    anilist.browsePage("popular", 1, limit, "all"),
+    jikan.browse(limit),
     tmdb.trendingMovies(limit),
     tmdb.topRatedMovies(limit),
     tmdb.trendingTv(limit),
@@ -212,12 +215,12 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
 
   const value: BrowseCatalog = {
     animeTrending:
-      animeTrendingResult.status === "fulfilled"
-        ? animeTrendingResult.value
+      animeOverviewResult.status === "fulfilled"
+        ? animeOverviewResult.value.trending
         : (stale?.animeTrending ?? []),
     animePopular:
-      animePopularResult.status === "fulfilled"
-        ? animePopularResult.value
+      animeOverviewResult.status === "fulfilled"
+        ? animeOverviewResult.value.popular
         : (stale?.animePopular ?? []),
     movieTrending:
       movieNowResult.status === "fulfilled"
@@ -236,16 +239,14 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
         ? tvPopularResult.value
         : (stale?.tvPopular ?? []),
     degraded:
-      animeTrendingResult.status === "rejected" ||
-      animePopularResult.status === "rejected" ||
+      animeOverviewResult.status === "rejected" ||
       movieNowResult.status === "rejected" ||
       movieTopResult.status === "rejected" ||
       tvNowResult.status === "rejected" ||
       tvPopularResult.status === "rejected",
   };
 
-  logBrowseFailure("anilist_trending", animeTrendingResult);
-  logBrowseFailure("anilist_popular", animePopularResult);
+  logBrowseFailure("jikan_overview", animeOverviewResult);
   logBrowseFailure("tmdb_movie_trending", movieNowResult);
   logBrowseFailure("tmdb_movie_top_rated", movieTopResult);
   logBrowseFailure("tmdb_tv_trending", tvNowResult);
@@ -261,7 +262,7 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
  *
  * The browser loads 20 at a time and appends them. There is no local catalog
  * database, sync worker, or infinite-scroll dependency: every page comes
- * directly from AniList/TMDB and is cached in memory for a few minutes.
+ * directly from Jikan/TMDB and is cached in memory for a few minutes.
  */
 export async function getBrowsePage(
   filter: BrowseFilter,
@@ -283,17 +284,18 @@ export async function getBrowsePage(
 
   try {
     let items: MediaSummary[];
+    let providerHasMore: boolean | null = null;
 
     if (filter === "anime") {
-      // Use the normal configured timeout for AniList. Search already uses this
-      // path successfully, and browse should not be more aggressive than search.
-      const { anilist } = clients();
-      items = await anilist.browsePage(
+      const { jikan } = clients();
+      const animePage = await jikan.browsePage(
         sort,
         safePage,
         BROWSE_PAGE_SIZE,
         safeAnimeKind,
       );
+      items = animePage.items;
+      providerHasMore = animePage.hasMore;
     } else {
       const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 4500));
       if (filter === "movie") {
@@ -317,7 +319,8 @@ export async function getBrowsePage(
       items,
       page: safePage,
       hasMore:
-        items.length === BROWSE_PAGE_SIZE && safePage < MAX_BROWSE_PAGES,
+        (providerHasMore ?? items.length === BROWSE_PAGE_SIZE) &&
+        safePage < MAX_BROWSE_PAGES,
       degraded: false,
     };
     browsePageCache.set(key, {
@@ -326,15 +329,13 @@ export async function getBrowsePage(
     });
     return value;
   } catch (error) {
+    const failure = providerFailureMeta(error);
     log.warn("provider_browse_page_failed", {
       filter,
       sort,
       animeKind: safeAnimeKind,
       page: safePage,
-      reason:
-        error instanceof AppError
-          ? error.code
-          : ((error as Error)?.name ?? "unknown"),
+      ...failure,
     });
 
     if (stale) return { ...stale, degraded: true };
@@ -393,12 +394,14 @@ export async function getMediaDetail(
   const cached = await cache.get<MediaDetail>(identity);
   if (cached) return cached;
 
-  const { anilist, tmdb } = clients();
+  const { anilist, jikan, tmdb } = clients();
 
   const detail =
     provider === MediaProvider.ANILIST
       ? await anilist.byId(providerMediaId)
-      : await tmdb.byId(providerMediaId, mediaType);
+      : provider === MediaProvider.JIKAN
+        ? await jikan.byId(providerMediaId)
+        : await tmdb.byId(providerMediaId, mediaType);
 
   if (!detail) throw AppError.notFound("title");
 
@@ -419,20 +422,21 @@ export async function getMediaDetail(
 
 /** Health probe used by /api/health. Never throws. */
 export async function providerHealth(): Promise<{
-  anilist: "healthy" | "degraded";
+  jikan: "healthy" | "degraded";
   tmdb: "healthy" | "degraded" | "not_configured";
 }> {
-  const { anilist, tmdb } = clients();
+  const { jikan, tmdb } = clients();
 
   const [animeCheck, tmdbCheck] = await Promise.allSettled([
-    anilist.search("a", 1),
+    // Exercise the exact provider family used by the Anime tab.
+    jikan.browsePage("trending", 1, 1, "all"),
     tmdb.configured
       ? tmdb.search("a", 1)
       : Promise.reject(new Error("not configured")),
   ]);
 
   return {
-    anilist: animeCheck.status === "fulfilled" ? "healthy" : "degraded",
+    jikan: animeCheck.status === "fulfilled" ? "healthy" : "degraded",
     tmdb: !tmdb.configured
       ? "not_configured"
       : tmdbCheck.status === "fulfilled"
@@ -441,12 +445,32 @@ export async function providerHealth(): Promise<{
   };
 }
 
+function providerFailureMeta(error: unknown): Record<string, string | number> {
+  if (!(error instanceof AppError)) {
+    return { reason: (error as Error)?.name ?? "unknown" };
+  }
+
+  const output: Record<string, string | number> = { reason: error.code };
+  const status = error.context.status ?? error.context.providerStatus;
+  const retryAfterSeconds = error.context.retryAfterSeconds;
+  const rateLimitRemaining = error.context.rateLimitRemaining;
+
+  if (typeof status === "number") output.providerStatus = status;
+  if (typeof retryAfterSeconds === "number") {
+    output.retryAfterSeconds = retryAfterSeconds;
+  }
+  if (typeof rateLimitRemaining === "number") {
+    output.rateLimitRemaining = rateLimitRemaining;
+  }
+  return output;
+}
+
 function interleave(results: MediaSummary[]): MediaSummary[] {
   const anime = results.filter(
-    (item) => item.provider === MediaProvider.ANILIST,
+    (item) => item.mediaType === MediaType.ANIME,
   );
   const other = results.filter(
-    (item) => item.provider !== MediaProvider.ANILIST,
+    (item) => item.mediaType !== MediaType.ANIME,
   );
   const merged: MediaSummary[] = [];
 
@@ -470,7 +494,7 @@ function logBrowseFailure(
   if (result.status !== "rejected") return;
   log.warn("provider_browse_failed", {
     section,
-    reason: reason(result),
+    ...providerFailureMeta(result.reason),
   });
 }
 
