@@ -69,6 +69,56 @@ describe("AniList adapter", () => {
     expect(body.variables.perPage).toBe(2);
   });
 
+
+  it("loads anime browse shelves in one lightweight GraphQL request", async () => {
+    const media = aniListSearchFixture.data.Page.media;
+    const spy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              trending: { media },
+              popular: { media },
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const result = await client.browse(2);
+    expect(result.trending).toHaveLength(2);
+    expect(result.popular).toHaveLength(2);
+
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as { query: string };
+    expect(body.query).toContain("TRENDING_DESC");
+    expect(body.query).toContain("POPULARITY_DESC");
+    expect(body.query).not.toContain("description(asHtml: false)");
+  });
+
+  it("pages through anime browse rankings", async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response(JSON.stringify(aniListSearchFixture), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const results = await client.browsePage("top-rated", 3, 20);
+    expect(results).toHaveLength(2);
+
+    const [, init] = spy.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(String(init.body)) as {
+      query: string;
+      variables: { page: number; perPage: number };
+    };
+    expect(body.query).toContain("SCORE_DESC");
+    expect(body.variables).toMatchObject({ page: 3, perPage: 20 });
+  });
+
   it("prefers the English title but falls back", async () => {
     stubJson({
       data: {
@@ -185,6 +235,49 @@ describe("TMDB adapter", () => {
 
     const [url] = spy.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/trending/all/day");
+  });
+
+
+  it("loads and pages category-specific movie and TV browse lists", async () => {
+    const movieResults = tmdbSearchFixture.results.filter(
+      (item) => item.media_type === "movie",
+    );
+    const tvResults = tmdbSearchFixture.results.filter(
+      (item) => item.media_type === "tv",
+    );
+
+    const spy = vi.fn(async (url: string | URL) => {
+      const value = String(url);
+      const results = value.includes("/tv/") ? tvResults : movieResults;
+      return new Response(JSON.stringify({ results }), { status: 200 });
+    });
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const [moviesNow, moviesPopular, moviesTop, tvNow, tvPopular, tvTop] =
+      await Promise.all([
+        client.trendingMovies(5, 2),
+        client.popularMovies(5, 2),
+        client.topRatedMovies(5, 2),
+        client.trendingTv(5, 2),
+        client.popularTv(5, 2),
+        client.topRatedTv(5, 2),
+      ]);
+
+    expect(moviesNow.every((item) => item.mediaType === "MOVIE")).toBe(true);
+    expect(moviesPopular.every((item) => item.mediaType === "MOVIE")).toBe(true);
+    expect(moviesTop.every((item) => item.mediaType === "MOVIE")).toBe(true);
+    expect(tvNow.every((item) => item.mediaType === "TV")).toBe(true);
+    expect(tvPopular.every((item) => item.mediaType === "TV")).toBe(true);
+    expect(tvTop.every((item) => item.mediaType === "TV")).toBe(true);
+
+    const urls = spy.mock.calls.map(([url]) => String(url));
+    expect(urls.some((url) => url.includes("/trending/movie/day"))).toBe(true);
+    expect(urls.some((url) => url.includes("/movie/popular"))).toBe(true);
+    expect(urls.some((url) => url.includes("/movie/top_rated"))).toBe(true);
+    expect(urls.some((url) => url.includes("/trending/tv/day"))).toBe(true);
+    expect(urls.some((url) => url.includes("/tv/popular"))).toBe(true);
+    expect(urls.some((url) => url.includes("/tv/top_rated"))).toBe(true);
+    expect(urls.every((url) => new URL(url).searchParams.get("page") === "2")).toBe(true);
   });
 
   it("maps movie detail", async () => {

@@ -5,8 +5,9 @@ import { fetchJson } from "./http.js";
 /**
  * TMDB adapter (movies and TV).
  *
- * The API key goes in a header, never in a URL, so it cannot end up in a log,
- * a referrer or an error message.
+ * The API key goes in a header when a bearer token is configured. Couchlist
+ * keeps category-specific browse helpers here so the UI does not have to fake a
+ * catalog by filtering one tiny mixed result set.
  */
 
 const IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -21,6 +22,7 @@ interface TmdbSearchItem {
   poster_path?: string | null;
   backdrop_path?: string | null;
   overview?: string | null;
+  adult?: boolean;
 }
 
 interface TmdbDetail extends TmdbSearchItem {
@@ -60,7 +62,11 @@ export class TmdbClient {
     );
 
     return (data.results ?? [])
-      .filter((item) => item.media_type === "movie" || item.media_type === "tv")
+      .filter(
+        (item) =>
+          !item.adult &&
+          (item.media_type === "movie" || item.media_type === "tv"),
+      )
       .slice(0, limit)
       .map((item) =>
         toSummary(
@@ -70,7 +76,7 @@ export class TmdbClient {
       );
   }
 
-  /** Global day-trending movies and TV, filtered to media Couchlist supports. */
+  /** Existing mixed feed kept for Home/backward compatibility. */
   async trending(limit = 8): Promise<MediaSummary[]> {
     if (!this.configured) return [];
 
@@ -82,7 +88,11 @@ export class TmdbClient {
     );
 
     return (data.results ?? [])
-      .filter((item) => item.media_type === "movie" || item.media_type === "tv")
+      .filter(
+        (item) =>
+          !item.adult &&
+          (item.media_type === "movie" || item.media_type === "tv"),
+      )
       .slice(0, limit)
       .map((item) =>
         toSummary(
@@ -90,6 +100,30 @@ export class TmdbClient {
           item.media_type === "tv" ? MediaType.TV : MediaType.MOVIE,
         ),
       );
+  }
+
+  async trendingMovies(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/trending/movie/day", MediaType.MOVIE, limit, page);
+  }
+
+  async popularMovies(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/movie/popular", MediaType.MOVIE, limit, page);
+  }
+
+  async topRatedMovies(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/movie/top_rated", MediaType.MOVIE, limit, page);
+  }
+
+  async trendingTv(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/trending/tv/day", MediaType.TV, limit, page);
+  }
+
+  async popularTv(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/tv/popular", MediaType.TV, limit, page);
+  }
+
+  async topRatedTv(limit = 10, page = 1): Promise<MediaSummary[]> {
+    return this.list("/tv/top_rated", MediaType.TV, limit, page);
   }
 
   async byId(id: string, mediaType: MediaType): Promise<MediaDetail | null> {
@@ -103,6 +137,26 @@ export class TmdbClient {
     return data?.id ? toDetail(data, mediaType) : null;
   }
 
+  private async list(
+    path: string,
+    mediaType: MediaType,
+    limit: number,
+    page = 1,
+  ): Promise<MediaSummary[]> {
+    if (!this.configured) return [];
+
+    const safePage = Math.max(1, Math.floor(page));
+    const data = await this.request<{ results: TmdbSearchItem[] }>(path, {
+      language: "en-US",
+      page: String(safePage),
+    });
+
+    return (data.results ?? [])
+      .filter((item) => !item.adult && Boolean(item.title ?? item.name))
+      .slice(0, Math.min(limit, 20))
+      .map((item) => toSummary(item, mediaType));
+  }
+
   private async request<T>(
     path: string,
     params: Record<string, string>,
@@ -111,8 +165,7 @@ export class TmdbClient {
     for (const [key, value] of Object.entries(params))
       url.searchParams.set(key, value);
 
-    // TMDB accepts either a v4 bearer token or a v3 key. Detect which we have
-    // and send it as a header either way - never as a query parameter.
+    // TMDB accepts either a v4 bearer token or a v3 key.
     const key = this.options.apiKey.trim();
     const headers: Record<string, string> = key.includes(".")
       ? { authorization: `Bearer ${key}` }

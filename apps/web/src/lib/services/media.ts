@@ -16,11 +16,9 @@ import { repos } from "../db";
 /**
  * Media lookup across AniList and TMDB.
  *
- * Two behaviours matter here:
- *  1. One provider failing must not break the page. Search returns whatever
- *     succeeded and flags itself as degraded.
- *  2. Results are cached, so a user refreshing repeatedly does not hammer an
- *     upstream API.
+ * One provider failing must never break unrelated media. Browse data is kept in
+ * tiny in-process caches so Couchlist stays simple and does not need a worker,
+ * queue, or extra database table just to show starter shelves.
  */
 const log = createLogger({ service: "web" });
 
@@ -42,14 +40,42 @@ function clients(timeoutMs?: number) {
 
 export type SearchFilter = "all" | "anime" | "movie" | "tv";
 
+export type BrowseFilter = Exclude<SearchFilter, "all">;
+export type BrowseSort = "trending" | "popular" | "top-rated";
+
+export const BROWSE_PAGE_SIZE = 20;
+export const MAX_BROWSE_PAGES = 25; // 20 × 25 = up to 500 visible picks per ranking.
+
+export interface BrowsePage {
+  items: MediaSummary[];
+  page: number;
+  hasMore: boolean;
+  degraded: boolean;
+}
+
 export interface GlobalTrending {
   anime: MediaSummary[];
   moviesAndTv: MediaSummary[];
   degraded: boolean;
 }
 
-const TRENDING_CACHE_MS = 10 * 60 * 1000;
+export interface BrowseCatalog {
+  animeTrending: MediaSummary[];
+  animePopular: MediaSummary[];
+  movieTrending: MediaSummary[];
+  movieTopRated: MediaSummary[];
+  tvTrending: MediaSummary[];
+  tvPopular: MediaSummary[];
+  degraded: boolean;
+}
+
+const DISCOVERY_CACHE_MS = 10 * 60 * 1000;
 let trendingCache: { expiresAt: number; value: GlobalTrending } | null = null;
+let browseCache: { expiresAt: number; value: BrowseCatalog } | null = null;
+const browsePageCache = new Map<
+  string,
+  { expiresAt: number; value: BrowsePage }
+>();
 
 export async function searchMedia(
   query: string,
@@ -61,8 +87,6 @@ export async function searchMedia(
   const wantAnime = filter === "all" || filter === "anime";
   const wantTmdb = filter === "all" || filter === "movie" || filter === "tv";
 
-  // Both providers are queried in parallel and settled independently, so a
-  // slow or broken one cannot take the other down with it.
   const [animeResult, tmdbResult] = await Promise.allSettled([
     wantAnime ? anilist.search(query, 8) : Promise.resolve([]),
     wantTmdb ? tmdb.search(query, 8) : Promise.resolve([]),
@@ -96,7 +120,6 @@ export async function searchMedia(
     });
   }
 
-  // Interleave so neither provider dominates the top of the list.
   return {
     results: interleave(results),
     degraded: failed.length > 0,
@@ -105,16 +128,15 @@ export async function searchMedia(
 }
 
 /**
- * Small global discovery shelf for Home. It is optional: provider trouble
- * never prevents Home from rendering. A short in-process cache avoids calling
- * AniList/TMDB on every page view without adding another database table or job.
+ * Small global discovery shelf for Home. Stale successful data is preferred to
+ * an empty shelf when an upstream provider has a temporary bad minute.
  */
 export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
   const now = Date.now();
   if (trendingCache && trendingCache.expiresAt > now)
     return trendingCache.value;
 
-  // Discovery should never make Home feel broken when an upstream provider is slow.
+  const stale = trendingCache?.value;
   const { anilist, tmdb } = clients(
     Math.min(config().PROVIDER_TIMEOUT_MS, 3000),
   );
@@ -124,8 +146,14 @@ export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
   ]);
 
   const value: GlobalTrending = {
-    anime: animeResult.status === "fulfilled" ? animeResult.value : [],
-    moviesAndTv: tmdbResult.status === "fulfilled" ? tmdbResult.value : [],
+    anime:
+      animeResult.status === "fulfilled"
+        ? animeResult.value
+        : (stale?.anime ?? []),
+    moviesAndTv:
+      tmdbResult.status === "fulfilled"
+        ? tmdbResult.value
+        : (stale?.moviesAndTv ?? []),
     degraded:
       animeResult.status === "rejected" || tmdbResult.status === "rejected",
   };
@@ -143,9 +171,148 @@ export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
     });
   }
 
-  const cacheMs = value.degraded ? 60_000 : TRENDING_CACHE_MS;
+  const cacheMs = value.degraded ? 60_000 : DISCOVERY_CACHE_MS;
   trendingCache = { expiresAt: now + cacheMs, value };
   return value;
+}
+
+/**
+ * Fuller starter catalog for /search. It is still discovery, not a local media
+ * database: the search box remains the full catalog. Category-specific provider
+ * calls ensure Movies and TV do not compete for six slots in one mixed feed.
+ */
+export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
+  const now = Date.now();
+  if (browseCache && browseCache.expiresAt > now) return browseCache.value;
+
+  const stale = browseCache?.value;
+  const { anilist, tmdb } = clients(
+    Math.min(config().PROVIDER_TIMEOUT_MS, 4500),
+  );
+
+  const [animeResult, movieNowResult, movieTopResult, tvNowResult, tvPopularResult] =
+    await Promise.allSettled([
+      anilist.browse(limit),
+      tmdb.trendingMovies(limit),
+      tmdb.topRatedMovies(limit),
+      tmdb.trendingTv(limit),
+      tmdb.popularTv(limit),
+    ]);
+
+  const value: BrowseCatalog = {
+    animeTrending:
+      animeResult.status === "fulfilled"
+        ? animeResult.value.trending
+        : (stale?.animeTrending ?? []),
+    animePopular:
+      animeResult.status === "fulfilled"
+        ? animeResult.value.popular
+        : (stale?.animePopular ?? []),
+    movieTrending:
+      movieNowResult.status === "fulfilled"
+        ? movieNowResult.value
+        : (stale?.movieTrending ?? []),
+    movieTopRated:
+      movieTopResult.status === "fulfilled"
+        ? movieTopResult.value
+        : (stale?.movieTopRated ?? []),
+    tvTrending:
+      tvNowResult.status === "fulfilled"
+        ? tvNowResult.value
+        : (stale?.tvTrending ?? []),
+    tvPopular:
+      tvPopularResult.status === "fulfilled"
+        ? tvPopularResult.value
+        : (stale?.tvPopular ?? []),
+    degraded:
+      animeResult.status === "rejected" ||
+      movieNowResult.status === "rejected" ||
+      movieTopResult.status === "rejected" ||
+      tvNowResult.status === "rejected" ||
+      tvPopularResult.status === "rejected",
+  };
+
+  logBrowseFailure("anilist", animeResult);
+  logBrowseFailure("tmdb_movie_trending", movieNowResult);
+  logBrowseFailure("tmdb_movie_top_rated", movieTopResult);
+  logBrowseFailure("tmdb_tv_trending", tvNowResult);
+  logBrowseFailure("tmdb_tv_popular", tvPopularResult);
+
+  const cacheMs = value.degraded ? 60_000 : DISCOVERY_CACHE_MS;
+  browseCache = { expiresAt: now + cacheMs, value };
+  return value;
+}
+
+/**
+ * Long-form browse page for a single media category/ranking.
+ *
+ * The browser loads 20 at a time and appends them. There is no local catalog
+ * database, sync worker, or infinite-scroll dependency: every page comes
+ * directly from AniList/TMDB and is cached in memory for a few minutes.
+ */
+export async function getBrowsePage(
+  filter: BrowseFilter,
+  sort: BrowseSort,
+  page = 1,
+): Promise<BrowsePage> {
+  const safePage = Math.min(
+    MAX_BROWSE_PAGES,
+    Math.max(1, Math.floor(page)),
+  );
+  const key = `${filter}:${sort}:${safePage}`;
+  const now = Date.now();
+  const cached = browsePageCache.get(key);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const stale = cached?.value;
+  const { anilist, tmdb } = clients(
+    Math.min(config().PROVIDER_TIMEOUT_MS, 4500),
+  );
+
+  try {
+    let items: MediaSummary[];
+
+    if (filter === "anime") {
+      items = await anilist.browsePage(sort, safePage, BROWSE_PAGE_SIZE);
+    } else if (filter === "movie") {
+      items =
+        sort === "trending"
+          ? await tmdb.trendingMovies(BROWSE_PAGE_SIZE, safePage)
+          : sort === "popular"
+            ? await tmdb.popularMovies(BROWSE_PAGE_SIZE, safePage)
+            : await tmdb.topRatedMovies(BROWSE_PAGE_SIZE, safePage);
+    } else {
+      items =
+        sort === "trending"
+          ? await tmdb.trendingTv(BROWSE_PAGE_SIZE, safePage)
+          : sort === "popular"
+            ? await tmdb.popularTv(BROWSE_PAGE_SIZE, safePage)
+            : await tmdb.topRatedTv(BROWSE_PAGE_SIZE, safePage);
+    }
+
+    const value: BrowsePage = {
+      items,
+      page: safePage,
+      hasMore:
+        items.length === BROWSE_PAGE_SIZE && safePage < MAX_BROWSE_PAGES,
+      degraded: false,
+    };
+    browsePageCache.set(key, {
+      expiresAt: now + DISCOVERY_CACHE_MS,
+      value,
+    });
+    return value;
+  } catch (error) {
+    log.warn("provider_browse_page_failed", {
+      filter,
+      sort,
+      page: safePage,
+      reason: error instanceof AppError ? error.code : ((error as Error)?.name ?? "unknown"),
+    });
+
+    if (stale) return { ...stale, degraded: true };
+    return { items: [], page: safePage, hasMore: false, degraded: true };
+  }
 }
 
 /** Title detail, served from cache when fresh. */
@@ -228,6 +395,17 @@ function interleave(results: MediaSummary[]): MediaSummary[] {
     if (b) merged.push(b);
   }
   return merged;
+}
+
+function logBrowseFailure(
+  section: string,
+  result: PromiseSettledResult<unknown>,
+): void {
+  if (result.status !== "rejected") return;
+  log.warn("provider_browse_failed", {
+    section,
+    reason: reason(result),
+  });
 }
 
 function reason(result: PromiseRejectedResult): string {

@@ -202,3 +202,24 @@ Use at least one iPhone-sized viewport and one Android-sized viewport.
 - Rotate to landscape and confirm content does not sit under a notch/dynamic-island safe area.
 - Swipe the Trending Anime / Movies / TV shelves horizontally. Scrolling should feel native and stop near poster boundaries.
 - Desktop at 640 px and wider should keep the existing desktop navigation and should not show the bottom mobile bar.
+
+## v10.4 discovery catalog
+
+1. Open Search with an empty query and confirm All shows Anime, Movies, and TV starter shelves.
+2. Open Anime and confirm Trending Anime and Popular Anime are both visible when AniList is healthy.
+3. Open Movies and confirm Movies Right Now and Top Rated Movies are separate shelves.
+4. Open TV Shows and confirm TV Right Now and Popular TV Shows are separate shelves.
+5. Search for a title that is not visible in the starter shelves and confirm it still appears in search results.
+6. Confirm the page copy makes it clear the shelves are starter picks rather than the entire Couchlist catalog.
+7. On a phone/PWA, horizontally swipe each poster shelf and confirm the page itself does not scroll sideways.
+
+## v10.5 long browse
+
+- Open Search with no query. Confirm All clearly says the shelves are starting points, not the whole catalog.
+- Confirm All shows Anime, Movies, and TV shelves with `See more` links.
+- Open Anime, Movies, and TV tabs. Confirm each has Trending / Popular / Top Rated.
+- Confirm the category page starts with 20 posters and `Load 20 more` appends the next page without replacing the first 20.
+- Load at least three pages and confirm earlier posters remain on screen.
+- Confirm switching ranking starts a fresh list instead of mixing rankings.
+- Confirm searching a specific title still uses the normal search results path.
+- On iPhone/PWA, confirm poster grids are three columns and the Load More button is comfortably above the bottom navigation safe area.
