@@ -1,0 +1,48 @@
+# --- Secrets -----------------------------------------------------------------
+# Only .env.example is tracked.
+.env
+.env.*
+!.env.example
+
+# --- Runtime data ------------------------------------------------------------
+# Root-anchored on purpose: a source folder named "logs" deeper in the tree
+# should not be silently excluded.
+/logs/
+/exports/
+/backups/
+/pgdata/
+
+# --- Databases ---------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+
+# --- Node --------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-error.log*
+.pnpm-store/
+
+# --- Build output ------------------------------------------------------------
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# --- Test output -------------------------------------------------------------
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# --- Editors -----------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+
+# --- OS ----------------------------------------------------------------------
+.DS_Store
+Thumbs.db

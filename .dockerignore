@@ -1,0 +1,35 @@
+# --- Secrets and runtime data ------------------------------------------------
+# Root-anchored so source folders with similar names are not excluded.
+.env
+.env.*
+!.env.example
+/logs/
+/exports/
+/backups/
+/pgdata/
+
+# --- Build output ------------------------------------------------------------
+node_modules
+**/node_modules
+**/dist
+**/.next
+**/tsconfig.tsbuildinfo
+
+# --- Tooling -----------------------------------------------------------------
+.git
+.github
+.vscode
+.idea
+coverage
+test-results
+playwright-report
+**/.turbo
+
+# --- Tests are not needed in the image ---------------------------------------
+tests
+playwright.config.ts
+vitest.config.ts
+
+# --- OS ----------------------------------------------------------------------
+.DS_Store
+Thumbs.db
