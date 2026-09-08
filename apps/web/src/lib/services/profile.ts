@@ -1,6 +1,7 @@
 import 'server-only';
 import type { MediaEntry, User } from '@couchlist/db';
 import { repos } from '../db';
+import { reconcileAnimeEntriesForUsers } from './media';
 
 /**
  * Profile assembly.
@@ -36,6 +37,7 @@ export interface ProfileView {
 
 export async function buildProfile(target: User, isSelf: boolean): Promise<ProfileView> {
   const { entries } = repos();
+  await reconcileAnimeEntriesForUsers([target.id], 12);
   const [rows, counts] = await Promise.all([
     entries.listForUser(target.id),
     entries.countsByStatus(target.id),

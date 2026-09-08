@@ -1,5 +1,12 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { AniListClient, JikanClient, KitsuClient, TmdbClient, mediaPath } from '@couchlist/shared';
+import {
+  AniListClient,
+  JikanClient,
+  KitsuClient,
+  TmdbClient,
+  dedupeCrossCatalogSearch,
+  mediaPath,
+} from '@couchlist/shared';
 import { baseEmbed, errorEmbed, linkRow } from '../lib/embeds.js';
 import type { BotCommand } from './types.js';
 
@@ -58,10 +65,10 @@ export const watchCommand: BotCommand = {
       tmdb.search(query, 3),
     ]);
 
-    const results = [
+    const results = dedupeCrossCatalogSearch([
       ...(animeResult.status === 'fulfilled' ? animeResult.value : []),
       ...(tmdbResult.status === 'fulfilled' ? tmdbResult.value : []),
-    ];
+    ]);
 
     const top = results[0];
     if (!top) {
@@ -95,7 +102,7 @@ export const watchCommand: BotCommand = {
         provider: top.provider,
         providerMediaId: top.providerMediaId,
         mediaType: top.mediaType,
-      });
+      }, top.canonicalMediaKey);
 
       description =
         `${stats.completed} member${stats.completed === 1 ? '' : 's'} watched\n` +

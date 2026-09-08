@@ -1,4 +1,8 @@
-import { MediaProvider, MediaType } from '../media/identity.js';
+import {
+  MediaProvider,
+  MediaType,
+  canonicalAnimeKeyFromMalId,
+} from '../media/identity.js';
 import type { MediaDetail, MediaSummary } from '../media/types.js';
 import { fetchJson } from './http.js';
 
@@ -55,6 +59,9 @@ interface KitsuResource {
     categories?: {
       data?: Array<{ id: string; type: string }>;
     } | null;
+    mappings?: {
+      data?: Array<{ id: string; type: string }>;
+    } | null;
   } | null;
 }
 
@@ -64,6 +71,8 @@ interface KitsuIncludedResource {
   attributes?: {
     title?: string | null;
     name?: string | null;
+    externalSite?: string | null;
+    externalId?: string | null;
   } | null;
 }
 
@@ -80,6 +89,24 @@ interface KitsuDetailResponse {
   included?: KitsuIncludedResource[];
 }
 
+interface KitsuMappingResource {
+  id: string;
+  type: string;
+  attributes?: {
+    externalSite?: string | null;
+    externalId?: string | null;
+  } | null;
+  relationships?: {
+    item?: {
+      data?: { id: string; type: string } | null;
+    } | null;
+  } | null;
+}
+
+interface KitsuMappingResponse {
+  data?: KitsuMappingResource[];
+}
+
 export interface KitsuBrowsePage {
   items: MediaSummary[];
   hasMore: boolean;
@@ -93,8 +120,9 @@ export class KitsuClient {
       'filter[text]': query,
       'page[limit]': String(clampLimit(limit)),
       'page[offset]': '0',
+      include: 'mappings',
     });
-    return normalAnime(payload.data).map(toSummary);
+    return normalAnime(payload.data).map((item) => toSummary(item, payload.included ?? []));
   }
 
   async trending(limit = 8): Promise<MediaSummary[]> {
@@ -121,6 +149,7 @@ export class KitsuClient {
     const params: Record<string, string> = {
       'page[limit]': String(safeLimit),
       'page[offset]': String((safePage - 1) * safeLimit),
+      include: 'mappings',
     };
 
     // Kitsu exposes provider-native rank fields. Lower rank numbers are better,
@@ -136,7 +165,7 @@ export class KitsuClient {
 
     const payload = await this.get<KitsuCollectionResponse>('/anime', params);
     return {
-      items: normalAnime(payload.data).map(toSummary),
+      items: normalAnime(payload.data).map((item) => toSummary(item, payload.included ?? [])),
       hasMore: Boolean(payload.links?.next),
     };
   }
@@ -145,10 +174,38 @@ export class KitsuClient {
     if (!/^\d+$/.test(id)) return null;
 
     const payload = await this.get<KitsuDetailResponse>(`/anime/${id}`, {
-      include: 'categories',
+      include: 'categories,mappings',
     });
     if (!payload.data || payload.data.type !== 'anime') return null;
     return toDetail(payload.data, payload.included ?? []);
+  }
+
+  /**
+   * Resolve an id from another Anime catalog through Kitsu's mappings table.
+   * This is mainly used to migrate old AniList rows even while AniList itself
+   * is unavailable.
+   */
+  async byExternalId(
+    externalSite: 'anilist/anime' | 'myanimelist/anime',
+    externalId: string,
+  ): Promise<MediaDetail | null> {
+    if (!/^\d+$/.test(externalId)) return null;
+    const payload = await this.get<KitsuMappingResponse>('/mappings', {
+      'filter[externalSite]': externalSite,
+      'filter[externalId]': externalId,
+      'page[limit]': '1',
+    });
+    const item = payload.data?.[0]?.relationships?.item?.data;
+    if (!item || item.type !== 'anime') return null;
+    return this.byId(item.id);
+  }
+
+  async byMalId(malId: string): Promise<MediaDetail | null> {
+    return this.byExternalId('myanimelist/anime', malId);
+  }
+
+  async byAniListId(anilistId: string): Promise<MediaDetail | null> {
+    return this.byExternalId('anilist/anime', anilistId);
   }
 
   private async get<T>(path: string, params: Record<string, string>): Promise<T> {
@@ -177,12 +234,16 @@ function clampLimit(limit: number): number {
   return Math.min(Math.max(1, Math.floor(limit)), 20);
 }
 
-function toSummary(resource: KitsuResource): MediaSummary {
+function toSummary(
+  resource: KitsuResource,
+  included: KitsuIncludedResource[] = [],
+): MediaSummary {
   const attrs = resource.attributes ?? {};
   return {
     provider: MediaProvider.KITSU,
     providerMediaId: resource.id,
     mediaType: MediaType.ANIME,
+    canonicalMediaKey: canonicalKeyFromMappings(resource, included),
     title:
       attrs.titles?.en ??
       attrs.canonicalTitle ??
@@ -217,7 +278,7 @@ function toDetail(
   });
 
   return {
-    ...toSummary(resource),
+    ...toSummary(resource, included),
     bannerUrl:
       attrs.coverImage?.large ??
       attrs.coverImage?.original ??
@@ -229,6 +290,22 @@ function toDetail(
     studio: null,
     source: null,
   };
+}
+
+function canonicalKeyFromMappings(
+  resource: KitsuResource,
+  included: KitsuIncludedResource[],
+): string | null {
+  const mappingIds = new Set(
+    resource.relationships?.mappings?.data?.map((mapping) => mapping.id) ?? [],
+  );
+  for (const item of included) {
+    if (item.type !== 'mappings' || !mappingIds.has(item.id)) continue;
+    if (item.attributes?.externalSite !== 'myanimelist/anime') continue;
+    const key = canonicalAnimeKeyFromMalId(item.attributes.externalId ?? '');
+    if (key) return key;
+  }
+  return null;
 }
 
 function parseYear(value: string | null | undefined): number | null {

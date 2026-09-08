@@ -10,6 +10,7 @@ export const aniListSearchFixture = {
       media: [
         {
           id: 16498,
+          idMal: 16498,
           title: { romaji: 'Shingeki no Kyojin', english: 'Attack on Titan', native: '進撃の巨人' },
           seasonYear: 2013,
           episodes: 25,
@@ -26,6 +27,7 @@ export const aniListSearchFixture = {
         },
         {
           id: 110277,
+          idMal: 40028,
           title: { romaji: 'Shingeki no Kyojin: The Final Season', english: null, native: null },
           seasonYear: 2020,
           episodes: 16,

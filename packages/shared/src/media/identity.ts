@@ -33,6 +33,38 @@ export const mediaIdentitySchema = z.object({
 
 export type MediaIdentity = z.infer<typeof mediaIdentitySchema>;
 
+/**
+ * Cross-provider Anime identity.
+ *
+ * Couchlist uses MyAnimeList ids as the canonical Anime bridge because Jikan
+ * is MAL-native, AniList exposes `idMal`, and Kitsu exposes MAL mappings.
+ * Provider ids are still kept for fetch routing, but they are no longer the
+ * thing that decides whether two Anime rows are the same title.
+ */
+export function canonicalAnimeKeyFromMalId(id: string | number): string | null {
+  const value = String(id).trim();
+  return /^\d+$/.test(value) && Number(value) > 0 ? `mal:${value}` : null;
+}
+
+export function malIdFromCanonicalAnimeKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  const match = /^mal:(\d+)$/.exec(key);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Prefer a canonical cross-provider key when one is known. Movies/TV and
+ * unresolved Anime keep using the provider identity as before.
+ */
+export function mediaContentKey(
+  identity: MediaIdentity & { canonicalMediaKey?: string | null },
+): string {
+  if (identity.mediaType === MediaType.ANIME && identity.canonicalMediaKey) {
+    return `CANONICAL:${identity.canonicalMediaKey}`;
+  }
+  return mediaKey(identity);
+}
+
 /** Provider/type pairs that actually exist. Anything else is a client bug. */
 const VALID_COMBINATIONS: Record<MediaProvider, MediaType[]> = {
   ANILIST: [MediaType.ANIME],

@@ -1,6 +1,7 @@
 import 'server-only';
 import {
   AuditRepository,
+  AnimeAliasRepository,
   EntryRepository,
   FriendRepository,
   GuildRepository,
@@ -50,6 +51,7 @@ export interface Repositories {
   entries: EntryRepository;
   cache: MediaCacheRepository;
   audit: AuditRepository;
+  animeAliases: AnimeAliasRepository;
 }
 
 /** One set of repositories per process, created on first use. */
@@ -66,6 +68,7 @@ export function repos(): Repositories {
     entries: new EntryRepository(db),
     cache: new MediaCacheRepository(db),
     audit: new AuditRepository(db),
+    animeAliases: new AnimeAliasRepository(db),
   };
   return repositories;
 }

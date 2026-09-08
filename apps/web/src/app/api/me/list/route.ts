@@ -13,7 +13,11 @@ import { requireUser } from '@/lib/api/guards';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { config } from '@/lib/config';
 import { repos } from '@/lib/db';
-import { getMediaDetail } from '@/lib/services/media';
+import {
+  getMediaDetail,
+  reconcileAnimeEntriesForUsers,
+  resolveCanonicalMediaKey,
+} from '@/lib/services/media';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +38,7 @@ function assertProgressWithinRange(progress: number | null, episodeCount: number
 export const GET = apiRoute(async () => {
   const user = await requireUser();
   const { entries } = repos();
+  await reconcileAnimeEntriesForUsers([user.id], 12);
   const [rows, counts] = await Promise.all([
     entries.listForUser(user.id),
     entries.countsByStatus(user.id),
@@ -64,12 +69,17 @@ export const POST = apiRoute(async (request) => {
     input.media.mediaType,
     input.media.providerMediaId,
   );
+  const canonicalMediaKey = await resolveCanonicalMediaKey(
+    input.media,
+    detail.canonicalMediaKey,
+  );
 
   assertProgressWithinRange(input.progress ?? null, detail.episodeCount);
 
   const entry = await repos().entries.upsert({
     userId: user.id,
     ...input.media,
+    canonicalMediaKey,
     status: input.status,
     rating: input.rating ?? null,
     progress: input.progress ?? null,
@@ -104,7 +114,14 @@ export const PATCH = apiRoute(async (request) => {
     assertProgressWithinRange(update.progress, detail?.episodeCount ?? null);
   }
 
-  const entry = await repos().entries.update(user.id, identity, update);
+  const canonicalMediaKey = await resolveCanonicalMediaKey(identity);
+
+  const entry = await repos().entries.updateIdentityOrCanonical(
+    user.id,
+    identity,
+    canonicalMediaKey,
+    update,
+  );
   if (!entry) throw new AppError(ERROR_CODES.CL_NOT_FOUND, { userMessage: 'That title is not on your list.' });
 
   return { entry };
@@ -119,7 +136,12 @@ export const DELETE = apiRoute(async (request) => {
   const identity = mediaIdentitySchema.parse(body.media);
   if (!isValidIdentity(identity)) throw AppError.validation('That is not a supported title.');
 
-  const removed = await repos().entries.remove(user.id, identity);
+  const canonicalMediaKey = await resolveCanonicalMediaKey(identity);
+  const removed = await repos().entries.removeIdentityOrCanonical(
+    user.id,
+    identity,
+    canonicalMediaKey,
+  );
   if (!removed) throw new AppError(ERROR_CODES.CL_NOT_FOUND, { userMessage: 'That title is not on your list.' });
 
   return { ok: true };

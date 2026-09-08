@@ -2,6 +2,7 @@ import 'server-only';
 import { calculateTasteMatch, type RatedEntry, type TasteMatch } from '@couchlist/shared';
 import type { User } from '@couchlist/db';
 import { repos } from '../db';
+import { reconcileAnimeEntriesForUsers } from './media';
 
 /**
  * Friend comparison.
@@ -25,6 +26,7 @@ export interface PublicUser {
 
 export async function compareUsers(viewer: User, target: User): Promise<ComparisonView> {
   const { entries } = repos();
+  await reconcileAnimeEntriesForUsers([viewer.id, target.id], 16);
 
   const [viewerRows, targetRows] = await Promise.all([
     entries.listForUser(viewer.id),
@@ -36,6 +38,7 @@ export async function compareUsers(viewer: User, target: User): Promise<Comparis
       provider: row.provider,
       providerMediaId: row.providerMediaId,
       mediaType: row.mediaType,
+      canonicalMediaKey: row.canonicalMediaKey,
       title: row.title,
       rating: isSelf || owner.showRatings ? row.rating : null,
       completed: row.status === 'COMPLETED',

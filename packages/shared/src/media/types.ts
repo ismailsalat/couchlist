@@ -2,6 +2,8 @@ import type { MediaIdentity, MediaType } from './identity.js';
 
 /** The normalised shape both providers are mapped into. */
 export interface MediaSummary extends MediaIdentity {
+  /** Stable cross-provider key when the provider exposes one (Anime: mal:<id>). */
+  canonicalMediaKey?: string | null;
   title: string;
   year: number | null;
   posterUrl: string | null;

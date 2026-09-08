@@ -7,7 +7,11 @@ import {
   MediaProvider,
   MediaType,
   TmdbClient,
+  canonicalAnimeKeyFromMalId,
+  dedupeCrossCatalogSearch,
+  malIdFromCanonicalAnimeKey,
   createLogger,
+  type MediaIdentity,
   type MediaDetail,
   type MediaSummary,
   type SearchResult,
@@ -298,10 +302,178 @@ export async function searchMedia(
   }
 
   return {
-    results: interleave(results),
+    results: interleave(filter === "all" ? dedupeCrossCatalogSearch(results) : results),
     degraded: failed.length > 0,
     failedProviders: [...new Set(failed)],
   };
+}
+
+/**
+ * Resolve an Anime provider identity to Couchlist's canonical MAL-backed key.
+ * Learned aliases are persisted, so repeat profile/server views are DB-only.
+ */
+export async function resolveCanonicalMediaKey(
+  identity: MediaIdentity,
+  hintedKey?: string | null,
+): Promise<string | null> {
+  if (identity.mediaType !== MediaType.ANIME || identity.provider === MediaProvider.TMDB) {
+    return null;
+  }
+
+  const { animeAliases } = repos();
+  if (hintedKey && malIdFromCanonicalAnimeKey(hintedKey)) {
+    await animeAliases.upsert(identity, hintedKey);
+    return hintedKey;
+  }
+
+  const learned = await animeAliases.find(identity);
+  if (learned) return learned;
+
+  if (identity.provider === MediaProvider.JIKAN) {
+    const key = canonicalAnimeKeyFromMalId(identity.providerMediaId);
+    if (key) await animeAliases.upsert(identity, key);
+    return key;
+  }
+
+  const { anilist, kitsu } = animeClients();
+
+  // Kitsu can cross-reference an AniList id through its mappings table. That
+  // lets old AniList rows migrate even during the exact AniList 403 outage that
+  // motivated the multi-provider setup.
+  if (identity.provider === MediaProvider.ANILIST) {
+    if (!animeProviderCoolingDown("anilist")) {
+      try {
+        const detail = await anilist.byId(identity.providerMediaId);
+        const key = detail?.canonicalMediaKey ?? null;
+        if (key) {
+          await animeAliases.upsert(identity, key);
+          animeProviderCooldownUntil.delete("anilist");
+          return key;
+        }
+      } catch (error) {
+        coolDownAnimeProvider("anilist", error);
+        log.warn("anime_canonical_resolution_failed", {
+          provider: "anilist",
+          providerMediaId: identity.providerMediaId,
+          ...providerFailureMeta(error),
+        });
+      }
+    }
+
+    if (!animeProviderCoolingDown("kitsu")) {
+      try {
+        const detail = await kitsu.byAniListId(identity.providerMediaId);
+        const key = detail?.canonicalMediaKey ?? null;
+        if (key) {
+          await animeAliases.upsert(identity, key);
+          await animeAliases.upsert(
+            {
+              provider: MediaProvider.KITSU,
+              providerMediaId: detail!.providerMediaId,
+              mediaType: MediaType.ANIME,
+            },
+            key,
+          );
+          animeProviderCooldownUntil.delete("kitsu");
+          return key;
+        }
+      } catch (error) {
+        coolDownAnimeProvider("kitsu", error);
+        log.warn("anime_cross_reference_failed", {
+          provider: "kitsu",
+          sourceProvider: "anilist",
+          providerMediaId: identity.providerMediaId,
+          ...providerFailureMeta(error),
+        });
+      }
+    }
+    return null;
+  }
+
+  if (animeProviderCoolingDown("kitsu")) return null;
+  try {
+    const detail = await kitsu.byId(identity.providerMediaId);
+    const key = detail?.canonicalMediaKey ?? null;
+    if (key) {
+      await animeAliases.upsert(identity, key);
+      animeProviderCooldownUntil.delete("kitsu");
+    }
+    return key;
+  } catch (error) {
+    coolDownAnimeProvider("kitsu", error);
+    log.warn("anime_canonical_resolution_failed", {
+      provider: "kitsu",
+      providerMediaId: identity.providerMediaId,
+      ...providerFailureMeta(error),
+    });
+    return null;
+  }
+}
+
+/**
+ * Lazy migration for old Anime rows. Only a small recent slice is touched and
+ * repeated provider ids are resolved once per request, avoiding a sync worker
+ * or a provider-call storm after deployment.
+ */
+export async function reconcileAnimeEntriesForUsers(
+  userIds: string[],
+  limit = 12,
+): Promise<number> {
+  if (userIds.length === 0 || limit <= 0) return 0;
+  const { entries, animeAliases } = repos();
+  const unresolved = await entries.unresolvedAnimeForUsers(userIds, limit);
+  if (unresolved.length === 0) return 0;
+
+  const groups = new Map<string, typeof unresolved>();
+  for (const row of unresolved) {
+    const key = `${row.provider}:${row.providerMediaId}`;
+    const bucket = groups.get(key) ?? [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  }
+
+  let reconciled = 0;
+  const selectedGroups: typeof unresolved[] = [];
+  let networkBudget = 4;
+  for (const rows of groups.values()) {
+    const first = rows[0]!;
+    const identity: MediaIdentity = {
+      provider: first.provider,
+      providerMediaId: first.providerMediaId,
+      mediaType: first.mediaType,
+    };
+    const learned = await animeAliases.find(identity);
+    const needsNetwork = !learned && first.provider !== MediaProvider.JIKAN;
+    if (needsNetwork && networkBudget <= 0) continue;
+    if (needsNetwork) networkBudget -= 1;
+    selectedGroups.push(rows);
+  }
+
+  // At most four unresolved provider identities perform network work per page,
+  // and only two are resolved concurrently. Learned/Jikan aliases are DB-only.
+  for (let index = 0; index < selectedGroups.length; index += 2) {
+    const batch = selectedGroups.slice(index, index + 2);
+    const resolved = await Promise.all(
+      batch.map(async (rows) => {
+        const first = rows[0]!;
+        const canonical = await resolveCanonicalMediaKey({
+          provider: first.provider,
+          providerMediaId: first.providerMediaId,
+          mediaType: first.mediaType,
+        });
+        return { rows, canonical };
+      }),
+    );
+
+    for (const group of resolved) {
+      if (!group.canonical) continue;
+      for (const row of group.rows) {
+        const result = await entries.reconcileCanonicalKey(row.id, group.canonical);
+        if (result) reconciled += 1;
+      }
+    }
+  }
+  return reconciled;
 }
 
 /**
@@ -601,32 +773,157 @@ function firstPageBrowseFallback(
   return [];
 }
 
-/** Title detail, served from cache when fresh. */
+/** Title detail, served from cache when fresh. Anime can fail over by canonical id. */
 export async function getMediaDetail(
   provider: MediaProvider,
   mediaType: MediaType,
   providerMediaId: string,
 ): Promise<MediaDetail> {
-  const identity = { provider, providerMediaId, mediaType };
-  const { cache } = repos();
+  const identity: MediaIdentity = { provider, providerMediaId, mediaType };
+  const { cache, animeAliases } = repos();
 
   const cached = await cache.get<MediaDetail>(identity);
   if (cached) return cached;
 
+  let directError: unknown;
+  let detail: MediaDetail | null = null;
+
+  try {
+    detail = await fetchDirectDetail(identity);
+  } catch (error) {
+    directError = error;
+    if (mediaType !== MediaType.ANIME) throw error;
+    if (provider !== MediaProvider.TMDB) {
+      coolDownAnimeProvider(provider.toLowerCase() as AnimeProviderName, error);
+    }
+  }
+
+  if (detail) {
+    if (detail.canonicalMediaKey && mediaType === MediaType.ANIME) {
+      await animeAliases.upsert(identity, detail.canonicalMediaKey);
+    }
+    await cacheDetail(identity, detail);
+    return detail;
+  }
+
+  if (mediaType === MediaType.ANIME) {
+    // If the original provider is currently unhealthy, use a previously learned
+    // alias (or Jikan's MAL-native id) to fetch the same Anime elsewhere.
+    let canonical = await animeAliases.find(identity);
+    if (!canonical && provider === MediaProvider.JIKAN) {
+      canonical = canonicalAnimeKeyFromMalId(providerMediaId) ?? undefined;
+      if (canonical) await animeAliases.upsert(identity, canonical);
+    }
+    if (!canonical) {
+      canonical = (await resolveCanonicalMediaKey(identity)) ?? undefined;
+    }
+
+    if (canonical) {
+      const fallback = await fetchAnimeDetailByCanonical(canonical, provider);
+      if (fallback) {
+        await animeAliases.upsert(identity, canonical);
+        if (fallback.canonicalMediaKey) {
+          await animeAliases.upsert(
+            {
+              provider: fallback.provider,
+              providerMediaId: fallback.providerMediaId,
+              mediaType: MediaType.ANIME,
+            },
+            fallback.canonicalMediaKey,
+          );
+        }
+        // Cache the fallback under the route identity too. The route remains
+        // stable even if the provider that originally created it is down.
+        await cacheDetail(identity, fallback);
+        return fallback;
+      }
+    }
+  }
+
+  if (directError) throw directError;
+  throw AppError.notFound("title");
+}
+
+async function fetchDirectDetail(identity: MediaIdentity): Promise<MediaDetail | null> {
   const { anilist, jikan, kitsu, tmdb } = clients();
+  return identity.provider === MediaProvider.ANILIST
+    ? anilist.byId(identity.providerMediaId)
+    : identity.provider === MediaProvider.JIKAN
+      ? jikan.byId(identity.providerMediaId)
+      : identity.provider === MediaProvider.KITSU
+        ? kitsu.byId(identity.providerMediaId)
+        : tmdb.byId(identity.providerMediaId, identity.mediaType);
+}
 
-  const detail =
-    provider === MediaProvider.ANILIST
-      ? await anilist.byId(providerMediaId)
-      : provider === MediaProvider.JIKAN
-        ? await jikan.byId(providerMediaId)
-        : provider === MediaProvider.KITSU
-          ? await kitsu.byId(providerMediaId)
-          : await tmdb.byId(providerMediaId, mediaType);
+async function fetchAnimeDetailByCanonical(
+  canonicalMediaKey: string,
+  excludeProvider?: MediaProvider,
+): Promise<MediaDetail | null> {
+  const malId = malIdFromCanonicalAnimeKey(canonicalMediaKey);
+  if (!malId) return null;
 
-  if (!detail) throw AppError.notFound("title");
+  const { animeAliases } = repos();
+  const knownAliases = await animeAliases.aliasesFor(canonicalMediaKey);
+  const kitsuAlias = knownAliases.find((alias) => alias.provider === MediaProvider.KITSU);
+  const anilistAlias = knownAliases.find((alias) => alias.provider === MediaProvider.ANILIST);
+  const { anilist, jikan, kitsu } = animeClients();
 
-  await cache.set(
+  const candidates: Array<{
+    provider: AnimeProviderName;
+    load: () => Promise<MediaDetail | null>;
+  }> = [
+    {
+      provider: "jikan",
+      load: () => jikan.byId(malId),
+    },
+    {
+      provider: "anilist",
+      load: () =>
+        anilistAlias
+          ? anilist.byId(anilistAlias.providerMediaId)
+          : anilist.byMalId(malId),
+    },
+    {
+      provider: "kitsu",
+      load: () =>
+        kitsuAlias
+          ? kitsu.byId(kitsuAlias.providerMediaId)
+          : kitsu.byMalId(malId),
+    },
+  ];
+
+  for (const candidate of candidates) {
+    const enumProvider = candidate.provider.toUpperCase() as MediaProvider;
+    if (enumProvider === excludeProvider || animeProviderCoolingDown(candidate.provider)) continue;
+    try {
+      const detail = await candidate.load();
+      if (!detail) continue;
+      animeProviderCooldownUntil.delete(candidate.provider);
+      if (detail.canonicalMediaKey) {
+        await animeAliases.upsert(
+          {
+            provider: detail.provider,
+            providerMediaId: detail.providerMediaId,
+            mediaType: MediaType.ANIME,
+          },
+          detail.canonicalMediaKey,
+        );
+      }
+      return detail;
+    } catch (error) {
+      coolDownAnimeProvider(candidate.provider, error);
+      log.warn("anime_detail_fallback_failed", {
+        provider: candidate.provider,
+        canonicalMediaKey,
+        ...providerFailureMeta(error),
+      });
+    }
+  }
+  return null;
+}
+
+async function cacheDetail(identity: MediaIdentity, detail: MediaDetail): Promise<void> {
+  await repos().cache.set(
     identity,
     {
       title: detail.title,
@@ -637,8 +934,6 @@ export async function getMediaDetail(
     detail,
     config().MEDIA_CACHE_TTL_HOURS,
   );
-
-  return detail;
 }
 
 /** Health probe used by /api/health. Never throws. */

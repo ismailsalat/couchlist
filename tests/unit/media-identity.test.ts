@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  canonicalAnimeKeyFromMalId,
   isValidIdentity,
+  malIdFromCanonicalAnimeKey,
+  mediaContentKey,
   mediaIdentitySchema,
   mediaKey,
   mediaPath,
@@ -36,6 +39,24 @@ describe('media identity', () => {
     const anime = { provider: 'ANILIST', providerMediaId: '1396', mediaType: 'ANIME' } as const;
     const tv = { provider: 'TMDB', providerMediaId: '1396', mediaType: 'TV' } as const;
     expect(mediaKey(anime)).not.toBe(mediaKey(tv));
+  });
+
+  it('can unify Anime provider ids through a canonical MAL key', () => {
+    const anilist = {
+      provider: 'ANILIST',
+      providerMediaId: '30013',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+    } as const;
+    const kitsu = {
+      provider: 'KITSU',
+      providerMediaId: '12',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+    } as const;
+    expect(mediaContentKey(anilist)).toBe(mediaContentKey(kitsu));
+    expect(canonicalAnimeKeyFromMalId('21')).toBe('mal:21');
+    expect(malIdFromCanonicalAnimeKey('mal:21')).toBe('21');
   });
 
   it('treats the same TMDB id as different across movie and TV', () => {

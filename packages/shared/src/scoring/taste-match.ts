@@ -1,4 +1,4 @@
-import { mediaKey, type MediaIdentity } from '../media/identity.js';
+import { mediaContentKey, type MediaIdentity } from '../media/identity.js';
 
 /**
  * Taste match between two users.
@@ -26,6 +26,7 @@ export const LOVED_THRESHOLD = 8;
 export const RECOMMEND_THRESHOLD = 8;
 
 export interface RatedEntry extends MediaIdentity {
+  canonicalMediaKey?: string | null;
   title: string;
   rating: number | null;
   /** True when the user has finished it - used for recommendations. */
@@ -135,7 +136,7 @@ function recommendations(
 ): Recommendation[] {
   return from
     .filter((entry) => entry.rating !== null && entry.rating >= RECOMMEND_THRESHOLD)
-    .filter((entry) => !otherByKey.has(mediaKey(entry)))
+    .filter((entry) => !otherByKey.has(mediaContentKey(entry)))
     .sort((left, right) => (right.rating ?? 0) - (left.rating ?? 0) || left.title.localeCompare(right.title))
     .map((entry) => ({
       identity: {
@@ -150,7 +151,7 @@ function recommendations(
 
 function indexByKey(entries: RatedEntry[]): Map<string, RatedEntry> {
   const map = new Map<string, RatedEntry>();
-  for (const entry of entries) map.set(mediaKey(entry), entry);
+  for (const entry of entries) map.set(mediaContentKey(entry), entry);
   return map;
 }
 

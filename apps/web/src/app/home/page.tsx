@@ -13,7 +13,10 @@ import { currentUser } from "@/lib/auth/session";
 import { repos } from "@/lib/db";
 import { listFriends } from "@/lib/services/friends";
 import { buildGuildPage, type TitleTally } from "@/lib/services/guild";
-import { getGlobalTrending } from "@/lib/services/media";
+import {
+  getGlobalTrending,
+  reconcileAnimeEntriesForUsers,
+} from "@/lib/services/media";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +29,7 @@ export default async function HomePage() {
   if (!user) redirect("/");
 
   const { guilds, entries } = repos();
+  await reconcileAnimeEntriesForUsers([user.id], 12);
   const [friends, userGuilds, counts, globalTrending] = await Promise.all([
     listFriends(user),
     guilds.activeGuildsForUser(user.id),
@@ -37,6 +41,10 @@ export default async function HomePage() {
     counts.WATCHING + counts.COMPLETED + counts.PLAN_TO_WATCH;
   const isNewUser = trackedCount === 0;
   const friendIds = friends.map((friend) => friend.id);
+  await reconcileAnimeEntriesForUsers(
+    friendIds.length > 0 ? [...friendIds, user.id] : [user.id],
+    16,
+  );
   const [popular, communitySnapshots] = await Promise.all([
     entries.popularAmong(
       friendIds.length > 0 ? [...friendIds, user.id] : [],

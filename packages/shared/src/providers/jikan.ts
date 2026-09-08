@@ -1,4 +1,8 @@
-import { MediaProvider, MediaType } from '../media/identity.js';
+import {
+  MediaProvider,
+  MediaType,
+  canonicalAnimeKeyFromMalId,
+} from '../media/identity.js';
 import type { MediaDetail, MediaSummary } from '../media/types.js';
 import { fetchJson } from './http.js';
 
@@ -159,6 +163,7 @@ function toSummary(anime: JikanAnime): MediaSummary {
     provider: MediaProvider.JIKAN,
     providerMediaId: String(anime.mal_id),
     mediaType: MediaType.ANIME,
+    canonicalMediaKey: canonicalAnimeKeyFromMalId(anime.mal_id),
     title: anime.title_english ?? anime.title ?? anime.title_japanese ?? `Anime #${anime.mal_id}`,
     year: anime.year ?? anime.aired?.prop?.from?.year ?? null,
     posterUrl:

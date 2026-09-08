@@ -194,6 +194,10 @@ export const mediaEntries = pgTable(
     provider: mediaProviderEnum('provider').notNull(),
     providerMediaId: text('provider_media_id').notNull(),
     mediaType: mediaTypeEnum('media_type').notNull(),
+    // Cross-provider identity for Anime. Example: `mal:21` for One Piece.
+    // Null means the row predates canonicalization or the provider has not
+    // exposed a trustworthy mapping yet.
+    canonicalMediaKey: text('canonical_media_key'),
 
     status: listStatusEnum('status').notNull(),
     rating: doublePrecision('rating'),
@@ -214,6 +218,9 @@ export const mediaEntries = pgTable(
       table.providerMediaId,
       table.mediaType,
     ),
+    userCanonicalKey: uniqueIndex('entries_user_canonical_key')
+      .on(table.userId, table.canonicalMediaKey)
+      .where(sql`${table.canonicalMediaKey} is not null`),
     userStatusIdx: index('entries_user_status_idx').on(table.userId, table.status),
     mediaIdx: index('entries_media_idx').on(
       table.provider,
@@ -221,6 +228,35 @@ export const mediaEntries = pgTable(
       table.mediaType,
     ),
     userUpdatedIdx: index('entries_user_updated_idx').on(table.userId, table.updatedAt),
+  }),
+);
+
+/**
+ * Learned Anime provider aliases.
+ *
+ * Once Couchlist learns that ANILIST:30013 and JIKAN:21 both mean mal:21,
+ * later profile/server loads can reconcile them without another provider call.
+ */
+export const animeAliases = pgTable(
+  'anime_aliases',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('als')),
+    provider: mediaProviderEnum('provider').notNull(),
+    providerMediaId: text('provider_media_id').notNull(),
+    canonicalMediaKey: text('canonical_media_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    providerKey: uniqueIndex('anime_aliases_provider_key').on(
+      table.provider,
+      table.providerMediaId,
+    ),
+    canonicalIdx: index('anime_aliases_canonical_idx').on(table.canonicalMediaKey),
+    animeProviderCheck: check(
+      'anime_aliases_provider_check',
+      sql`${table.provider} <> 'TMDB'`,
+    ),
   }),
 );
 

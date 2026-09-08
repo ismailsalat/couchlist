@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { mediaEntries, users, type MediaEntry } from '../schema.js';
 
@@ -14,6 +14,7 @@ export interface EntryIdentity {
 
 export interface UpsertEntryInput extends EntryIdentity {
   userId: string;
+  canonicalMediaKey?: string | null;
   status: EntryStatus;
   rating?: number | null;
   progress?: number | null;
@@ -53,6 +54,32 @@ export class EntryRepository {
     return rows[0];
   }
 
+  async findByCanonical(userId: string, canonicalMediaKey: string): Promise<MediaEntry | undefined> {
+    const rows = await this.db
+      .select()
+      .from(mediaEntries)
+      .where(
+        and(
+          eq(mediaEntries.userId, userId),
+          eq(mediaEntries.canonicalMediaKey, canonicalMediaKey),
+        ),
+      )
+      .limit(1);
+    return rows[0];
+  }
+
+  async findIdentityOrCanonical(
+    userId: string,
+    identity: EntryIdentity,
+    canonicalMediaKey?: string | null,
+  ): Promise<MediaEntry | undefined> {
+    if (canonicalMediaKey) {
+      const canonical = await this.findByCanonical(userId, canonicalMediaKey);
+      if (canonical) return canonical;
+    }
+    return this.find(userId, identity);
+  }
+
   /**
    * Add or update one list entry.
    *
@@ -61,6 +88,34 @@ export class EntryRepository {
    * that could race with a double-clicked button.
    */
   async upsert(input: UpsertEntryInput): Promise<MediaEntry> {
+    if (input.canonicalMediaKey) {
+      const canonical = await this.findByCanonical(input.userId, input.canonicalMediaKey);
+      const exact = await this.find(input.userId, input);
+
+      // The same Anime may already have been saved through another provider.
+      // Update that one row instead of creating a second copy.
+      if (canonical && canonical.id !== exact?.id) {
+        const rows = await this.db
+          .update(mediaEntries)
+          .set({
+            status: input.status,
+            rating: input.rating ?? null,
+            progress: input.progress ?? null,
+            title: input.title,
+            posterUrl: input.posterUrl ?? canonical.posterUrl,
+            canonicalMediaKey: input.canonicalMediaKey,
+            updatedAt: new Date(),
+          })
+          .where(eq(mediaEntries.id, canonical.id))
+          .returning();
+
+        if (exact && exact.id !== canonical.id) {
+          await this.db.delete(mediaEntries).where(eq(mediaEntries.id, exact.id));
+        }
+        return rows[0]!;
+      }
+    }
+
     const rows = await this.db
       .insert(mediaEntries)
       .values({
@@ -68,6 +123,7 @@ export class EntryRepository {
         provider: input.provider,
         providerMediaId: input.providerMediaId,
         mediaType: input.mediaType,
+        canonicalMediaKey: input.canonicalMediaKey ?? null,
         status: input.status,
         rating: input.rating ?? null,
         progress: input.progress ?? null,
@@ -87,12 +143,63 @@ export class EntryRepository {
           progress: input.progress ?? null,
           title: input.title,
           posterUrl: input.posterUrl ?? null,
+          canonicalMediaKey: input.canonicalMediaKey ?? null,
           updatedAt: new Date(),
         },
       })
       .returning();
 
     return rows[0]!;
+  }
+
+  /**
+   * Attach a canonical key to an old Anime row. If another row for the same
+   * user already has that key, merge them instead of violating the canonical
+   * unique index. This is the lazy migration path used by profiles/servers.
+   */
+  async reconcileCanonicalKey(entryId: string, canonicalMediaKey: string): Promise<MediaEntry | undefined> {
+    const current = await this.findById(entryId);
+    if (!current) return undefined;
+    if (current.canonicalMediaKey === canonicalMediaKey) return current;
+
+    const collision = await this.findByCanonical(current.userId, canonicalMediaKey);
+    if (!collision || collision.id === current.id) {
+      const rows = await this.db
+        .update(mediaEntries)
+        .set({ canonicalMediaKey, updatedAt: new Date() })
+        .where(eq(mediaEntries.id, current.id))
+        .returning();
+      return rows[0];
+    }
+
+    const newer = current.updatedAt >= collision.updatedAt ? current : collision;
+    const older = newer.id === current.id ? collision : current;
+    const progressValues = [current.progress, collision.progress].filter(
+      (value): value is number => value !== null,
+    );
+    const mergedProgress = progressValues.length > 0 ? Math.max(...progressValues) : null;
+    const mergedRating = newer.rating ?? older.rating;
+    const survivor = collision;
+
+    const rows = await this.db
+      .update(mediaEntries)
+      .set({
+        canonicalMediaKey,
+        status: newer.status,
+        rating: mergedRating,
+        progress: mergedProgress,
+        title: newer.title || older.title,
+        posterUrl: newer.posterUrl ?? older.posterUrl,
+        createdAt: current.createdAt <= collision.createdAt ? current.createdAt : collision.createdAt,
+        updatedAt: current.updatedAt >= collision.updatedAt ? current.updatedAt : collision.updatedAt,
+      })
+      .where(eq(mediaEntries.id, survivor.id))
+      .returning();
+
+    if (current.id !== survivor.id) {
+      await this.db.delete(mediaEntries).where(eq(mediaEntries.id, current.id));
+    }
+    return rows[0];
   }
 
   /** Partial update. Only the caller's own row can be reached. */
@@ -114,10 +221,44 @@ export class EntryRepository {
     return rows[0];
   }
 
+  async updateIdentityOrCanonical(
+    userId: string,
+    identity: EntryIdentity,
+    canonicalMediaKey: string | null | undefined,
+    update: UpdateEntryInput,
+  ): Promise<MediaEntry | undefined> {
+    const row = await this.findIdentityOrCanonical(userId, identity, canonicalMediaKey);
+    if (!row) return undefined;
+    const changes: Record<string, unknown> = { updatedAt: new Date() };
+    if (update.status !== undefined) changes.status = update.status;
+    if (update.rating !== undefined) changes.rating = update.rating;
+    if (update.progress !== undefined) changes.progress = update.progress;
+    const rows = await this.db
+      .update(mediaEntries)
+      .set(changes)
+      .where(eq(mediaEntries.id, row.id))
+      .returning();
+    return rows[0];
+  }
+
   async remove(userId: string, identity: EntryIdentity): Promise<boolean> {
     const rows = await this.db
       .delete(mediaEntries)
       .where(this.identityFilter(userId, identity))
+      .returning({ id: mediaEntries.id });
+    return rows.length > 0;
+  }
+
+  async removeIdentityOrCanonical(
+    userId: string,
+    identity: EntryIdentity,
+    canonicalMediaKey?: string | null,
+  ): Promise<boolean> {
+    const row = await this.findIdentityOrCanonical(userId, identity, canonicalMediaKey);
+    if (!row) return false;
+    const rows = await this.db
+      .delete(mediaEntries)
+      .where(and(eq(mediaEntries.id, row.id), eq(mediaEntries.userId, userId)))
       .returning({ id: mediaEntries.id });
     return rows.length > 0;
   }
@@ -137,6 +278,22 @@ export class EntryRepository {
   async listForUsers(userIds: string[]): Promise<MediaEntry[]> {
     if (userIds.length === 0) return [];
     return this.db.select().from(mediaEntries).where(inArray(mediaEntries.userId, userIds));
+  }
+
+  async unresolvedAnimeForUsers(userIds: string[], limit = 12): Promise<MediaEntry[]> {
+    if (userIds.length === 0 || limit <= 0) return [];
+    return this.db
+      .select()
+      .from(mediaEntries)
+      .where(
+        and(
+          inArray(mediaEntries.userId, userIds),
+          eq(mediaEntries.mediaType, 'ANIME'),
+          sql`${mediaEntries.canonicalMediaKey} is null`,
+        ),
+      )
+      .orderBy(desc(mediaEntries.updatedAt))
+      .limit(Math.min(Math.max(1, limit), 50));
   }
 
   async countsByStatus(userId: string): Promise<Record<EntryStatus, number>> {
@@ -189,6 +346,7 @@ export class EntryRepository {
   async statsForMedia(
     userIds: string[],
     identity: EntryIdentity,
+    canonicalMediaKey?: string | null,
   ): Promise<{
     completed: number;
     watching: number;
@@ -208,17 +366,28 @@ export class EntryRepository {
     const rows = await this.db
       .select({
         status: mediaEntries.status,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`count(distinct ${mediaEntries.userId})::int`,
         avgRating: sql<number | null>`avg(${mediaEntries.rating})`,
-        ratingCount: sql<number>`count(${mediaEntries.rating})::int`,
+        ratingCount: sql<number>`count(distinct case when ${mediaEntries.rating} is not null then ${mediaEntries.userId} end)::int`,
       })
       .from(mediaEntries)
       .where(
         and(
           inArray(mediaEntries.userId, userIds),
-          eq(mediaEntries.provider, identity.provider),
-          eq(mediaEntries.providerMediaId, identity.providerMediaId),
-          eq(mediaEntries.mediaType, identity.mediaType),
+          canonicalMediaKey
+            ? or(
+                eq(mediaEntries.canonicalMediaKey, canonicalMediaKey),
+                and(
+                  eq(mediaEntries.provider, identity.provider),
+                  eq(mediaEntries.providerMediaId, identity.providerMediaId),
+                  eq(mediaEntries.mediaType, identity.mediaType),
+                ),
+              )
+            : and(
+                eq(mediaEntries.provider, identity.provider),
+                eq(mediaEntries.providerMediaId, identity.providerMediaId),
+                eq(mediaEntries.mediaType, identity.mediaType),
+              ),
         ),
       )
       .groupBy(mediaEntries.status);
@@ -246,6 +415,7 @@ export class EntryRepository {
   async ratingsForMedia(
     userIds: string[],
     identity: EntryIdentity,
+    canonicalMediaKey?: string | null,
   ): Promise<Array<{ userId: string; username: string; globalName: string | null; rating: number }>> {
     if (userIds.length === 0) return [];
 
@@ -261,9 +431,20 @@ export class EntryRepository {
       .where(
         and(
           inArray(mediaEntries.userId, userIds),
-          eq(mediaEntries.provider, identity.provider),
-          eq(mediaEntries.providerMediaId, identity.providerMediaId),
-          eq(mediaEntries.mediaType, identity.mediaType),
+          canonicalMediaKey
+            ? or(
+                eq(mediaEntries.canonicalMediaKey, canonicalMediaKey),
+                and(
+                  eq(mediaEntries.provider, identity.provider),
+                  eq(mediaEntries.providerMediaId, identity.providerMediaId),
+                  eq(mediaEntries.mediaType, identity.mediaType),
+                ),
+              )
+            : and(
+                eq(mediaEntries.provider, identity.provider),
+                eq(mediaEntries.providerMediaId, identity.providerMediaId),
+                eq(mediaEntries.mediaType, identity.mediaType),
+              ),
           sql`${mediaEntries.rating} is not null`,
         ),
       )
@@ -296,26 +477,58 @@ export class EntryRepository {
   > {
     if (userIds.length === 0) return [];
 
-    const rows = await this.db
-      .select({
-        provider: mediaEntries.provider,
-        providerMediaId: mediaEntries.providerMediaId,
-        mediaType: mediaEntries.mediaType,
-        title: sql<string>`max(${mediaEntries.title})`,
-        posterUrl: sql<string | null>`max(${mediaEntries.posterUrl})`,
-        memberCount: sql<number>`count(distinct ${mediaEntries.userId})::int`,
-        averageRating: sql<number | null>`avg(${mediaEntries.rating})`,
-      })
-      .from(mediaEntries)
-      .where(inArray(mediaEntries.userId, userIds))
-      .groupBy(mediaEntries.provider, mediaEntries.providerMediaId, mediaEntries.mediaType)
-      .orderBy(sql`count(distinct ${mediaEntries.userId}) desc`)
-      .limit(limit);
+    const rows = await this.listForUsers(userIds);
+    const grouped = new Map<
+      string,
+      {
+        provider: Provider;
+        providerMediaId: string;
+        mediaType: MediaKind;
+        title: string;
+        posterUrl: string | null;
+        users: Set<string>;
+        ratings: Map<string, number>;
+      }
+    >();
 
-    return rows.map((row) => ({
-      ...row,
-      averageRating:
-        row.averageRating === null ? null : Number(Number(row.averageRating).toFixed(2)),
-    }));
+    for (const row of rows) {
+      const key = row.canonicalMediaKey
+        ? `canonical:${row.canonicalMediaKey}`
+        : `${row.provider}:${row.mediaType}:${row.providerMediaId}`;
+      const existing = grouped.get(key) ?? {
+        provider: row.provider,
+        providerMediaId: row.providerMediaId,
+        mediaType: row.mediaType,
+        title: row.title,
+        posterUrl: row.posterUrl,
+        users: new Set<string>(),
+        ratings: new Map<string, number>(),
+      };
+      existing.users.add(row.userId);
+      if (row.rating !== null) existing.ratings.set(row.userId, row.rating);
+      if (!existing.posterUrl && row.posterUrl) existing.posterUrl = row.posterUrl;
+      grouped.set(key, existing);
+    }
+
+    return [...grouped.values()]
+      .map((row) => ({
+        provider: row.provider,
+        providerMediaId: row.providerMediaId,
+        mediaType: row.mediaType,
+        title: row.title,
+        posterUrl: row.posterUrl,
+        memberCount: row.users.size,
+        averageRating:
+          row.ratings.size === 0
+            ? null
+            : Number(
+                (
+                  [...row.ratings.values()].reduce((sum, value) => sum + value, 0) /
+                  row.ratings.size
+                ).toFixed(2),
+              ),
+      }))
+      .sort((a, b) => b.memberCount - a.memberCount || a.title.localeCompare(b.title))
+      .slice(0, limit);
   }
 }

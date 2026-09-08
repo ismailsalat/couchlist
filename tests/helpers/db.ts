@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   AuditRepository,
+  AnimeAliasRepository,
   EntryRepository,
   FriendRepository,
   GuildRepository,
@@ -33,7 +34,7 @@ export async function setupTestDatabase(): Promise<Database> {
 /** Wipes every table between tests. Order does not matter with CASCADE. */
 export async function resetTables(db: Database): Promise<void> {
   await db.execute(
-    sql`truncate table audit_logs, media_cache, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
+    sql`truncate table audit_logs, media_cache, anime_aliases, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
   );
 }
 
@@ -45,6 +46,7 @@ export function repositories(db: Database) {
     entries: new EntryRepository(db),
     cache: new MediaCacheRepository(db),
     audit: new AuditRepository(db),
+    animeAliases: new AnimeAliasRepository(db),
   };
 }
 

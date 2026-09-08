@@ -15,6 +15,9 @@ type BrowsePage = {
 };
 
 function identity(item: MediaSummary): string {
+  if (item.mediaType === "ANIME" && item.canonicalMediaKey) {
+    return `ANIME:${item.canonicalMediaKey}`;
+  }
   return `${item.provider}:${item.mediaType}:${item.providerMediaId}`;
 }
 

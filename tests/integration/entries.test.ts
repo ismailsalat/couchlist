@@ -81,6 +81,68 @@ describe('media entries', () => {
     expect(entries[0]?.rating).toBe(9);
   });
 
+  it('treats the same canonical Anime from different providers as one list entry', async () => {
+    const user = await makeUser();
+
+    await repos.entries.upsert({
+      userId: user.id,
+      provider: 'ANILIST',
+      providerMediaId: '30013',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+      status: 'WATCHING',
+      progress: 100,
+      title: 'One Piece',
+    });
+    await repos.entries.upsert({
+      userId: user.id,
+      provider: 'KITSU',
+      providerMediaId: '12',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+      status: 'WATCHING',
+      progress: 101,
+      title: 'One Piece',
+    });
+
+    const entries = await repos.entries.listForUser(user.id);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.canonicalMediaKey).toBe('mal:21');
+    expect(entries[0]?.progress).toBe(101);
+  });
+
+  it('lazy canonical reconciliation merges old cross-provider duplicates', async () => {
+    const user = await makeUser();
+    const one = await repos.entries.upsert({
+      userId: user.id,
+      provider: 'ANILIST',
+      providerMediaId: '30013',
+      mediaType: 'ANIME',
+      status: 'WATCHING',
+      progress: 90,
+      rating: 8,
+      title: 'One Piece',
+    });
+    const two = await repos.entries.upsert({
+      userId: user.id,
+      provider: 'KITSU',
+      providerMediaId: '12',
+      mediaType: 'ANIME',
+      status: 'WATCHING',
+      progress: 110,
+      title: 'One Piece',
+    });
+
+    await repos.entries.reconcileCanonicalKey(one.id, 'mal:21');
+    await repos.entries.reconcileCanonicalKey(two.id, 'mal:21');
+
+    const entries = await repos.entries.listForUser(user.id);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.canonicalMediaKey).toBe('mal:21');
+    expect(entries[0]?.progress).toBe(110);
+    expect(entries[0]?.rating).toBe(8);
+  });
+
   it('allows two users to track the same title', async () => {
     const one = await makeUser('one');
     const two = await makeUser('two');
@@ -196,6 +258,41 @@ describe('media entries', () => {
     expect(stats.watching).toBe(1);
     expect(stats.averageRating).toBe(8);
     expect(stats.ratingCount).toBe(2);
+  });
+
+  it('aggregates canonical Anime stats across provider ids', async () => {
+    const one = await makeUser('one');
+    const two = await makeUser('two');
+
+    await repos.entries.upsert({
+      userId: one.id,
+      provider: 'ANILIST',
+      providerMediaId: '30013',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+      status: 'COMPLETED',
+      rating: 9,
+      title: 'One Piece',
+    });
+    await repos.entries.upsert({
+      userId: two.id,
+      provider: 'KITSU',
+      providerMediaId: '12',
+      mediaType: 'ANIME',
+      canonicalMediaKey: 'mal:21',
+      status: 'WATCHING',
+      rating: 7,
+      title: 'One Piece',
+    });
+
+    const stats = await repos.entries.statsForMedia(
+      [one.id, two.id],
+      { provider: 'ANILIST', providerMediaId: '30013', mediaType: 'ANIME' },
+      'mal:21',
+    );
+    expect(stats.completed).toBe(1);
+    expect(stats.watching).toBe(1);
+    expect(stats.averageRating).toBe(8);
   });
 
   it('scopes statistics to the users given', async () => {

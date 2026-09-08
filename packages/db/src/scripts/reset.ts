@@ -14,7 +14,7 @@ export async function reset(connectionString: string): Promise<void> {
   const db = createDatabase({ connectionString, ssl: false });
 
   await db.execute(
-    sql`truncate table audit_logs, media_cache, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
+    sql`truncate table audit_logs, media_cache, anime_aliases, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
   );
 
   process.stdout.write('\nCouchlist database emptied.\n\n');

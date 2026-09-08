@@ -29,6 +29,13 @@
       "when": 1788901800000,
       "tag": "0003_kitsu_anime_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788908042781,
+      "tag": "0004_canonical_anime_identity",
+      "breakpoints": true
     }
   ]
 }

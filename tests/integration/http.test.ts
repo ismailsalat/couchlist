@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { seed } from "../../packages/db/src/scripts/seed";
 import { reset } from "../../packages/db/src/scripts/reset";
+import { runMigrations } from "../../packages/db/src/migrate";
 
 /**
  * End-to-end HTTP tests against the real production build.
@@ -72,6 +73,10 @@ function authed(cookie: string): RequestInit {
 }
 
 beforeAll(async () => {
+  // HTTP tests use a separate database from local development. Always migrate
+  // that exact database before reset/seed so newly-added tables and columns are
+  // available even when the developer only ran `npm run db:deploy` for the main DB.
+  await runMigrations(DATABASE_URL);
   await reset(DATABASE_URL);
   await seed(DATABASE_URL);
 

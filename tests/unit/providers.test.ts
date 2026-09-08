@@ -41,6 +41,7 @@ describe("AniList adapter", () => {
       provider: "ANILIST",
       mediaType: "ANIME",
       providerMediaId: "16498",
+      canonicalMediaKey: "mal:16498",
       title: "Attack on Titan",
       year: 2013,
       episodeCount: 25,
@@ -315,6 +316,7 @@ describe("Jikan adapter", () => {
       provider: "JIKAN",
       mediaType: "ANIME",
       providerMediaId: "5114",
+      canonicalMediaKey: "mal:5114",
       title: "Fullmetal Alchemist: Brotherhood",
       year: 2009,
       episodeCount: 64,
@@ -383,17 +385,25 @@ describe("Kitsu adapter", () => {
     },
     relationships: {
       categories: { data: [{ id: "1", type: "categories" }] },
+      mappings: { data: [{ id: "map-mal-1", type: "mappings" }] },
     },
   };
 
+  const malMapping = {
+    id: "map-mal-1",
+    type: "mappings",
+    attributes: { externalSite: "myanimelist/anime", externalId: "1" },
+  };
+
   it("maps public anime search results to Kitsu identities", async () => {
-    stubJson({ data: [anime], links: { next: null } });
+    stubJson({ data: [anime], included: [malMapping], links: { next: null } });
     const [result] = await client.search("cowboy bebop", 8);
 
     expect(result).toMatchObject({
       provider: "KITSU",
       mediaType: "ANIME",
       providerMediaId: "1",
+      canonicalMediaKey: "mal:1",
       title: "Cowboy Bebop",
       year: 1998,
       episodeCount: 26,
@@ -403,7 +413,7 @@ describe("Kitsu adapter", () => {
   it("uses Kitsu ranking and subtype filters for fallback browse", async () => {
     const spy = vi.fn(
       async () =>
-        new Response(JSON.stringify({ data: [anime], links: { next: "https://next" } }), {
+        new Response(JSON.stringify({ data: [anime], included: [malMapping], links: { next: "https://next" } }), {
           status: 200,
           headers: { "content-type": "application/vnd.api+json" },
         }),
@@ -420,6 +430,7 @@ describe("Kitsu adapter", () => {
     expect(url.searchParams.get("filter[subtype]")).toBe("movie");
     expect(url.searchParams.get("page[limit]")).toBe("20");
     expect(url.searchParams.get("page[offset]")).toBe("20");
+    expect(url.searchParams.get("include")).toBe("mappings");
   });
 
   it("loads Kitsu detail and included categories", async () => {
@@ -427,6 +438,7 @@ describe("Kitsu adapter", () => {
       data: anime,
       included: [
         { id: "1", type: "categories", attributes: { title: "Action" } },
+        malMapping,
       ],
     });
 
@@ -437,7 +449,38 @@ describe("Kitsu adapter", () => {
       title: "Cowboy Bebop",
       genres: ["Action"],
       status: "Finished",
+      canonicalMediaKey: "mal:1",
     });
+  });
+
+  it("cross-references an AniList id through Kitsu mappings", async () => {
+    const spy = vi.fn(async (url: string | URL) => {
+      const value = String(url);
+      if (value.includes("/mappings")) {
+        return new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: "map-anilist-1",
+                type: "mappings",
+                attributes: { externalSite: "anilist/anime", externalId: "1" },
+                relationships: { item: { data: { id: "1", type: "anime" } } },
+              },
+            ],
+          }),
+          { status: 200, headers: { "content-type": "application/vnd.api+json" } },
+        );
+      }
+      return new Response(
+        JSON.stringify({ data: anime, included: [malMapping] }),
+        { status: 200, headers: { "content-type": "application/vnd.api+json" } },
+      );
+    });
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const detail = await client.byAniListId("1");
+    expect(detail?.canonicalMediaKey).toBe("mal:1");
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 
   it("returns null for an invalid Kitsu id", async () => {

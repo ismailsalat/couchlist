@@ -3,7 +3,7 @@ import { apiRoute } from '@/lib/api/handler';
 import { requireUser } from '@/lib/api/guards';
 import { checkRateLimit } from '@/lib/api/rate-limit';
 import { config } from '@/lib/config';
-import { getMediaDetail } from '@/lib/services/media';
+import { getMediaDetail, resolveCanonicalMediaKey } from '@/lib/services/media';
 import { repos } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -29,6 +29,7 @@ export const GET = apiRoute(async (_request, context) => {
   const { guilds, entries } = repos();
 
   const detail = await getMediaDetail(identity.provider, identity.mediaType, identity.providerMediaId);
+  const canonicalMediaKey = await resolveCanonicalMediaKey(identity, detail.canonicalMediaKey);
 
   const userGuilds = await guilds.activeGuildsForUser(user.id);
   const memberIds = new Set<string>([user.id]);
@@ -40,9 +41,9 @@ export const GET = apiRoute(async (_request, context) => {
 
   const scoped = [...memberIds];
   const [stats, ratings, own] = await Promise.all([
-    entries.statsForMedia(scoped, identity),
-    entries.ratingsForMedia(scoped, identity),
-    entries.find(user.id, identity),
+    entries.statsForMedia(scoped, identity, canonicalMediaKey),
+    entries.ratingsForMedia(scoped, identity, canonicalMediaKey),
+    entries.findIdentityOrCanonical(user.id, identity, canonicalMediaKey),
   ]);
 
   return {

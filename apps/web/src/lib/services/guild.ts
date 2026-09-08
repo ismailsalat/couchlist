@@ -1,6 +1,7 @@
 import 'server-only';
 import { repos } from '../db';
 import { visibleMemberIds } from '../api/guards';
+import { reconcileAnimeEntriesForUsers } from './media';
 
 /** Everything the optional server hub shows, scoped to that server's members. */
 export interface GuildPageData {
@@ -40,6 +41,7 @@ export async function buildGuildPage(
   if (!guild || !guild.botConnected) return null;
 
   const memberIds = await visibleMemberIds(viewerId, guildId);
+  await reconcileAnimeEntriesForUsers(memberIds, 16);
   const [rows, memberUsers, activity] = await Promise.all([
     entries.listForUsers(memberIds),
     users.findManyByIds(memberIds),
@@ -61,9 +63,17 @@ export async function buildGuildPage(
     }))
     .sort((a, b) => (a.globalName ?? a.username).localeCompare(b.globalName ?? b.username));
 
-  const tally = new Map<string, TitleTally & { ratings: number[]; statuses: string[] }>();
+  const tally = new Map<
+    string,
+    TitleTally & {
+      ratings: Map<string, number>;
+      statuses: Map<string, string>;
+    }
+  >();
   for (const row of rows) {
-    const key = `${row.provider}:${row.mediaType}:${row.providerMediaId}`;
+    const key = row.canonicalMediaKey
+      ? `canonical:${row.canonicalMediaKey}`
+      : `${row.provider}:${row.mediaType}:${row.providerMediaId}`;
     const existing = tally.get(key) ?? {
       provider: row.provider,
       providerMediaId: row.providerMediaId,
@@ -72,12 +82,12 @@ export async function buildGuildPage(
       posterUrl: row.posterUrl,
       count: 0,
       averageRating: null,
-      ratings: [],
-      statuses: [],
+      ratings: new Map<string, number>(),
+      statuses: new Map<string, string>(),
     };
-    existing.count += 1;
-    existing.statuses.push(row.status);
-    if (row.rating !== null) existing.ratings.push(row.rating);
+    existing.statuses.set(row.userId, row.status);
+    existing.count = existing.statuses.size;
+    if (row.rating !== null) existing.ratings.set(row.userId, row.rating);
     if (!existing.posterUrl && row.posterUrl) existing.posterUrl = row.posterUrl;
     tally.set(key, existing);
   }
@@ -85,14 +95,22 @@ export async function buildGuildPage(
   const all = [...tally.values()].map((item) => ({
     ...item,
     averageRating:
-      item.ratings.length > 0
-        ? Number((item.ratings.reduce((a, b) => a + b, 0) / item.ratings.length).toFixed(1))
+      item.ratings.size > 0
+        ? Number(
+            (
+              [...item.ratings.values()].reduce((a, b) => a + b, 0) /
+              item.ratings.size
+            ).toFixed(1),
+          )
         : null,
   }));
 
   const byStatus = (status: string) =>
     all
-      .map((item) => ({ ...item, count: item.statuses.filter((s) => s === status).length }))
+      .map((item) => ({
+        ...item,
+        count: [...item.statuses.values()].filter((value) => value === status).length,
+      }))
       .filter((item) => item.count > 0)
       .sort((a, b) => b.count - a.count || a.title.localeCompare(b.title))
       .slice(0, 5)
@@ -110,7 +128,7 @@ export async function buildGuildPage(
     currentlyWatching: byStatus('WATCHING'),
     wantToWatch: byStatus('PLAN_TO_WATCH'),
     highestRated: all
-      .filter((item) => item.ratings.length > 0)
+      .filter((item) => item.ratings.size > 0)
       .sort(
         (a, b) =>
           (b.averageRating ?? 0) - (a.averageRating ?? 0) || a.title.localeCompare(b.title),
@@ -120,7 +138,12 @@ export async function buildGuildPage(
   };
 }
 
-function strip(item: TitleTally & { ratings: number[]; statuses: string[] }): TitleTally {
+function strip(
+  item: TitleTally & {
+    ratings: Map<string, number>;
+    statuses: Map<string, string>;
+  },
+): TitleTally {
   return {
     provider: item.provider,
     providerMediaId: item.providerMediaId,

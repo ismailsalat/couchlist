@@ -6,6 +6,7 @@ import {
   type WatchTogetherCandidate,
 } from '@couchlist/shared';
 import { repos } from '../db';
+import { reconcileAnimeEntriesForUsers } from './media';
 
 /**
  * Watch Together.
@@ -19,6 +20,7 @@ export async function suggestForGroup(options: {
   allowRewatch: boolean;
   limit?: number;
 }): Promise<WatchTogetherCandidate[]> {
+  await reconcileAnimeEntriesForUsers(options.userIds, 16);
   const rows = await repos().entries.listForUsers(options.userIds);
 
   const entries: GroupEntry[] = rows.map((row) => ({
@@ -26,6 +28,7 @@ export async function suggestForGroup(options: {
     provider: row.provider,
     providerMediaId: row.providerMediaId,
     mediaType: row.mediaType,
+    canonicalMediaKey: row.canonicalMediaKey,
     title: row.title,
     posterUrl: row.posterUrl,
     status: row.status,

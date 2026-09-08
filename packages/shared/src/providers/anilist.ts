@@ -1,5 +1,9 @@
 import { AppError, ERROR_CODES } from "../errors/index.js";
-import { MediaProvider, MediaType } from "../media/identity.js";
+import {
+  MediaProvider,
+  MediaType,
+  canonicalAnimeKeyFromMalId,
+} from "../media/identity.js";
 import type { MediaDetail, MediaSummary } from "../media/types.js";
 import { fetchJson } from "./http.js";
 
@@ -16,6 +20,7 @@ import { fetchJson } from "./http.js";
 
 const SUMMARY_FIELDS = `
   id
+  idMal
   title { romaji english native }
   seasonYear
   episodes
@@ -102,8 +107,15 @@ const BY_ID_QUERY = `
   }
 `;
 
+const BY_MAL_ID_QUERY = `
+  query ($idMal: Int!) {
+    Media(idMal: $idMal, type: ANIME) { ${DETAIL_FIELDS} }
+  }
+`;
+
 interface AniListMedia {
   id: number;
+  idMal?: number | null;
   title: {
     romaji: string | null;
     english: string | null;
@@ -197,6 +209,18 @@ export class AniListClient {
     return data.Media ? toDetail(data.Media) : null;
   }
 
+  /** Resolve a canonical MAL id back to AniList when the normal provider is down. */
+  async byMalId(id: string): Promise<MediaDetail | null> {
+    const numeric = Number.parseInt(id, 10);
+    if (!Number.isFinite(numeric)) return null;
+
+    const data = await this.request<{ Media: AniListMedia | null }>(
+      BY_MAL_ID_QUERY,
+      { idMal: numeric },
+    );
+    return data.Media ? toDetail(data.Media) : null;
+  }
+
   private async request<T>(
     query: string,
     variables: Record<string, unknown>,
@@ -248,6 +272,7 @@ function toSummary(media: AniListMedia): MediaSummary {
     provider: MediaProvider.ANILIST,
     providerMediaId: String(media.id),
     mediaType: MediaType.ANIME,
+    canonicalMediaKey: canonicalAnimeKeyFromMalId(media.idMal ?? ""),
     title: preferredTitle(media),
     year: media.seasonYear,
     posterUrl: media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,

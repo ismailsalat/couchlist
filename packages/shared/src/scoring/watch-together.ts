@@ -1,4 +1,4 @@
-import { mediaKey, type MediaIdentity, type MediaType } from '../media/identity.js';
+import { mediaContentKey, type MediaIdentity, type MediaType } from '../media/identity.js';
 
 /**
  * Watch Together.
@@ -19,6 +19,7 @@ export const UNWATCHED_POINTS = 1;
 export type ListStatus = 'WATCHING' | 'COMPLETED' | 'PLAN_TO_WATCH';
 
 export interface GroupEntry extends MediaIdentity {
+  canonicalMediaKey?: string | null;
   userId: string;
   title: string;
   posterUrl: string | null;
@@ -61,7 +62,7 @@ export function findWatchTogether(
   // Group every participant's entries by title.
   const byTitle = new Map<string, GroupEntry[]>();
   for (const entry of relevant) {
-    const key = mediaKey(entry);
+    const key = mediaContentKey(entry);
     const bucket = byTitle.get(key);
     if (bucket) bucket.push(entry);
     else byTitle.set(key, [entry]);

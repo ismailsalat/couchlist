@@ -30,18 +30,21 @@ const TITLES = {
     provider: 'ANILIST' as const,
     providerMediaId: '16498',
     mediaType: 'ANIME' as const,
+    canonicalMediaKey: 'mal:16498',
     title: 'Attack on Titan',
   },
   frieren: {
     provider: 'ANILIST' as const,
     providerMediaId: '154587',
     mediaType: 'ANIME' as const,
+    canonicalMediaKey: 'mal:52991',
     title: 'Frieren: Beyond Journey\u2019s End',
   },
   vinland: {
     provider: 'ANILIST' as const,
     providerMediaId: '101348',
     mediaType: 'ANIME' as const,
+    canonicalMediaKey: 'mal:37521',
     title: 'Vinland Saga',
   },
   interstellar: {

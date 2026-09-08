@@ -11,7 +11,10 @@ import { Nav } from "@/components/nav";
 import { EntryControls } from "@/components/entry-controls";
 import { currentUser } from "@/lib/auth/session";
 import { repos } from "@/lib/db";
-import { getMediaDetail } from "@/lib/services/media";
+import {
+  getMediaDetail,
+  resolveCanonicalMediaKey,
+} from "@/lib/services/media";
 import { visibleMemberIds } from "@/lib/api/guards";
 
 export const dynamic = "force-dynamic";
@@ -59,22 +62,27 @@ export default async function MediaPage({
     );
   }
 
+  const canonicalMediaKey = await resolveCanonicalMediaKey(
+    identity,
+    detail.canonicalMediaKey,
+  );
+
   const { guilds, entries, friends } = repos();
   const [friendIds, userGuilds, own] = await Promise.all([
     friends.acceptedFriendIds(user.id),
     guilds.activeGuildsForUser(user.id),
-    entries.find(user.id, identity),
+    entries.findIdentityOrCanonical(user.id, identity, canonicalMediaKey),
   ]);
 
   const [friendStats, friendRatings, serverStats] = await Promise.all([
-    entries.statsForMedia(friendIds, identity),
-    entries.ratingsForMedia(friendIds, identity),
+    entries.statsForMedia(friendIds, identity, canonicalMediaKey),
+    entries.ratingsForMedia(friendIds, identity, canonicalMediaKey),
     Promise.all(
       userGuilds.map(async (guild) => {
         const memberIds = await visibleMemberIds(user.id, guild.id);
         return {
           guild,
-          stats: await entries.statsForMedia(memberIds, identity),
+          stats: await entries.statsForMedia(memberIds, identity, canonicalMediaKey),
         };
       }),
     ),
