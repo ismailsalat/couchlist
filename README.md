@@ -152,7 +152,7 @@ who you are and which servers you are in, nothing more.
 3. Copy either the **API Key (v3 auth)** or the **API Read Access Token (v4)**
    into `TMDB_API_KEY` — the adapter detects which you gave it
 
-Anime uses Jikan/MyAnimeList public catalog data and needs no key or account. AniList remains only for legacy title links created before v10.8.
+Anime uses three public providers with no API keys required: AniList, Jikan/MyAnimeList, and Kitsu. Couchlist fails over between them so one Anime API outage does not blank the Anime tab.
 
 ---
 

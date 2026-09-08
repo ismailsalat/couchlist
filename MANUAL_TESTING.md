@@ -1,6 +1,6 @@
 # Manual testing checklist
 
-Everything below needs a live Discord, Jikan, TMDB, browser or Docker, none of
+Everything below needs a live Discord, AniList/Jikan/Kitsu, TMDB, browser or Docker, none of
 which were reachable in the environment Couchlist was built in. The database,
 authorization, scoring, validation and HTTP layers were tested automatically —
 run `npm test` for those.
@@ -67,11 +67,12 @@ one server: `npm run bot:register -- <your-guild-id>`
 
 **Nobody appears?** Run `/admin status` first; in TEST_MODE it repairs known tester memberships for accounts that already signed in. Confirm every tester ID is in `TEST_USER_IDS` and each account has signed into the website at least once. Sign out and back in to force a fresh Discord guild sync if needed.
 
-## F. Anime live search (Jikan)
+## F. Anime live search (multi-provider)
 
 1. Search `attack on titan`
 2. Results labelled **Anime** with year and episode count, posters visible
-3. Open one → description, genres, studio present
+3. Open one → title details load normally
+4. In the web-server log, one Anime provider may fail while a later provider succeeds; the search must still return Anime results
 
 ## G. TMDB live search
 
@@ -206,7 +207,7 @@ Use at least one iPhone-sized viewport and one Android-sized viewport.
 ## v10.4 discovery catalog
 
 1. Open Search with an empty query and confirm All shows Anime, Movies, and TV starter shelves.
-2. Open Anime and confirm Trending Anime and Popular Anime are both visible when Jikan is healthy.
+2. Open Anime and confirm Trending Anime and Popular Anime are both visible when at least one Anime provider is healthy.
 3. Open Movies and confirm Movies Right Now and Top Rated Movies are separate shelves.
 4. Open TV Shows and confirm TV Right Now and Popular TV Shows are separate shelves.
 5. Search for a title that is not visible in the starter shelves and confirm it still appears in search results.
@@ -221,25 +222,27 @@ Use at least one iPhone-sized viewport and one Android-sized viewport.
 - Switch Trending / Popular / Top Rated in every category and confirm each ranking starts a fresh grid.
 - Do **not** press a Load More button: there should not be one. Scroll near the bottom and confirm the next page appears automatically.
 - Scroll back up after several pages load and confirm earlier posters are still there; Couchlist should append, not recycle/unload the list.
-- If the first provider request fails, confirm the page automatically retries once. A manual Retry button should appear only if the provider is still unavailable.
+- If the preferred Anime provider fails, confirm Couchlist automatically fails over to the next Anime provider. A manual Retry button should appear only if the whole Anime fallback chain has no usable result.
 - Confirm `See more` from the All page lands on the same working long-browse view as clicking the category tabs directly.
 - Search a specific anime/movie/show and confirm normal search still works independently of browse.
 - On iPhone/PWA, scroll several browse pages and confirm the fixed bottom nav does not cover posters or trigger accidental home gestures.
 
 ## Live media-provider smoke check (required after browse/provider changes)
 
-The normal unit tests intentionally stub Jikan, legacy AniList, and TMDB so they stay deterministic. When a release changes Search, Browse, Anime, Movies, TV, provider timeouts, or provider adapters, also run:
+The normal unit tests stub external providers so they stay deterministic. When a release changes Search, Browse, Anime, Movies, TV, provider timeouts, or provider adapters, also run:
 
 ```bash
 npm run test:providers-live
 ```
 
-This makes three real read-only requests using the local `.env` configuration:
+The smoke script checks the real read-only provider endpoints used by Couchlist:
 
-- Jikan anime search
-- Jikan anime browse using the same provider path as the Anime tab
+- AniList search + browse
+- Jikan search + browse
+- Kitsu search + browse
 - TMDB movie browse
+- Aggregate Anime search redundancy and Anime browse redundancy
 
-The script never prints API keys or Discord secrets. Anime browse/search now depend on Jikan rather than AniList, so an AniList 403 must not blank the Anime tab. A Jikan failure should degrade Anime only; Movies/TV should continue through TMDB.
+Individual Anime providers are allowed to show `FAIL` when an upstream service is blocked, rate-limited, or degraded. The important final lines are the aggregate Anime redundancy checks: at least one Anime search provider and at least one Anime browse provider must pass. The script never prints API keys or Discord secrets.
 
 This live check is deliberately **not** part of `npm test`, because an external provider outage should not make the deterministic Couchlist test suite flaky.

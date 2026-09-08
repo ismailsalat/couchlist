@@ -19,7 +19,7 @@ export interface FriendCard {
   sharedServers: Array<{ discordId: string; name: string }>;
   watching: {
     title: string;
-    provider: 'ANILIST' | 'JIKAN' | 'TMDB';
+    provider: 'ANILIST' | 'JIKAN' | 'KITSU' | 'TMDB';
     mediaType: 'ANIME' | 'MOVIE' | 'TV';
     providerMediaId: string;
     progress: number | null;

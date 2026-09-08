@@ -35,7 +35,7 @@ export function createId(prefix: string): string {
  *     not because application code remembers to check.
  */
 
-export const mediaProviderEnum = pgEnum('media_provider', ['ANILIST', 'JIKAN', 'TMDB']);
+export const mediaProviderEnum = pgEnum('media_provider', ['ANILIST', 'JIKAN', 'KITSU', 'TMDB']);
 export const mediaTypeEnum = pgEnum('media_type', ['ANIME', 'MOVIE', 'TV']);
 export const listStatusEnum = pgEnum('list_status', ['WATCHING', 'COMPLETED', 'PLAN_TO_WATCH']);
 export const profileVisibilityEnum = pgEnum('profile_visibility', ['MUTUAL_SERVERS', 'PRIVATE']);

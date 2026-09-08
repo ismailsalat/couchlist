@@ -11,7 +11,7 @@ interface FriendOption {
 }
 
 interface Candidate {
-  identity: { provider: 'ANILIST' | 'JIKAN' | 'TMDB'; providerMediaId: string; mediaType: 'ANIME' | 'MOVIE' | 'TV' };
+  identity: { provider: 'ANILIST' | 'JIKAN' | 'KITSU' | 'TMDB'; providerMediaId: string; mediaType: 'ANIME' | 'MOVIE' | 'TV' };
   title: string;
   posterUrl: string | null;
   score: number;

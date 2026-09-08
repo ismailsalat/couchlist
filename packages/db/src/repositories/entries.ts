@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { mediaEntries, users, type MediaEntry } from '../schema.js';
 
-export type Provider = 'ANILIST' | 'JIKAN' | 'TMDB';
+export type Provider = 'ANILIST' | 'JIKAN' | 'KITSU' | 'TMDB';
 export type MediaKind = 'ANIME' | 'MOVIE' | 'TV';
 export type EntryStatus = 'WATCHING' | 'COMPLETED' | 'PLAN_TO_WATCH';
 

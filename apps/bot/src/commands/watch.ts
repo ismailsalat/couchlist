@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { JikanClient, TmdbClient, mediaPath } from '@couchlist/shared';
+import { AniListClient, JikanClient, KitsuClient, TmdbClient, mediaPath } from '@couchlist/shared';
 import { baseEmbed, errorEmbed, linkRow } from '../lib/embeds.js';
 import type { BotCommand } from './types.js';
 
@@ -21,9 +21,18 @@ export const watchCommand: BotCommand = {
     const query = interaction.options.getString('query', true);
     await interaction.deferReply({ ephemeral: true });
 
+    const animeTimeout = Math.min(context.config.PROVIDER_TIMEOUT_MS, 3500);
+    const anilist = new AniListClient({
+      apiUrl: context.config.ANILIST_API_URL,
+      timeoutMs: animeTimeout,
+    });
     const jikan = new JikanClient({
       baseUrl: context.config.JIKAN_API_BASE_URL,
-      timeoutMs: context.config.PROVIDER_TIMEOUT_MS,
+      timeoutMs: animeTimeout,
+    });
+    const kitsu = new KitsuClient({
+      baseUrl: context.config.KITSU_API_BASE_URL,
+      timeoutMs: animeTimeout,
     });
     const tmdb = new TmdbClient({
       apiKey: context.config.TMDB_API_KEY,
@@ -31,9 +40,21 @@ export const watchCommand: BotCommand = {
       timeoutMs: context.config.PROVIDER_TIMEOUT_MS,
     });
 
-    // A provider being down should degrade the answer, not fail the command.
+    // Anime search prefers AniList, then fails over to Jikan and Kitsu.
+    const animeSearch = async () => {
+      for (const provider of [anilist, jikan, kitsu]) {
+        try {
+          const matches = await provider.search(query, 3);
+          if (matches.length > 0) return matches;
+        } catch {
+          // Keep moving: one Anime API must not break /watch.
+        }
+      }
+      return [];
+    };
+
     const [animeResult, tmdbResult] = await Promise.allSettled([
-      jikan.search(query, 3),
+      animeSearch(),
       tmdb.search(query, 3),
     ]);
 
@@ -44,7 +65,9 @@ export const watchCommand: BotCommand = {
 
     const top = results[0];
     if (!top) {
-      const bothFailed = animeResult.status === 'rejected' && tmdbResult.status === 'rejected';
+      const bothFailed =
+        (animeResult.status === 'rejected' || animeResult.value.length === 0) &&
+        tmdbResult.status === 'rejected';
       await interaction.editReply({
         embeds: [
           errorEmbed(

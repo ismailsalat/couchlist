@@ -79,7 +79,7 @@ export class JikanClient {
     const payload = await fetchJson<JikanPageResponse>(url, {
       providerName: 'jikan',
       timeoutMs: this.options.timeoutMs,
-      retries: 1,
+      retries: 0,
     });
     return (payload.data ?? []).map(toSummary);
   }
@@ -122,7 +122,7 @@ export class JikanClient {
     const payload = await fetchJson<JikanPageResponse>(this.url('/top/anime', params), {
       providerName: 'jikan',
       timeoutMs: this.options.timeoutMs,
-      retries: 1,
+      retries: 0,
     });
 
     return {
@@ -140,7 +140,7 @@ export class JikanClient {
       {
         providerName: 'jikan',
         timeoutMs: this.options.timeoutMs,
-        retries: 1,
+        retries: 0,
       },
     );
     return payload.data ? toDetail(payload.data) : null;

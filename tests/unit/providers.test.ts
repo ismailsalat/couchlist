@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AniListClient, AppError, JikanClient, TmdbClient } from "@couchlist/shared";
+import { AniListClient, AppError, JikanClient, KitsuClient, TmdbClient } from "@couchlist/shared";
 import {
   aniListSearchFixture,
   tmdbSearchFixture,
@@ -360,6 +360,91 @@ describe("Jikan adapter", () => {
   it("rejects a failed Jikan request as a provider error", async () => {
     stubJson({ message: "Service unavailable" }, 503);
     await expect(client.search("x")).rejects.toBeInstanceOf(AppError);
+  });
+});
+
+describe("Kitsu adapter", () => {
+  const client = new KitsuClient({ baseUrl: "https://kitsu.io/api/edge" });
+
+  const anime = {
+    id: "1",
+    type: "anime",
+    attributes: {
+      canonicalTitle: "Cowboy Bebop",
+      titles: { en: "Cowboy Bebop", en_jp: "Cowboy Bebop", ja_jp: "カウボーイビバップ" },
+      synopsis: "Bounty hunters travel the solar system.",
+      posterImage: { large: "https://media.kitsu.app/anime/poster_images/1/large.jpg" },
+      coverImage: { large: "https://media.kitsu.app/anime/1/cover_image/large.jpg" },
+      startDate: "1998-04-03",
+      status: "finished",
+      subtype: "TV",
+      episodeCount: 26,
+      nsfw: false,
+    },
+    relationships: {
+      categories: { data: [{ id: "1", type: "categories" }] },
+    },
+  };
+
+  it("maps public anime search results to Kitsu identities", async () => {
+    stubJson({ data: [anime], links: { next: null } });
+    const [result] = await client.search("cowboy bebop", 8);
+
+    expect(result).toMatchObject({
+      provider: "KITSU",
+      mediaType: "ANIME",
+      providerMediaId: "1",
+      title: "Cowboy Bebop",
+      year: 1998,
+      episodeCount: 26,
+    });
+  });
+
+  it("uses Kitsu ranking and subtype filters for fallback browse", async () => {
+    const spy = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ data: [anime], links: { next: "https://next" } }), {
+          status: 200,
+          headers: { "content-type": "application/vnd.api+json" },
+        }),
+    );
+    globalThis.fetch = spy as unknown as typeof fetch;
+
+    const page = await client.browsePage("top-rated", 2, 20, "movies");
+    expect(page.items).toHaveLength(1);
+    expect(page.hasMore).toBe(true);
+
+    const url = new URL(String(spy.mock.calls[0]?.[0]));
+    expect(url.pathname).toBe("/api/edge/anime");
+    expect(url.searchParams.get("sort")).toBe("ratingRank");
+    expect(url.searchParams.get("filter[subtype]")).toBe("movie");
+    expect(url.searchParams.get("page[limit]")).toBe("20");
+    expect(url.searchParams.get("page[offset]")).toBe("20");
+  });
+
+  it("loads Kitsu detail and included categories", async () => {
+    stubJson({
+      data: anime,
+      included: [
+        { id: "1", type: "categories", attributes: { title: "Action" } },
+      ],
+    });
+
+    const detail = await client.byId("1");
+    expect(detail).toMatchObject({
+      provider: "KITSU",
+      providerMediaId: "1",
+      title: "Cowboy Bebop",
+      genres: ["Action"],
+      status: "Finished",
+    });
+  });
+
+  it("returns null for an invalid Kitsu id", async () => {
+    const spy = vi.fn();
+    globalThis.fetch = spy as unknown as typeof fetch;
+    expect(await client.byId("bad-id")).toBeNull();
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 

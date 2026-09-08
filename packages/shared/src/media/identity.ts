@@ -10,6 +10,7 @@ import { z } from 'zod';
 export const MediaProvider = {
   ANILIST: 'ANILIST',
   JIKAN: 'JIKAN',
+  KITSU: 'KITSU',
   TMDB: 'TMDB',
 } as const;
 export type MediaProvider = (typeof MediaProvider)[keyof typeof MediaProvider];
@@ -36,6 +37,7 @@ export type MediaIdentity = z.infer<typeof mediaIdentitySchema>;
 const VALID_COMBINATIONS: Record<MediaProvider, MediaType[]> = {
   ANILIST: [MediaType.ANIME],
   JIKAN: [MediaType.ANIME],
+  KITSU: [MediaType.ANIME],
   TMDB: [MediaType.MOVIE, MediaType.TV],
 };
 

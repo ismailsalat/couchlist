@@ -4,50 +4,142 @@ loadDotEnv();
 
 const timeoutMs = Math.min(
   Math.max(Number.parseInt(process.env.PROVIDER_TIMEOUT_MS ?? "8000", 10) || 8000, 3000),
-  15000,
+  10000,
 );
+const anilistUrl = process.env.ANILIST_API_URL || "https://graphql.anilist.co";
 const jikanBase = (process.env.JIKAN_API_BASE_URL || "https://api.jikan.moe/v4").replace(/\/$/, "");
+const kitsuBase = (process.env.KITSU_API_BASE_URL || "https://kitsu.io/api/edge").replace(/\/$/, "");
 const tmdbBase = (process.env.TMDB_API_BASE_URL || "https://api.themoviedb.org/3").replace(/\/$/, "");
 const tmdbKey = (process.env.TMDB_API_KEY || "").trim();
 
 const checks = [];
-checks.push(await checkJikanSearch());
-checks.push(await checkJikanBrowse());
-checks.push(await checkTmdbTrending());
+const anilistSearch = await checkAniListSearch();
+const anilistBrowse = await checkAniListBrowse();
+const jikanSearch = await checkJikanSearch();
+const jikanBrowse = await checkJikanBrowse();
+const kitsuSearch = await checkKitsuSearch();
+const kitsuBrowse = await checkKitsuBrowse();
+const tmdbBrowse = await checkTmdbTrending();
+checks.push(
+  anilistSearch,
+  anilistBrowse,
+  jikanSearch,
+  jikanBrowse,
+  kitsuSearch,
+  kitsuBrowse,
+  tmdbBrowse,
+);
+
+const animeSearchHealthy = [anilistSearch, jikanSearch, kitsuSearch].filter((check) => check.ok).length;
+const animeBrowseHealthy = [anilistBrowse, jikanBrowse, kitsuBrowse].filter((check) => check.ok).length;
+const summaryChecks = [
+  {
+    name: "Anime search redundancy",
+    ok: animeSearchHealthy > 0,
+    detail: `${animeSearchHealthy}/3 providers healthy`,
+  },
+  {
+    name: "Anime browse redundancy",
+    ok: animeBrowseHealthy > 0,
+    detail: `${animeBrowseHealthy}/3 providers healthy`,
+  },
+];
 
 console.log("\nProvider smoke summary");
-for (const check of checks) {
+for (const check of checks) printCheck(check);
+console.log("");
+for (const check of summaryChecks) printCheck(check);
+
+const tmdbFailed = !tmdbBrowse.ok && !tmdbBrowse.skipped;
+if (summaryChecks.some((check) => !check.ok) || tmdbFailed) process.exitCode = 1;
+
+function printCheck(check) {
   const prefix = check.ok ? "PASS" : check.skipped ? "SKIP" : "FAIL";
   console.log(`${prefix.padEnd(4)}  ${check.name}${check.detail ? ` — ${check.detail}` : ""}`);
 }
 
-const failed = checks.filter((check) => !check.ok && !check.skipped);
-if (failed.length > 0) process.exitCode = 1;
+async function checkAniListSearch() {
+  return postAniList(
+    "AniList search",
+    `query ($search: String!, $perPage: Int!) {
+      Page(page: 1, perPage: $perPage) {
+        media(search: $search, type: ANIME, sort: SEARCH_MATCH, isAdult: false) { id }
+      }
+    }`,
+    { search: "One Piece", perPage: 1 },
+    (payload) => Array.isArray(payload?.data?.Page?.media),
+  );
+}
+
+async function checkAniListBrowse() {
+  return postAniList(
+    "AniList browse",
+    `query ($page: Int!, $perPage: Int!) {
+      Page(page: $page, perPage: $perPage) {
+        media(type: ANIME, sort: TRENDING_DESC, format_not: MUSIC, isAdult: false) { id }
+      }
+    }`,
+    { page: 1, perPage: 1 },
+    (payload) => Array.isArray(payload?.data?.Page?.media),
+  );
+}
+
+async function postAniList(name, query, variables, validate) {
+  try {
+    const response = await fetchWithTimeout(anilistUrl, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify({ query, variables }),
+    });
+    const payload = await safeJson(response);
+    return { name, ok: response.ok && validate(payload), detail: `HTTP ${response.status}` };
+  } catch (error) {
+    return { name, ok: false, detail: errorLabel(error) };
+  }
+}
 
 async function checkJikanSearch() {
   const url = new URL(`${jikanBase}/anime`);
   url.searchParams.set("q", "One Piece");
   url.searchParams.set("limit", "1");
   url.searchParams.set("sfw", "true");
-  return getJikan("Jikan search", url);
+  return getJsonArray("Jikan search", url, "data");
 }
 
 async function checkJikanBrowse() {
   const url = new URL(`${jikanBase}/top/anime`);
   url.searchParams.set("page", "1");
-  url.searchParams.set("limit", "3");
-  url.searchParams.set("filter", "airing");
+  url.searchParams.set("limit", "1");
+  url.searchParams.set("filter", "bypopularity");
   url.searchParams.set("sfw", "true");
-  return getJikan("Jikan browse", url);
+  return getJsonArray("Jikan browse", url, "data");
 }
 
-async function getJikan(name, url) {
+async function checkKitsuSearch() {
+  const url = new URL(`${kitsuBase}/anime`);
+  url.searchParams.set("filter[text]", "One Piece");
+  url.searchParams.set("page[limit]", "1");
+  return getJsonArray("Kitsu search", url, "data", {
+    accept: "application/vnd.api+json",
+  });
+}
+
+async function checkKitsuBrowse() {
+  const url = new URL(`${kitsuBase}/anime`);
+  url.searchParams.set("sort", "popularityRank");
+  url.searchParams.set("page[limit]", "1");
+  return getJsonArray("Kitsu browse", url, "data", {
+    accept: "application/vnd.api+json",
+  });
+}
+
+async function getJsonArray(name, url, key, headers = { accept: "application/json" }) {
   try {
-    const response = await fetchWithTimeout(url, { headers: { accept: "application/json" } });
+    const response = await fetchWithTimeout(url, { headers });
     const payload = await safeJson(response);
     return {
       name,
-      ok: response.ok && Array.isArray(payload?.data),
+      ok: response.ok && Array.isArray(payload?.[key]),
       detail: `HTTP ${response.status}`,
     };
   } catch (error) {
@@ -69,10 +161,9 @@ async function checkTmdbTrending() {
   try {
     const response = await fetchWithTimeout(url, { headers });
     const payload = await safeJson(response);
-    const ok = response.ok && Array.isArray(payload?.results);
     return {
       name: "TMDB browse",
-      ok,
+      ok: response.ok && Array.isArray(payload?.results),
       detail: `HTTP ${response.status}`,
     };
   } catch (error) {

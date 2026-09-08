@@ -13,6 +13,7 @@ describe('media identity', () => {
     for (const identity of [
       { provider: 'ANILIST', providerMediaId: '16498', mediaType: 'ANIME' },
       { provider: 'JIKAN', providerMediaId: '5114', mediaType: 'ANIME' },
+      { provider: 'KITSU', providerMediaId: '1', mediaType: 'ANIME' },
       { provider: 'TMDB', providerMediaId: '157336', mediaType: 'MOVIE' },
       { provider: 'TMDB', providerMediaId: '1396', mediaType: 'TV' },
     ] as const) {
@@ -28,6 +29,7 @@ describe('media identity', () => {
       false,
     );
     expect(isValidIdentity({ provider: 'JIKAN', providerMediaId: '1', mediaType: 'TV' })).toBe(false);
+    expect(isValidIdentity({ provider: 'KITSU', providerMediaId: '1', mediaType: 'MOVIE' })).toBe(false);
   });
 
   it('treats the same id from different providers as different media', () => {

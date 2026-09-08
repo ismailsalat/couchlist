@@ -208,10 +208,9 @@ export class AniListClient {
       method: "POST",
       body: { query, variables },
       timeoutMs: this.options.timeoutMs,
-      // A second or third immediate POST is usually counterproductive when
-      // AniList is burst/rate limited. Let the web layer use stale data and its
-      // short cooldown instead of multiplying the same failed request.
-      retries: 1,
+      // Immediate retries are counterproductive now that Couchlist has two
+      // independent Anime fallbacks. Let the web layer fail over instead.
+      retries: 0,
       providerName: "anilist",
     });
 

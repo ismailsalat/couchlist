@@ -63,16 +63,16 @@ describe('provider outages', () => {
     expect((movies as PromiseFulfilledResult<unknown[]>).value.length).toBeGreaterThan(0);
   });
 
-  it('retries a transient 503 and then succeeds', async () => {
+  it('does not multiply a transient Anime provider failure', async () => {
     let calls = 0;
     globalThis.fetch = (async () => {
       calls += 1;
-      if (calls === 1) return new Response('{}', { status: 503 });
-      return new Response(JSON.stringify(aniListSearchFixture), { status: 200 });
+      return new Response('{}', { status: 503 });
     }) as unknown as typeof fetch;
 
-    const results = await anilist.search('x');
-    expect(calls).toBe(2);
-    expect(results).toHaveLength(2);
+    await expect(anilist.search('x')).rejects.toMatchObject({
+      code: 'CL_MEDIA_PROVIDER_ERROR',
+    });
+    expect(calls).toBe(1);
   });
 });

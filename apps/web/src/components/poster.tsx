@@ -16,7 +16,7 @@ export function Poster({
   caption,
   rating,
 }: {
-  provider: 'ANILIST' | 'JIKAN' | 'TMDB';
+  provider: 'ANILIST' | 'JIKAN' | 'KITSU' | 'TMDB';
   mediaType: 'ANIME' | 'MOVIE' | 'TV';
   providerMediaId: string;
   title: string;

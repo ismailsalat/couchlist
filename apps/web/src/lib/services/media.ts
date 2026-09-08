@@ -2,6 +2,7 @@ import "server-only";
 import {
   AniListClient,
   JikanClient,
+  KitsuClient,
   AppError,
   MediaProvider,
   MediaType,
@@ -15,9 +16,9 @@ import { config } from "../config";
 import { repos } from "../db";
 
 /**
- * Media lookup across Jikan (Anime) and TMDB (Movies/TV).
- * AniList is retained only for legacy title identities created before the
- * Anime catalog provider switch.
+ * Media lookup across AniList + Jikan + Kitsu (Anime) and TMDB (Movies/TV).
+ * Anime providers are isolated behind an ordered fallback chain: one provider
+ * outage must never blank the Anime tab or search results.
  *
  * One provider failing must never break unrelated media. Browse data is kept in
  * tiny in-process caches so Couchlist stays simple and does not need a worker,
@@ -35,6 +36,10 @@ function clients(timeoutMs?: number) {
     }),
     jikan: new JikanClient({
       baseUrl: settings.JIKAN_API_BASE_URL,
+      timeoutMs: providerTimeout,
+    }),
+    kitsu: new KitsuClient({
+      baseUrl: settings.KITSU_API_BASE_URL,
       timeoutMs: providerTimeout,
     }),
     tmdb: new TmdbClient({
@@ -85,29 +90,193 @@ const browsePageCache = new Map<
   { expiresAt: number; value: BrowsePage }
 >();
 
+type AnimeProviderName = "anilist" | "jikan" | "kitsu";
+
+interface AnimeFallback<T> {
+  value: T;
+  provider: AnimeProviderName | null;
+  failedProviders: AnimeProviderName[];
+  degraded: boolean;
+}
+
+interface AnimeBrowseFallbackValue {
+  items: MediaSummary[];
+  hasMore: boolean;
+}
+
+// A failed provider is skipped briefly instead of being hammered on every
+// search keystroke or Retry click. The other Anime providers remain available.
+const animeProviderCooldownUntil = new Map<AnimeProviderName, number>();
+const ANIME_PROVIDER_COOLDOWN_MS = 30_000;
+const ANIME_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+function animeClients() {
+  return clients(Math.min(config().PROVIDER_TIMEOUT_MS, 3500));
+}
+
+function animeBrowseOrder(sort: BrowseSort): AnimeProviderName[] {
+  return sort === "trending"
+    ? ["anilist", "jikan", "kitsu"]
+    : ["jikan", "anilist", "kitsu"];
+}
+
+async function searchAnimeWithFallback(
+  query: string,
+  limit: number,
+): Promise<AnimeFallback<MediaSummary[]>> {
+  const providerClients = animeClients();
+  const failedProviders: AnimeProviderName[] = [];
+  for (const provider of ["anilist", "jikan", "kitsu"] as const) {
+    if (animeProviderCoolingDown(provider)) {
+      failedProviders.push(provider);
+      continue;
+    }
+
+    try {
+      const value =
+        provider === "anilist"
+          ? await providerClients.anilist.search(query, limit)
+          : provider === "jikan"
+            ? await providerClients.jikan.search(query, limit)
+            : await providerClients.kitsu.search(query, limit);
+
+      animeProviderCooldownUntil.delete(provider);
+      if (value.length > 0) {
+        return {
+          value,
+          provider,
+          failedProviders,
+          degraded: failedProviders.length > 0,
+        };
+      }
+    } catch (error) {
+      failedProviders.push(provider);
+      coolDownAnimeProvider(provider, error);
+      log.warn("provider_search_failed", {
+        provider,
+        ...providerFailureMeta(error),
+      });
+    }
+  }
+
+  return {
+    value: [],
+    provider: null,
+    failedProviders,
+    degraded: failedProviders.length > 0,
+  };
+}
+
+async function browseAnimeWithFallback(
+  sort: BrowseSort,
+  page: number,
+  limit: number,
+  kind: AnimeBrowseKind,
+): Promise<AnimeFallback<AnimeBrowseFallbackValue>> {
+  const providerClients = animeClients();
+  const failedProviders: AnimeProviderName[] = [];
+  for (const provider of animeBrowseOrder(sort)) {
+    if (animeProviderCoolingDown(provider)) {
+      failedProviders.push(provider);
+      continue;
+    }
+
+    try {
+      let items: MediaSummary[];
+      let hasMore: boolean;
+
+      if (provider === "anilist") {
+        items = await providerClients.anilist.browsePage(sort, page, limit, kind);
+        hasMore = items.length >= limit;
+      } else if (provider === "jikan") {
+        const result = await providerClients.jikan.browsePage(sort, page, limit, kind);
+        items = result.items;
+        hasMore = result.hasMore;
+      } else {
+        const result = await providerClients.kitsu.browsePage(sort, page, limit, kind);
+        items = result.items;
+        hasMore = result.hasMore;
+      }
+
+      animeProviderCooldownUntil.delete(provider);
+      if (items.length > 0) {
+        return {
+          value: { items, hasMore },
+          provider,
+          failedProviders,
+          degraded: failedProviders.length > 0,
+        };
+      }
+    } catch (error) {
+      failedProviders.push(provider);
+      coolDownAnimeProvider(provider, error);
+      log.warn("provider_browse_failed", {
+        provider,
+        sort,
+        animeKind: kind,
+        page,
+        ...providerFailureMeta(error),
+      });
+    }
+  }
+
+  return {
+    value: { items: [], hasMore: false },
+    provider: null,
+    failedProviders,
+    degraded: failedProviders.length > 0,
+  };
+}
+
+function animeProviderCoolingDown(provider: AnimeProviderName): boolean {
+  const until = animeProviderCooldownUntil.get(provider) ?? 0;
+  if (until <= Date.now()) {
+    animeProviderCooldownUntil.delete(provider);
+    return false;
+  }
+  return true;
+}
+
+function coolDownAnimeProvider(provider: AnimeProviderName, error: unknown): void {
+  const meta = providerFailureMeta(error);
+  const status = typeof meta.providerStatus === "number" ? meta.providerStatus : null;
+  const duration =
+    status === 403 || status === 429
+      ? ANIME_RATE_LIMIT_COOLDOWN_MS
+      : ANIME_PROVIDER_COOLDOWN_MS;
+  animeProviderCooldownUntil.set(provider, Date.now() + duration);
+}
+
 export async function searchMedia(
   query: string,
   filter: SearchFilter = "all",
 ): Promise<SearchResult> {
-  const { jikan, tmdb } = clients();
+  const { tmdb } = clients();
   const failed: string[] = [];
 
   const wantAnime = filter === "all" || filter === "anime";
   const wantTmdb = filter === "all" || filter === "movie" || filter === "tv";
 
   const [animeResult, tmdbResult] = await Promise.allSettled([
-    wantAnime ? jikan.search(query, 8) : Promise.resolve([]),
+    wantAnime
+      ? searchAnimeWithFallback(query, 8)
+      : Promise.resolve<AnimeFallback<MediaSummary[]>>({
+          value: [],
+          provider: null,
+          failedProviders: [],
+          degraded: false,
+        }),
     wantTmdb ? tmdb.search(query, 8) : Promise.resolve([]),
   ]);
 
   const results: MediaSummary[] = [];
 
   if (animeResult.status === "fulfilled") {
-    results.push(...animeResult.value);
+    results.push(...animeResult.value.value);
+    failed.push(...animeResult.value.failedProviders);
   } else {
-    failed.push("jikan");
-    log.warn("provider_search_failed", {
-      provider: "jikan",
+    failed.push("anilist", "jikan", "kitsu");
+    log.warn("anime_search_chain_failed", {
       reason: reason(animeResult),
     });
   }
@@ -131,7 +300,7 @@ export async function searchMedia(
   return {
     results: interleave(results),
     degraded: failed.length > 0,
-    failedProviders: failed,
+    failedProviders: [...new Set(failed)],
   };
 }
 
@@ -145,29 +314,31 @@ export async function getGlobalTrending(limit = 6): Promise<GlobalTrending> {
     return trendingCache.value;
 
   const stale = trendingCache?.value;
-  const { jikan } = clients();
   const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 3000));
   const [animeResult, tmdbResult] = await Promise.allSettled([
-    jikan.trending(limit),
+    browseAnimeWithFallback("trending", 1, limit, "all"),
     tmdb.trending(limit),
   ]);
 
+  const anime =
+    animeResult.status === "fulfilled" && animeResult.value.value.items.length > 0
+      ? animeResult.value.value.items
+      : (stale?.anime ?? []);
+  const animeDegraded =
+    animeResult.status === "rejected" ||
+    (animeResult.status === "fulfilled" && animeResult.value.degraded);
+
   const value: GlobalTrending = {
-    anime:
-      animeResult.status === "fulfilled"
-        ? animeResult.value
-        : (stale?.anime ?? []),
+    anime,
     moviesAndTv:
       tmdbResult.status === "fulfilled"
         ? tmdbResult.value
         : (stale?.moviesAndTv ?? []),
-    degraded:
-      animeResult.status === "rejected" || tmdbResult.status === "rejected",
+    degraded: animeDegraded || tmdbResult.status === "rejected",
   };
 
   if (animeResult.status === "rejected") {
-    log.warn("provider_trending_failed", {
-      provider: "jikan",
+    log.warn("anime_trending_chain_failed", {
       reason: reason(animeResult),
     });
   }
@@ -193,35 +364,45 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
   if (browseCache && browseCache.expiresAt > now) return browseCache.value;
 
   const stale = browseCache?.value;
-
-  // Jikan is the primary Anime catalog. It does not require credentials and
-  // keeps Anime discovery independent from AniList API suspensions/blocks.
-  const { jikan } = clients();
   const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 4500));
 
   const [
-    animeOverviewResult,
+    animeTrendingResult,
+    animePopularResult,
     movieNowResult,
     movieTopResult,
     tvNowResult,
     tvPopularResult,
   ] = await Promise.allSettled([
-    jikan.browse(limit),
+    browseAnimeWithFallback("trending", 1, limit, "all"),
+    browseAnimeWithFallback("popular", 1, limit, "all"),
     tmdb.trendingMovies(limit),
     tmdb.topRatedMovies(limit),
     tmdb.trendingTv(limit),
     tmdb.popularTv(limit),
   ]);
 
+  const animeTrending =
+    animeTrendingResult.status === "fulfilled" &&
+    animeTrendingResult.value.value.items.length > 0
+      ? animeTrendingResult.value.value.items
+      : (stale?.animeTrending ?? []);
+  const animePopular =
+    animePopularResult.status === "fulfilled" &&
+    animePopularResult.value.value.items.length > 0
+      ? animePopularResult.value.value.items
+      : (stale?.animePopular ?? []);
+
+  const animeTrendingDegraded =
+    animeTrendingResult.status === "rejected" ||
+    (animeTrendingResult.status === "fulfilled" && animeTrendingResult.value.degraded);
+  const animePopularDegraded =
+    animePopularResult.status === "rejected" ||
+    (animePopularResult.status === "fulfilled" && animePopularResult.value.degraded);
+
   const value: BrowseCatalog = {
-    animeTrending:
-      animeOverviewResult.status === "fulfilled"
-        ? animeOverviewResult.value.trending
-        : (stale?.animeTrending ?? []),
-    animePopular:
-      animeOverviewResult.status === "fulfilled"
-        ? animeOverviewResult.value.popular
-        : (stale?.animePopular ?? []),
+    animeTrending,
+    animePopular,
     movieTrending:
       movieNowResult.status === "fulfilled"
         ? movieNowResult.value
@@ -239,14 +420,20 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
         ? tvPopularResult.value
         : (stale?.tvPopular ?? []),
     degraded:
-      animeOverviewResult.status === "rejected" ||
+      animeTrendingDegraded ||
+      animePopularDegraded ||
       movieNowResult.status === "rejected" ||
       movieTopResult.status === "rejected" ||
       tvNowResult.status === "rejected" ||
       tvPopularResult.status === "rejected",
   };
 
-  logBrowseFailure("jikan_overview", animeOverviewResult);
+  if (animeTrendingResult.status === "rejected") {
+    log.warn("anime_browse_chain_failed", { section: "trending" });
+  }
+  if (animePopularResult.status === "rejected") {
+    log.warn("anime_browse_chain_failed", { section: "popular" });
+  }
   logBrowseFailure("tmdb_movie_trending", movieNowResult);
   logBrowseFailure("tmdb_movie_top_rated", movieTopResult);
   logBrowseFailure("tmdb_tv_trending", tvNowResult);
@@ -262,7 +449,7 @@ export async function getBrowseCatalog(limit = 10): Promise<BrowseCatalog> {
  *
  * The browser loads 20 at a time and appends them. There is no local catalog
  * database, sync worker, or infinite-scroll dependency: every page comes
- * directly from Jikan/TMDB and is cached in memory for a few minutes.
+ * directly from Anime providers/TMDB and is cached in memory for a few minutes.
  */
 export async function getBrowsePage(
   filter: BrowseFilter,
@@ -282,45 +469,77 @@ export async function getBrowsePage(
 
   const stale = cached?.value;
 
-  try {
-    let items: MediaSummary[];
-    let providerHasMore: boolean | null = null;
+  if (filter === "anime") {
+    const result = await browseAnimeWithFallback(
+      sort,
+      safePage,
+      BROWSE_PAGE_SIZE,
+      safeAnimeKind,
+    );
 
-    if (filter === "anime") {
-      const { jikan } = clients();
-      const animePage = await jikan.browsePage(
-        sort,
-        safePage,
-        BROWSE_PAGE_SIZE,
-        safeAnimeKind,
-      );
-      items = animePage.items;
-      providerHasMore = animePage.hasMore;
-    } else {
-      const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 4500));
-      if (filter === "movie") {
-        items =
-          sort === "trending"
-            ? await tmdb.trendingMovies(BROWSE_PAGE_SIZE, safePage)
-            : sort === "popular"
-              ? await tmdb.popularMovies(BROWSE_PAGE_SIZE, safePage)
-              : await tmdb.topRatedMovies(BROWSE_PAGE_SIZE, safePage);
-      } else {
-        items =
-          sort === "trending"
-            ? await tmdb.trendingTv(BROWSE_PAGE_SIZE, safePage)
-            : sort === "popular"
-              ? await tmdb.popularTv(BROWSE_PAGE_SIZE, safePage)
-              : await tmdb.topRatedTv(BROWSE_PAGE_SIZE, safePage);
-      }
+    if (result.value.items.length > 0) {
+      const value: BrowsePage = {
+        items: result.value.items,
+        page: safePage,
+        hasMore: result.value.hasMore && safePage < MAX_BROWSE_PAGES,
+        degraded: result.degraded,
+      };
+      browsePageCache.set(key, {
+        expiresAt: now + (value.degraded ? 15_000 : DISCOVERY_CACHE_MS),
+        value,
+      });
+      return value;
     }
+
+    if (result.degraded) {
+      log.warn("provider_browse_page_failed", {
+        filter,
+        sort,
+        animeKind: safeAnimeKind,
+        page: safePage,
+        failedProviders: result.failedProviders.join(","),
+      });
+
+      if (stale) return { ...stale, degraded: true };
+      const fallback =
+        safePage === 1
+          ? firstPageBrowseFallback(filter, sort, safeAnimeKind)
+          : [];
+      return {
+        items: fallback,
+        page: safePage,
+        hasMore: fallback.length > 0 && safePage < MAX_BROWSE_PAGES,
+        degraded: true,
+      };
+    }
+
+    return {
+      items: [],
+      page: safePage,
+      hasMore: false,
+      degraded: false,
+    };
+  }
+
+  try {
+    const { tmdb } = clients(Math.min(config().PROVIDER_TIMEOUT_MS, 4500));
+    const items =
+      filter === "movie"
+        ? sort === "trending"
+          ? await tmdb.trendingMovies(BROWSE_PAGE_SIZE, safePage)
+          : sort === "popular"
+            ? await tmdb.popularMovies(BROWSE_PAGE_SIZE, safePage)
+            : await tmdb.topRatedMovies(BROWSE_PAGE_SIZE, safePage)
+        : sort === "trending"
+          ? await tmdb.trendingTv(BROWSE_PAGE_SIZE, safePage)
+          : sort === "popular"
+            ? await tmdb.popularTv(BROWSE_PAGE_SIZE, safePage)
+            : await tmdb.topRatedTv(BROWSE_PAGE_SIZE, safePage);
 
     const value: BrowsePage = {
       items,
       page: safePage,
-      hasMore:
-        (providerHasMore ?? items.length === BROWSE_PAGE_SIZE) &&
-        safePage < MAX_BROWSE_PAGES,
+      hasMore: items.length === BROWSE_PAGE_SIZE && safePage < MAX_BROWSE_PAGES,
       degraded: false,
     };
     browsePageCache.set(key, {
@@ -394,14 +613,16 @@ export async function getMediaDetail(
   const cached = await cache.get<MediaDetail>(identity);
   if (cached) return cached;
 
-  const { anilist, jikan, tmdb } = clients();
+  const { anilist, jikan, kitsu, tmdb } = clients();
 
   const detail =
     provider === MediaProvider.ANILIST
       ? await anilist.byId(providerMediaId)
       : provider === MediaProvider.JIKAN
         ? await jikan.byId(providerMediaId)
-        : await tmdb.byId(providerMediaId, mediaType);
+        : provider === MediaProvider.KITSU
+          ? await kitsu.byId(providerMediaId)
+          : await tmdb.byId(providerMediaId, mediaType);
 
   if (!detail) throw AppError.notFound("title");
 
@@ -422,21 +643,26 @@ export async function getMediaDetail(
 
 /** Health probe used by /api/health. Never throws. */
 export async function providerHealth(): Promise<{
+  anilist: "healthy" | "degraded";
   jikan: "healthy" | "degraded";
+  kitsu: "healthy" | "degraded";
   tmdb: "healthy" | "degraded" | "not_configured";
 }> {
-  const { jikan, tmdb } = clients();
+  const { anilist, jikan, kitsu, tmdb } = animeClients();
 
-  const [animeCheck, tmdbCheck] = await Promise.allSettled([
-    // Exercise the exact provider family used by the Anime tab.
-    jikan.browsePage("trending", 1, 1, "all"),
+  const [anilistCheck, jikanCheck, kitsuCheck, tmdbCheck] = await Promise.allSettled([
+    anilist.browsePage("trending", 1, 1, "all"),
+    jikan.browsePage("popular", 1, 1, "all"),
+    kitsu.browsePage("popular", 1, 1, "all"),
     tmdb.configured
       ? tmdb.search("a", 1)
       : Promise.reject(new Error("not configured")),
   ]);
 
   return {
-    jikan: animeCheck.status === "fulfilled" ? "healthy" : "degraded",
+    anilist: anilistCheck.status === "fulfilled" ? "healthy" : "degraded",
+    jikan: jikanCheck.status === "fulfilled" ? "healthy" : "degraded",
+    kitsu: kitsuCheck.status === "fulfilled" ? "healthy" : "degraded",
     tmdb: !tmdb.configured
       ? "not_configured"
       : tmdbCheck.status === "fulfilled"
