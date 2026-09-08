@@ -103,7 +103,7 @@ h3,
 /* Stable, playful home identity. These are presentation-only: no JS, no new dependency. */
 .cozy-hero {
   position: relative;
-  min-height: 290px;
+  min-height: 235px;
   background:
     radial-gradient(
       circle at 78% 26%,
@@ -118,7 +118,7 @@ h3,
   position: relative;
   z-index: 3;
   max-width: 58%;
-  padding: 2.25rem;
+  padding: 1.75rem;
 }
 
 .cozy-kicker {
@@ -265,12 +265,12 @@ h3,
 
 @media (max-width: 700px) {
   .cozy-hero {
-    min-height: 330px;
+    min-height: 275px;
   }
   .cozy-hero-copy {
     max-width: 100%;
-    padding: 1.5rem;
-    padding-bottom: 9rem;
+    padding: 1.25rem;
+    padding-bottom: 7.25rem;
   }
   .cozy-couch {
     width: 100%;
@@ -354,8 +354,8 @@ a,
 }
 
 .mobile-page-shell {
-  /* 76px nav + breathing room + the phone's gesture/home-indicator area. */
-  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+  /* Match the real nav height so content clears it without a visible dead gap. */
+  padding-bottom: calc(4.8rem + env(safe-area-inset-bottom));
 }
 
 .mobile-bottom-nav {
@@ -368,8 +368,8 @@ a,
   padding-bottom: calc(0.55rem + env(safe-area-inset-bottom));
   padding-left: env(safe-area-inset-left);
   border-top: 1px solid rgba(38, 52, 71, 0.9);
-  background: rgba(11, 16, 24, 0.97);
-  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.34);
+  background: #0b1018;
+  box-shadow: 0 -1px 0 rgba(38, 52, 71, 0.7);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
@@ -380,7 +380,7 @@ a,
   max-width: 34rem;
   margin: 0 auto;
   gap: 0.2rem;
-  padding: 0.5rem 0.5rem 0;
+  padding: 0.35rem 0.5rem 0;
 }
 
 .mobile-nav-link {
@@ -458,5 +458,32 @@ a,
 @media (min-width: 640px) {
   .mobile-page-shell {
     padding-bottom: 0;
+  }
+}
+
+
+/* v10.3 compact community hub --------------------------------------------- */
+.server-hub-hero {
+  background:
+    radial-gradient(circle at 88% 10%, rgba(91, 124, 250, 0.14), transparent 18rem),
+    linear-gradient(120deg, rgba(15, 24, 37, 0.98), rgba(11, 17, 27, 0.98));
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.22);
+}
+
+.server-pulse-card {
+  min-height: 10rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.16);
+}
+
+@media (max-width: 639px) {
+  .server-pulse-card {
+    min-height: 0;
+  }
+
+  .mobile-bottom-nav {
+    /* Keep the fixed PWA bar visually attached to the content on iOS. */
+    transform: translateZ(0);
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
   }
 }

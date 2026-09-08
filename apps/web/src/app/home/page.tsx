@@ -243,52 +243,33 @@ export default async function HomePage() {
 }
 
 function NewUserGuide() {
-  const steps = [
-    [
-      "1",
-      "Search a title",
-      "Find an anime, movie, or show you already watch or want to start.",
-    ],
-    [
-      "2",
-      "Save it",
-      "Choose Watching, Completed, or Plan to Watch. You can change it anytime.",
-    ],
-    [
-      "3",
-      "Add a friend",
-      "Friend activity and Watch Together get useful once your circle starts tracking.",
-    ],
-  ] as const;
+  const steps = ["Search a title", "Save it", "Add a friend"] as const;
 
   return (
-    <section className="getting-started mt-8 rounded-[24px] border border-[#314862] p-5 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <span className="cozy-kicker">Start here</span>
-          <h2 className="font-display mt-2 text-xl font-bold">
-            New to Couchlist? Do these three things.
-          </h2>
-          <p className="muted mt-1">
-            No setup wizard and no server required. Your list starts with one
-            title.
-          </p>
+    <section className="getting-started mt-5 rounded-[20px] border border-[#314862] px-4 py-3.5 sm:px-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <span className="cozy-kicker">Start here</span>
+            <p className="font-display text-sm font-bold sm:text-base">
+              New to Couchlist? Search → save → add a friend.
+            </p>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {steps.map((step, index) => (
+              <span
+                key={step}
+                className="inline-flex items-center gap-1.5 rounded-full border border-border/90 bg-background/55 px-2.5 py-1 text-xs font-bold text-[#cbd6e6]"
+              >
+                <span className="text-[#8bc8ff]">{index + 1}</span>
+                {step}
+              </span>
+            ))}
+          </div>
         </div>
-        <Link href="/search" className="btn-primary">
+        <Link href="/search" className="btn-primary shrink-0">
           Search titles →
         </Link>
-      </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">
-        {steps.map(([number, title, copy]) => (
-          <div
-            key={number}
-            className="rounded-2xl border border-border/90 bg-background/55 p-4"
-          >
-            <span className="guide-number">{number}</span>
-            <p className="mt-3 font-display font-bold">{title}</p>
-            <p className="muted mt-1 leading-5">{copy}</p>
-          </div>
-        ))}
       </div>
     </section>
   );
