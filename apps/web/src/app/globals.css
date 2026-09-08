@@ -13,8 +13,16 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at 15% -10%, rgba(91, 124, 250, 0.16), transparent 30rem),
-    radial-gradient(circle at 90% 15%, rgba(120, 148, 255, 0.08), transparent 24rem),
+    radial-gradient(
+      circle at 15% -10%,
+      rgba(91, 124, 250, 0.16),
+      transparent 30rem
+    ),
+    radial-gradient(
+      circle at 90% 15%,
+      rgba(120, 148, 255, 0.08),
+      transparent 24rem
+    ),
     #080b0f;
   color: #f4f4f5;
   font-family: "Trebuchet MS", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
@@ -97,7 +105,11 @@ h3,
   position: relative;
   min-height: 290px;
   background:
-    radial-gradient(circle at 78% 26%, rgba(246, 182, 98, 0.16), transparent 18rem),
+    radial-gradient(
+      circle at 78% 26%,
+      rgba(246, 182, 98, 0.16),
+      transparent 18rem
+    ),
     linear-gradient(120deg, #0b1018 0%, #101927 48%, #0a1422 100%);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
 }
@@ -138,7 +150,9 @@ h3,
   border: 1px solid #26354a;
   border-radius: 44px 44px 24px 24px;
   background: linear-gradient(180deg, #1b2a3f, #101a29);
-  box-shadow: inset 0 10px 22px rgba(255, 255, 255, 0.025), 0 18px 35px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    inset 0 10px 22px rgba(255, 255, 255, 0.025),
+    0 18px 35px rgba(0, 0, 0, 0.3);
 }
 
 .cozy-person {
@@ -182,8 +196,15 @@ h3,
   background: #1a2535;
 }
 
-.cozy-leg-one { right: 0; transform: rotate(9deg); }
-.cozy-leg-two { right: 9%; bottom: 17%; transform: rotate(-2deg); }
+.cozy-leg-one {
+  right: 0;
+  transform: rotate(9deg);
+}
+.cozy-leg-two {
+  right: 9%;
+  bottom: 17%;
+  transform: rotate(-2deg);
+}
 
 .cozy-tv {
   position: absolute;
@@ -243,11 +264,32 @@ h3,
 }
 
 @media (max-width: 700px) {
-  .cozy-hero { min-height: 330px; }
-  .cozy-hero-copy { max-width: 100%; padding: 1.5rem; padding-bottom: 9rem; }
-  .cozy-couch { width: 100%; height: 48%; top: auto; bottom: 0; opacity: 0.92; }
-  .cozy-tv { right: 6%; top: 8%; width: 31%; height: 34%; font-size: 0.65rem; }
-  .cozy-lamp { right: 42%; top: 16%; }
+  .cozy-hero {
+    min-height: 330px;
+  }
+  .cozy-hero-copy {
+    max-width: 100%;
+    padding: 1.5rem;
+    padding-bottom: 9rem;
+  }
+  .cozy-couch {
+    width: 100%;
+    height: 48%;
+    top: auto;
+    bottom: 0;
+    opacity: 0.92;
+  }
+  .cozy-tv {
+    right: 6%;
+    top: 8%;
+    width: 31%;
+    height: 34%;
+    font-size: 0.65rem;
+  }
+  .cozy-lamp {
+    right: 42%;
+    top: 16%;
+  }
 }
 
 /* First-use guidance: visible only while the user has no tracked titles. */
@@ -270,4 +312,151 @@ h3,
   color: #a9dcff;
   font-size: 0.75rem;
   font-weight: 900;
+}
+
+/* v10.2 mobile/PWA polish --------------------------------------------------
+ * iPhone PWAs reserve a home-gesture area at the bottom. The app keeps the
+ * navigation above that area instead of putting tiny links on the screen edge.
+ * These rules also improve Android and small-screen browser behavior without
+ * adding JavaScript or a mobile-only framework.
+ */
+html {
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+}
+
+.app-top-nav {
+  top: env(safe-area-inset-top);
+}
+
+.mobile-page-shell {
+  /* 76px nav + breathing room + the phone's gesture/home-indicator area. */
+  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+}
+
+.mobile-bottom-nav {
+  position: fixed;
+  z-index: 50;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: calc(0.55rem + env(safe-area-inset-bottom));
+  padding-left: env(safe-area-inset-left);
+  border-top: 1px solid rgba(38, 52, 71, 0.9);
+  background: rgba(11, 16, 24, 0.97);
+  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.34);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.mobile-bottom-nav-inner {
+  display: flex;
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+  gap: 0.2rem;
+  padding: 0.5rem 0.5rem 0;
+}
+
+.mobile-nav-link {
+  display: flex;
+  min-height: 3.7rem;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.22rem;
+  border-radius: 1rem;
+  padding: 0.4rem 0.25rem;
+  color: #a3adbb;
+  font-size: 0.82rem;
+  font-weight: 800;
+  line-height: 1;
+  user-select: none;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease,
+    transform 100ms ease;
+}
+
+.mobile-nav-link:active {
+  transform: scale(0.97);
+  background: rgba(91, 124, 250, 0.13);
+  color: #dce6ff;
+}
+
+.mobile-nav-link:focus-visible {
+  color: #dce6ff;
+}
+
+.mobile-nav-icon {
+  width: 1.35rem;
+  height: 1.35rem;
+  flex: 0 0 auto;
+  fill: currentColor;
+}
+
+.poster-shelf {
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.poster-shelf::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  /* iOS zooms the whole page when focusing controls smaller than 16px. */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+
+  .input {
+    min-height: 2.9rem;
+  }
+
+  .btn,
+  button.btn {
+    min-height: 2.75rem;
+  }
+
+  /* Keep small screens from feeling cramped while preserving the same layout. */
+  main {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (min-width: 640px) {
+  .mobile-page-shell {
+    padding-bottom: 0;
+  }
 }

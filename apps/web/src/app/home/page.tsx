@@ -330,8 +330,12 @@ function TrendingSection({
         </EmptyState>
       ) : (
         <div className="space-y-6">
-          {anime.length > 0 ? <TrendingRow title="Anime" items={anime} /> : null}
-          {movies.length > 0 ? <TrendingRow title="Movies" items={movies} /> : null}
+          {anime.length > 0 ? (
+            <TrendingRow title="Anime" items={anime} />
+          ) : null}
+          {movies.length > 0 ? (
+            <TrendingRow title="Movies" items={movies} />
+          ) : null}
           {tv.length > 0 ? <TrendingRow title="TV Shows" items={tv} /> : null}
         </div>
       )}
@@ -363,11 +367,11 @@ function TrendingRow({
           {title}
         </h3>
       </div>
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+      <div className="poster-shelf -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
         {items.slice(0, 6).map((item) => (
           <div
             key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}
-            className="w-[132px] shrink-0 sm:w-[146px]"
+            className="w-[132px] shrink-0 snap-start sm:w-[146px]"
           >
             <Poster
               provider={item.provider}

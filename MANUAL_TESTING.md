@@ -103,7 +103,7 @@ still work — that is the intended degradation.
 
 ## J. Watch Together
 
-1. Both accounts: add the *same* title to **Plan to Watch**
+1. Both accounts: add the _same_ title to **Plan to Watch**
 2. Main: **Watch Together** → select your alt → **Anything** → **Find something**
 3. That title appears, with "1 already want to watch it"
 4. Mark it **Completed** on either account → search again → it disappears
@@ -114,12 +114,12 @@ still work — that is the intended degradation.
 1. **Profile** → **Sign out** → you land on `/` and `/home` bounces you back
 2. Sign in again, then in the browser console:
    ```js
-   await fetch('/api/me/profile?mode=disconnect', { method: 'DELETE' })
+   await fetch("/api/me/profile?mode=disconnect", { method: "DELETE" });
    ```
    Reload → you are signed out. Sign in again → your lists are still there.
 3. Deletion (**this is permanent**):
    ```js
-   await fetch('/api/me/profile', { method: 'DELETE' })
+   await fetch("/api/me/profile", { method: "DELETE" });
    ```
    Reload → signed out. Sign in again → empty lists, fresh account.
 
@@ -129,7 +129,7 @@ still work — that is the intended degradation.
    → "You don't have access to that server on Couchlist"
 2. In the console:
    ```js
-   await (await fetch('/api/guilds/123456789012345678')).json()
+   await (await fetch("/api/guilds/123456789012345678")).json();
    ```
    → `403` with code `CL_FORBIDDEN_GUILD`
 3. With `TEST_MODE=true`, visit a server that is **not** in `TEST_GUILD_IDS`
@@ -190,3 +190,15 @@ After any change, before deploying:
 npm run check     # lint + typecheck + 156 tests
 npm run build
 ```
+
+## Mobile / installed PWA checks (v10.2)
+
+Use at least one iPhone-sized viewport and one Android-sized viewport.
+
+- Install/open Couchlist as a PWA and confirm the bottom Home / Friends / Watch / Profile controls sit above the OS home-gesture area.
+- Tap each bottom destination near the lower half of its button. It should navigate without triggering the OS app-switch/home gesture.
+- Scroll to the end of a page and confirm the last content is not hidden behind the fixed bottom bar.
+- Focus Search, rating, episode progress, friend search, and privacy controls. iOS should not zoom the whole page when the keyboard opens.
+- Rotate to landscape and confirm content does not sit under a notch/dynamic-island safe area.
+- Swipe the Trending Anime / Movies / TV shelves horizontally. Scrolling should feel native and stop near poster boundaries.
+- Desktop at 640 px and wider should keep the existing desktop navigation and should not show the bottom mobile bar.
