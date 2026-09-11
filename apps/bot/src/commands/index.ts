@@ -1,3 +1,4 @@
+import { aboutCommand } from './about.js';
 import { adminCommand } from './admin.js';
 import { compareCommand } from './compare.js';
 import { couchlistCommand } from './couchlist.js';
@@ -8,6 +9,7 @@ import type { BotCommand } from './types.js';
 
 /** Every command the bot registers. Deliberately short. */
 export const commands: BotCommand[] = [
+  aboutCommand,
   couchlistCommand,
   profileCommand,
   watchCommand,

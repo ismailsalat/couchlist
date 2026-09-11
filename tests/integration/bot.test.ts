@@ -72,6 +72,7 @@ function fakeInteraction(options: {
     commandName: options.commandName,
     guildId: options.guildId === null ? null : (options.guildId ?? '333333333333333333'),
     user: { id: options.userId ?? '222222222222222222' },
+    client: { user: { displayAvatarURL: () => 'https://cdn.example.test/couchlist.png' } },
     deferred: false,
     replied: false,
     guild:
@@ -118,7 +119,7 @@ describe('command registration', () => {
   it('registers exactly the documented commands', () => {
     const names = commandPayload().map((command) => (command as { name: string }).name);
     expect(names.sort()).toEqual(
-      ['admin', 'compare', 'couchlist', 'pick', 'profile', 'watch'].sort(),
+      ['about', 'admin', 'compare', 'couchlist', 'pick', 'profile', 'watch'].sort(),
     );
   });
 
@@ -131,7 +132,7 @@ describe('command registration', () => {
   });
 
   it('keeps the command list small', () => {
-    expect(commandPayload()).toHaveLength(6);
+    expect(commandPayload()).toHaveLength(7);
   });
 
   it('gates admin behind Manage Server rather than Administrator', () => {
@@ -213,6 +214,22 @@ describe('command guards', () => {
 
     await handleCommand(interaction as never, context);
     expect(text(interaction.replies[0])).toContain('Track what your friends watch');
+  });
+
+  it('shows the configurable /about card in DMs', async () => {
+    const context = makeContext({
+      COUCHLIST_ABOUT_VERSION: '99.1.0',
+      COUCHLIST_ABOUT_SERVER_URL: 'https://discord.gg/example',
+      COUCHLIST_ABOUT_CREATOR_NAME: 'Test Maker',
+    });
+    const interaction = fakeInteraction({ commandName: 'about', guildId: null });
+
+    await handleCommand(interaction as never, context);
+    const rendered = JSON.stringify(interaction.replies[0]);
+    expect(rendered).toContain('Couchlist');
+    expect(rendered).toContain('99.1.0');
+    expect(rendered).toContain('Test Maker');
+    expect(rendered).toContain('discord.gg/example');
   });
 
   it('rate limits a user hammering commands', async () => {

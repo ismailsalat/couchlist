@@ -1,0 +1,15 @@
+.env.example
+TEST_V12_3_WINDOWS.cmd
+V12_3_CHANGED_FILES.txt
+V12_3_CLEAN_MOBILE_AND_BOT_ABOUT.md
+apps/bot/src/commands/about.ts
+apps/bot/src/commands/index.ts
+apps/bot/src/lib/embeds.ts
+apps/web/src/app/globals.css
+apps/web/src/app/sources/page.tsx
+apps/web/src/components/global-sources-directory.tsx
+apps/web/src/components/public-nav.tsx
+apps/web/src/components/source-site-icon.tsx
+packages/shared/src/config/env.ts
+tests/integration/bot.test.ts
+tests/unit/config.test.ts

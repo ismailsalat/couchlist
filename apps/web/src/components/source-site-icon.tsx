@@ -2,16 +2,38 @@
 
 import { useState } from 'react';
 
-export function SourceSiteIcon({ domain, name, size = 'md' }: { domain: string; name: string; size?: 'sm' | 'md' }) {
-  const [failed, setFailed] = useState(false);
-  const initial = (name || domain).trim().slice(0, 1).toUpperCase() || '•';
+/**
+ * Best-effort website icon.
+ *
+ * We intentionally do not draw a fake letter tile when a site has no usable
+ * icon. A missing icon is less noisy than twenty nearly-identical fallbacks.
+ */
+export function SourceSiteIcon({ domain, size = 'md' }: { domain: string; name?: string; size?: 'sm' | 'md' }) {
+  const candidates = [
+    `https://${domain}/favicon.ico`,
+    `https://${domain}/apple-touch-icon.png`,
+    `https://${domain}/favicon.png`,
+  ];
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const [hidden, setHidden] = useState(false);
+
+  if (hidden) return null;
+
   const className = size === 'sm' ? 'source-site-icon source-site-icon-sm' : 'source-site-icon';
-  if (failed) return <span className={`${className} source-site-icon-fallback`} aria-hidden="true">{initial}</span>;
   return (
     <span className={className} aria-hidden="true">
-      {/* Direct lazy favicon, no referrer. If the site has none, use a clean initial. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={`https://${domain}/favicon.ico`} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+      <img
+        src={candidates[candidateIndex]}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => {
+          if (candidateIndex < candidates.length - 1) setCandidateIndex((value) => value + 1);
+          else setHidden(true);
+        }}
+      />
     </span>
   );
 }

@@ -22,3 +22,16 @@ export function linkRow(label: string, url: string): ActionRowBuilder<ButtonBuil
 export function errorEmbed(message: string): EmbedBuilder {
   return new EmbedBuilder().setColor(COUCHLIST_GREY).setDescription(message);
 }
+
+
+export function linkButtonRow(
+  links: Array<{ label: string; url: string }>,
+): ActionRowBuilder<ButtonBuilder> {
+  const row = new ActionRowBuilder<ButtonBuilder>();
+  for (const link of links.slice(0, 5)) {
+    row.addComponents(
+      new ButtonBuilder().setLabel(link.label).setStyle(ButtonStyle.Link).setURL(link.url),
+    );
+  }
+  return row;
+}

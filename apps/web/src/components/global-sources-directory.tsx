@@ -58,7 +58,7 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
   }, [directorySources, query, filter, sort]);
 
   return (
-    <div className="mt-7">
+    <div className="mt-6">
       <div className="source-directory-tools">
         <input
           className="input source-directory-search"
@@ -68,35 +68,36 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
           aria-label="Search source directory"
         />
 
-        <div className="source-directory-filter-row" aria-label="Filter sources">
-          {FILTERS.map(([value, label, tone]) => (
-            <button key={value} type="button" onClick={() => setFilter(value)} className={filter === value ? `tag ${tone}` : 'tag tag-neutral'}>
+        <div className="source-directory-filter-scroller" aria-label="Filter sources">
+          {FILTERS.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={filter === value ? 'source-filter-chip source-filter-chip-active' : 'source-filter-chip'}
+            >
               {label}
             </button>
           ))}
         </div>
 
-        <div className="source-directory-sort-row">
-          <span className="text-xs font-black text-text-secondary">Sort</span>
-          {SORTS.map(([value, label]) => (
-            <button key={value} type="button" onClick={() => setSort(value)} className={sort === value ? 'tag tag-official' : 'tag tag-neutral'}>
-              {label}
-            </button>
-          ))}
+        <div className="source-directory-sort-compact">
+          <label htmlFor="source-sort">Sort</label>
+          <select id="source-sort" value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+            {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          {(filter !== 'ALL' || query) ? (
+            <button type="button" className="source-clear-button" onClick={() => { setFilter('ALL'); setQuery(''); }}>Clear</button>
+          ) : null}
         </div>
       </div>
 
-      <div className="mt-5 flex items-center justify-between gap-3">
-        <p className="font-display text-lg font-bold">{filtered.length} source{filtered.length === 1 ? '' : 's'}</p>
-        {filter !== 'ALL' || query ? (
-          <button type="button" className="text-xs font-bold text-primary hover:text-primary-hover" onClick={() => { setFilter('ALL'); setQuery(''); }}>
-            Clear
-          </button>
-        ) : null}
+      <div className="source-directory-count">
+        <strong>{filtered.length}</strong> source{filtered.length === 1 ? '' : 's'}
       </div>
 
       {filtered.length ? (
-        <div className="source-directory-list mt-3">
+        <div className="source-directory-list">
           {filtered.map((source) => (
             <SourceDirectoryRow
               key={source.id}
@@ -107,7 +108,7 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
           ))}
         </div>
       ) : (
-        <div className="mt-4 rounded-2xl border border-border bg-card/75 p-6 text-center">
+        <div className="source-directory-empty">
           <p className="font-display font-bold">No matching sources.</p>
           <p className="muted mt-1">Try another search or filter.</p>
         </div>
@@ -118,12 +119,12 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
   );
 }
 
-const FILTERS: Array<[Filter, string, string]> = [
-  ['ALL', 'All', 'tag-official'], ['ANIME', 'Anime', 'tag-anime'], ['MOVIES', 'Movies', 'tag-movie'], ['TV', 'TV', 'tag-tv'],
-  ['OFFICIAL', 'Official', 'tag-official'], ['COMMUNITY', 'Community', 'tag-community'], ['UNVERIFIED', 'Unverified', 'tag-unverified'],
-  ['FREE', 'Free', 'tag-free'], ['SUBSCRIPTION', 'Subscription', 'tag-subscription'], ['RENT_BUY', 'Rent / Buy', 'tag-rent'],
+const FILTERS: Array<[Filter, string]> = [
+  ['ALL', 'All'], ['ANIME', 'Anime'], ['MOVIES', 'Movies'], ['TV', 'TV'],
+  ['OFFICIAL', 'Official'], ['COMMUNITY', 'Community'], ['UNVERIFIED', 'Unverified'],
+  ['FREE', 'Free'], ['SUBSCRIPTION', 'Subscription'], ['RENT_BUY', 'Rent / Buy'],
 ];
-const SORTS: Array<[Sort, string]> = [['LIKED', 'Most Liked'], ['VOTES', 'Most Votes'], ['WORKING', 'Recently Working'], ['NEW', 'Newest']];
+const SORTS: Array<[Sort, string]> = [['LIKED', 'Most liked'], ['VOTES', 'Most votes'], ['WORKING', 'Recently working'], ['NEW', 'Newest']];
 
 function SourceDirectoryRow({
   source,
@@ -140,8 +141,7 @@ function SourceDirectoryRow({
   const health = healthMeta(source.healthStatus, source.workingRecent + source.brokenRecent);
 
   async function react(reaction: 'LIKE' | 'DISLIKE') {
-    if (!canVote) return;
-    if (busy) return;
+    if (!canVote || busy) return;
     setBusy(true);
     try {
       const response = await fetch('/api/watch/feedback', {
@@ -166,41 +166,32 @@ function SourceDirectoryRow({
     }
   }
 
+  const metadata = [
+    ...mediaLabels(source),
+    pretty(source.sourceType),
+    ...(source.accessType !== 'UNKNOWN' ? [pretty(source.accessType)] : []),
+  ];
+
   return (
     <article className="source-directory-row">
-      <a className="source-directory-main source-directory-primary-link" href={source.homepageUrl} target="_blank" rel="noopener noreferrer nofollow">
-        <SourceSiteIcon domain={source.domain} name={source.name} />
+      <div className="source-directory-main">
+        <SourceSiteIcon domain={source.domain} name={source.name} size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate font-display text-lg font-bold">{source.name}</h2>
-            <span className={`tag ${health.tone}`}>{health.label}</span>
+          <div className="source-directory-title-line">
+            <a className="source-directory-name" href={source.homepageUrl} target="_blank" rel="noopener noreferrer nofollow">{source.name}</a>
+            <span className={`source-health source-health-${health.tone}`}><span aria-hidden="true">•</span>{health.label}</span>
           </div>
-          <p className="muted truncate text-xs">{source.domain}</p>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {source.supportsAnime ? <span className="tag tag-anime">Anime</span> : null}
-            {source.supportsMovies ? <span className="tag tag-movie">Movies</span> : null}
-            {source.supportsTv ? <span className="tag tag-tv">TV</span> : null}
-            {!source.supportsAnime && !source.supportsMovies && !source.supportsTv ? <span className="tag tag-neutral">Type not set</span> : null}
-            <span className={`tag ${sourceTypeTone(source.sourceType)}`}>{pretty(source.sourceType)}</span>
-            {source.accessType !== 'UNKNOWN' ? <span className={`tag ${accessTone(source.accessType)}`}>{pretty(source.accessType)}</span> : null}
-          </div>
-          <p className="mt-2 text-xs text-text-secondary">
-            {source.reliabilityPercent === null
-              ? 'No working reports yet'
-              : `${source.reliabilityPercent}% working · ${source.workingRecent} working · ${source.brokenRecent} not working`}
-          </p>
+          <p className="source-directory-domain">{source.domain}</p>
+          <p className="source-directory-meta">{metadata.join(' · ') || 'Type not set'}</p>
+          <p className="source-directory-reliability">{reliabilityText(source)}</p>
         </div>
-      </a>
+      </div>
 
       <div className="source-directory-actions">
         {canVote ? (
           <>
-            <button type="button" disabled={busy} className="source-vote-button" onClick={() => void react('LIKE')} aria-label={`Like ${source.name}`}>
-              <span aria-hidden="true">👍</span><span>{likes}</span>
-            </button>
-            <button type="button" disabled={busy} className="source-vote-button" onClick={() => void react('DISLIKE')} aria-label={`Dislike ${source.name}`}>
-              <span aria-hidden="true">👎</span><span>{dislikes}</span>
-            </button>
+            <button type="button" disabled={busy} className="source-vote-button" onClick={() => void react('LIKE')} aria-label={`Like ${source.name}`}><span aria-hidden="true">👍</span><span>{likes}</span></button>
+            <button type="button" disabled={busy} className="source-vote-button" onClick={() => void react('DISLIKE')} aria-label={`Dislike ${source.name}`}><span aria-hidden="true">👎</span><span>{dislikes}</span></button>
           </>
         ) : (
           <>
@@ -208,9 +199,7 @@ function SourceDirectoryRow({
             <a className="source-vote-button" href="/api/auth/login" title="Sign in to dislike"><span aria-hidden="true">👎</span><span>{dislikes}</span></a>
           </>
         )}
-        <a className="source-open-button" href={source.homepageUrl} target="_blank" rel="noopener noreferrer nofollow">
-          Open source <span aria-hidden="true">↗</span>
-        </a>
+        <a className="source-open-button" href={source.homepageUrl} target="_blank" rel="noopener noreferrer nofollow">Open <span aria-hidden="true">↗</span></a>
       </div>
     </article>
   );
@@ -245,11 +234,9 @@ function PublicSuggestion() {
         }),
       });
       const payload = (await response.json().catch(() => null)) as { accepted?: boolean; error?: { message?: string } } | null;
-      if (!response.ok) {
-        setMessage(payload?.error?.message ?? 'Could not send suggestion.');
-      } else if (payload?.accepted === false) {
-        setMessage('That source is already waiting for review.');
-      } else {
+      if (!response.ok) setMessage(payload?.error?.message ?? 'Could not send suggestion.');
+      else if (payload?.accepted === false) setMessage('That source is already waiting for review.');
+      else {
         setUrl(''); setName(''); setNote(''); setAnime(false); setMovies(false); setTv(false);
         setMessage('Suggestion sent for review.');
       }
@@ -261,13 +248,13 @@ function PublicSuggestion() {
   }
 
   return (
-    <section className="source-suggestion-box mt-8">
+    <section className="source-suggestion-box mt-7" id="suggest-source">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold">Know another source?</h2>
-          <p className="muted mt-1">Send the website. It stays pending until an admin reviews it.</p>
+          <p className="muted mt-1">Send the website. An admin reviews it before it is added.</p>
         </div>
-        <button type="button" className="btn-secondary min-h-[46px]" onClick={() => setOpen((value) => !value)}>{open ? 'Close' : 'Suggest a source'}</button>
+        <button type="button" className="source-suggest-toggle" onClick={() => setOpen((value) => !value)}>{open ? 'Close' : 'Suggest a source'}</button>
       </div>
       {open ? (
         <div className="mt-4 grid gap-3">
@@ -282,7 +269,7 @@ function PublicSuggestion() {
           </div>
           <input className="input" placeholder="Short note (optional)" value={note} onChange={(event) => setNote(event.target.value)} />
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" className="btn-primary min-h-[46px]" disabled={busy || !url.trim()} onClick={() => void submit()}>{busy ? 'Sending…' : 'Submit suggestion'}</button>
+            <button type="button" className="btn-primary min-h-[44px]" disabled={busy || !url.trim()} onClick={() => void submit()}>{busy ? 'Sending…' : 'Submit suggestion'}</button>
             {message ? <p className="muted text-xs">{message}</p> : null}
           </div>
         </div>
@@ -296,12 +283,26 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
 }
 
 function healthMeta(value: GlobalSourceItem['healthStatus'], signalCount: number) {
-  if (value === 'POSSIBLY_UNAVAILABLE') return { label: 'Not working', tone: 'tag-broken' };
-  if (value === 'DEGRADED') return { label: 'Issues reported', tone: 'tag-broken' };
-  if (signalCount === 0) return { label: 'No signal yet', tone: 'tag-neutral' };
-  if (value === 'WATCH') return { label: 'Some issues', tone: 'tag-rent' };
-  return { label: 'Working', tone: 'tag-free' };
+  if (value === 'POSSIBLY_UNAVAILABLE') return { label: 'Not working', tone: 'broken' };
+  if (value === 'DEGRADED') return { label: 'Issues reported', tone: 'broken' };
+  if (signalCount === 0) return { label: 'No signal yet', tone: 'neutral' };
+  if (value === 'WATCH') return { label: 'Some issues', tone: 'watch' };
+  return { label: 'Working', tone: 'working' };
 }
-function sourceTypeTone(value: string) { return value === 'OFFICIAL' ? 'tag-official' : value === 'COMMUNITY' ? 'tag-community' : value === 'UNVERIFIED' ? 'tag-unverified' : value === 'RENT_BUY' ? 'tag-rent' : value === 'LIBRARY' ? 'tag-library' : value === 'PUBLIC_DOMAIN' || value === 'FREE_AD_SUPPORTED' ? 'tag-free' : 'tag-neutral'; }
-function accessTone(value: string) { return value === 'FREE' || value === 'FREE_WITH_ADS' ? 'tag-free' : value === 'SUBSCRIPTION' ? 'tag-subscription' : value === 'RENT' || value === 'BUY' ? 'tag-rent' : 'tag-neutral'; }
-function pretty(value: string) { return value.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase()); }
+
+function mediaLabels(source: GlobalSourceItem): string[] {
+  const values: string[] = [];
+  if (source.supportsAnime) values.push('Anime');
+  if (source.supportsMovies) values.push('Movies');
+  if (source.supportsTv) values.push('TV');
+  return values;
+}
+
+function reliabilityText(source: GlobalSourceItem): string {
+  if (source.reliabilityPercent === null) return 'No working reports yet';
+  return `${source.reliabilityPercent}% working from recent reports`;
+}
+
+function pretty(value: string) {
+  return value.toLowerCase().replaceAll('_', ' ').replace(/\b\w/g, (character) => character.toUpperCase());
+}

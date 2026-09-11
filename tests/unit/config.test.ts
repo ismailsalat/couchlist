@@ -50,6 +50,17 @@ describe('environment parsing', () => {
   it('falls back to defaults for invalid numbers', () => {
     expect(config({ RATE_LIMIT_SEARCH_PER_MINUTE: 'lots' }).RATE_LIMIT_SEARCH_PER_MINUTE).toBe(30);
   });
+
+  it('accepts configurable about-card values', () => {
+    const parsed = config({
+      COUCHLIST_ABOUT_VERSION: '12.3.4',
+      COUCHLIST_ABOUT_SERVER_URL: 'https://discord.gg/example',
+      COUCHLIST_ABOUT_CREATOR_NAME: 'Maker',
+    });
+    expect(parsed.COUCHLIST_ABOUT_VERSION).toBe('12.3.4');
+    expect(parsed.COUCHLIST_ABOUT_SERVER_URL).toBe('https://discord.gg/example');
+    expect(parsed.COUCHLIST_ABOUT_CREATOR_NAME).toBe('Maker');
+  });
 });
 
 describe('startup validation', () => {
@@ -111,6 +122,11 @@ describe('startup validation', () => {
     const stripped = config({ DISCORD_BOT_TOKEN: '' });
     expect(validateConfig(stripped, 'bot').some((p) => p.includes('DISCORD_BOT_TOKEN'))).toBe(true);
     expect(validateConfig(stripped, 'web').some((p) => p.includes('DISCORD_BOT_TOKEN'))).toBe(false);
+  });
+
+  it('rejects invalid configured about-card urls', () => {
+    const problems = validateConfig(config({ COUCHLIST_ABOUT_SERVER_URL: 'not-a-url' }), 'bot');
+    expect(problems.some((problem) => problem.includes('COUCHLIST_ABOUT_SERVER_URL'))).toBe(true);
   });
 
   it('refuses TEST_MODE with no testers', () => {

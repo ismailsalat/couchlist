@@ -50,6 +50,17 @@ export const environmentSchema = z.object({
   DISCORD_BOT_TOKEN: z.string().default(''),
   BOT_OWNER_IDS: csvIds,
 
+  // /about bot card. Every visible value can be changed without editing code.
+  COUCHLIST_ABOUT_NAME: z.string().default('Couchlist'),
+  COUCHLIST_ABOUT_VERSION: z.string().default('12.3.0'),
+  COUCHLIST_ABOUT_DESCRIPTION: z.string().default('Track what your friends watch, share sources, and find something to watch together.'),
+  COUCHLIST_ABOUT_WEBSITE_URL: z.string().default(''),
+  COUCHLIST_ABOUT_SERVER_URL: z.string().default('https://discord.gg/qvGnUFn3VW'),
+  COUCHLIST_ABOUT_SERVER_NAME: z.string().default('Couchlist Community'),
+  COUCHLIST_ABOUT_CREATOR_NAME: z.string().default('Ismail'),
+  COUCHLIST_ABOUT_CREATOR_URL: z.string().default(''),
+  COUCHLIST_ABOUT_FOOTER: z.string().default('Good shows. Better company.'),
+
   AUTH_SECRET: z.string().default(''),
 
   ANILIST_API_URL: z.string().default('https://graphql.anilist.co'),
@@ -133,6 +144,16 @@ export function validateConfig(config: CouchlistConfig, service: ServiceName): s
 
   if (service === 'bot' && !config.DISCORD_BOT_TOKEN.trim()) {
     problems.push('DISCORD_BOT_TOKEN is not set.');
+  }
+
+  for (const [name, value] of [
+    ['COUCHLIST_ABOUT_WEBSITE_URL', config.COUCHLIST_ABOUT_WEBSITE_URL],
+    ['COUCHLIST_ABOUT_SERVER_URL', config.COUCHLIST_ABOUT_SERVER_URL],
+    ['COUCHLIST_ABOUT_CREATOR_URL', config.COUCHLIST_ABOUT_CREATOR_URL],
+  ] as const) {
+    if (value.trim() && !isValidUrl(value)) {
+      problems.push(`${name} is not a valid http(s) URL: ${value}`);
+    }
   }
 
   // The dev login bypasses Discord entirely. It must never exist in production.
