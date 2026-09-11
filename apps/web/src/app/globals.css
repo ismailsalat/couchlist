@@ -911,3 +911,55 @@ button.tag:hover { transform: translateY(-1px); }
   .source-health { font-size: 0.63rem; }
   .public-discord-login { min-height: 40px; padding-inline: 0.85rem; }
 }
+
+/* v12.4 source safety + six-item mobile nav ------------------------------ */
+.source-safety-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+  border: 1px solid rgba(230, 195, 106, 0.28);
+  border-radius: 12px;
+  background: rgba(230, 195, 106, 0.065);
+  padding: 0.65rem 0.75rem;
+  color: #aeb8c5;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+.source-safety-note strong { color: #f0d98a; }
+.source-safety-icon {
+  display: inline-flex;
+  width: 1.2rem;
+  height: 1.2rem;
+  flex: 0 0 1.2rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.02rem;
+  border: 1px solid rgba(230, 195, 106, 0.42);
+  border-radius: 999px;
+  color: #f0d98a;
+  font-size: 0.7rem;
+  font-weight: 900;
+}
+
+@media (max-width: 430px) {
+  .mobile-bottom-nav-inner {
+    gap: 0.05rem;
+    padding-inline: 0.2rem;
+  }
+  .mobile-nav-link {
+    min-height: 3.55rem;
+    gap: 0.18rem;
+    padding-inline: 0.1rem;
+    font-size: 0.68rem;
+  }
+  .mobile-nav-icon {
+    width: 1.22rem;
+    height: 1.22rem;
+  }
+  .source-safety-note {
+    gap: 0.5rem;
+    padding: 0.6rem 0.65rem;
+    font-size: 0.68rem;
+  }
+}

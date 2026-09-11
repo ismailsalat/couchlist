@@ -8,6 +8,7 @@ import Link from "next/link";
  */
 const ITEMS = [
   { href: "/home", label: "Home", icon: "home" },
+  { href: "/sources", label: "Sources", icon: "sources" },
   { href: "/my-server", label: "Server", icon: "server" },
   { href: "/friends", label: "Friends", icon: "friends" },
   { href: "/watch-together", label: "Watch", icon: "watch" },
@@ -38,6 +39,14 @@ function NavIcon({ name }: { name: IconName }) {
     return (
       <svg className="mobile-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3.5 10.8 12 3.7l8.5 7.1v8.6a1.6 1.6 0 0 1-1.6 1.6h-4.4v-6h-5v6H5.1a1.6 1.6 0 0 1-1.6-1.6v-8.6Z" />
+      </svg>
+    );
+  }
+
+  if (name === "sources") {
+    return (
+      <svg className="mobile-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 3.5h14a1.5 1.5 0 0 1 1.5 1.5v14a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 19V5A1.5 1.5 0 0 1 5 3.5Zm2.3 4.1h9.4v1.5H7.3V7.6Zm0 3.8h9.4v1.5H7.3v-1.5Zm0 3.8h6.2v1.5H7.3v-1.5Z" />
       </svg>
     );
   }

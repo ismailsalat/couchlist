@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { SourceSiteIcon } from "./source-site-icon";
+import { SourceSafetyNote } from "./source-safety-note";
 import {
   ACCESS_TEXT,
   AUDIO_TEXT,
@@ -85,6 +86,7 @@ export function WatchSection({
             ))}
           </div>
           {degraded ? <p className="muted mt-4 text-xs">Some sources couldn&apos;t be refreshed, so this list may be incomplete.</p> : null}
+          <SourceSafetyNote />
           <SourceGroup heading="Listed for this title" options={visible.confirmed.authorized} emptyText="" />
           {visible.confirmed.community.length > 0 ? <SourceGroup heading="Community links for this title" options={visible.confirmed.community} emptyText="" disclaimer={COMMUNITY_SOURCE_DISCLAIMER} /> : null}
           {visible.directory.length > 0 ? (

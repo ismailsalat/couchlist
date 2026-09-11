@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { SourceSiteIcon } from './source-site-icon';
+import { SourceSafetyNote } from './source-safety-note';
 
 export interface GlobalSourceItem {
   id: string;
@@ -91,6 +92,8 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
           ) : null}
         </div>
       </div>
+
+      <SourceSafetyNote />
 
       <div className="source-directory-count">
         <strong>{filtered.length}</strong> source{filtered.length === 1 ? '' : 's'}

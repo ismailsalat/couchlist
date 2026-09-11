@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { MediaTypeMark } from "./media-thumbnail";
+import { SourceSafetyNote } from "./source-safety-note";
 
 export interface ServerSourcePost {
   id: string;
@@ -104,6 +105,8 @@ export function ServerSources({
       </div>
 
       {showForm ? <ShareSourceForm guildDiscordId={guildDiscordId} onSaved={async () => { setShowForm(false); await refresh(); }} /> : null}
+
+      <SourceSafetyNote />
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <span className="muted mr-1 text-[11px] font-bold uppercase tracking-[0.12em]">Show</span>
