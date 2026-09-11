@@ -95,7 +95,11 @@ beforeAll(async () => {
       ENVIRONMENT: "test",
       NODE_ENV: "production",
       TEST_MODE: "false",
-      TEST_USER_IDS: "",
+      // TEST_USER is an existing Couchlist owner for dev-tool authorization;
+      // TEST_ALT deliberately is not. TEST_MODE stays off so sign-in itself is
+      // unaffected for both accounts.
+      TEST_USER_IDS: '',
+      BOT_OWNER_IDS: TEST_USER.discordId,
       TEST_GUILD_IDS: "",
       ALLOW_DEV_LOGIN: "true",
       APP_BASE_URL: BASE_URL,
@@ -136,6 +140,14 @@ describe("public pages", () => {
     expect(response.status).toBe(200);
     expect(html).toContain("Track what");
     expect(html).toContain("Continue with Discord");
+  });
+
+  it("serves the public source directory without Discord login", async () => {
+    const response = await fetch(`${BASE_URL}/sources`, { redirect: "manual" });
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain("Directory");
+    expect(html).toContain("Anime, movies, and TV");
   });
 
   it("reports health without leaking infrastructure detail", async () => {
@@ -558,5 +570,102 @@ describe("data export", () => {
     const body = await response.text();
     expect(body).toContain("entries");
     expect(body).not.toContain("tokenHash");
+  });
+});
+
+describe("dev watch source tools", () => {
+  const sample = JSON.stringify([
+    { name: "Import Probe", homepageUrl: "https://import-probe.example" },
+  ]);
+
+  it("lets a trusted operator preview an import", async () => {
+    const cookie = await login(TEST_USER);
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "POST",
+      ...authed(cookie),
+      body: JSON.stringify({ input: sample, apply: false }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { create: number };
+    expect(payload.create).toBe(1);
+  });
+
+  it("refuses an ordinary signed-in user", async () => {
+    const cookie = await login(TEST_ALT);
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "POST",
+      ...authed(cookie),
+      body: JSON.stringify({ input: sample, apply: true }),
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("refuses an anonymous request", async () => {
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ input: sample, apply: true }),
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it("keeps the dev page away from users outside the allowlist", async () => {
+    const cookie = await login(TEST_ALT);
+    const response = await fetch(`${BASE_URL}/dev/watch-sources`, {
+      ...authed(cookie),
+      redirect: "manual",
+    });
+
+    expect([302, 307]).toContain(response.status);
+    expect(response.headers.get("location")).toContain("/private-testing");
+  });
+
+  it("applies an import for a trusted operator", async () => {
+    const cookie = await login(TEST_USER);
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "POST",
+      ...authed(cookie),
+      body: JSON.stringify({ input: sample, apply: true }),
+    });
+
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { created: number; updated: number };
+    expect(payload.created + payload.updated).toBe(1);
+  });
+
+  it("lets an owner enable and disable a source", async () => {
+    const cookie = await login(TEST_USER);
+    await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "POST",
+      ...authed(cookie),
+      body: JSON.stringify({ input: sample, apply: true }),
+    });
+
+    const list = await fetch(`${BASE_URL}/api/dev/watch-sources?search=import-probe`, authed(cookie));
+    const listed = (await list.json()) as { sources: Array<{ id: string; isEnabled: boolean }> };
+    const source = listed.sources[0];
+    expect(source).toBeTruthy();
+
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "PATCH",
+      ...authed(cookie),
+      body: JSON.stringify({ sourceId: source!.id, isEnabled: true }),
+    });
+    expect(response.status).toBe(200);
+    const payload = (await response.json()) as { source: { isEnabled: boolean } };
+    expect(payload.source.isEnabled).toBe(true);
+  });
+
+  it("refuses a non-owner toggle request", async () => {
+    const cookie = await login(TEST_ALT);
+    const response = await fetch(`${BASE_URL}/api/dev/watch-sources`, {
+      method: "PATCH",
+      ...authed(cookie),
+      body: JSON.stringify({ sourceId: "wsr_fake", isEnabled: true }),
+    });
+    expect(response.status).toBe(403);
   });
 });

@@ -24,13 +24,16 @@
     "test:integration": "vitest run tests/integration",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "db:migrate": "npm run migrate --workspace @couchlist/db",
-    "db:deploy": "npm run deploy --workspace @couchlist/db",
-    "db:seed": "npm run seed --workspace @couchlist/db",
-    "db:reset": "npm run reset --workspace @couchlist/db",
-    "bot:register": "npm run register --workspace @couchlist/bot",
+    "db:migrate": "npm run build --workspace @couchlist/shared && npm run migrate --workspace @couchlist/db",
+    "db:deploy": "npm run build --workspace @couchlist/shared && npm run deploy --workspace @couchlist/db",
+    "db:seed": "npm run build --workspace @couchlist/shared && npm run seed --workspace @couchlist/db",
+    "db:reset": "npm run build --workspace @couchlist/shared && npm run reset --workspace @couchlist/db",
+    "bot:register": "npm run build --workspace @couchlist/shared && npm run build --workspace @couchlist/db && npm run build --workspace @couchlist/bot && node apps/bot/dist/register.js",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "test:providers-live": "node scripts/provider-smoke.mjs"
+    "test:providers-live": "node scripts/provider-smoke.mjs",
+    "watch:sources:import": "npm run build --workspace @couchlist/shared && npm run import:watch-sources --workspace @couchlist/db --",
+    "watch:availability:import": "npm run build --workspace @couchlist/shared && npm run import:watch-availability --workspace @couchlist/db --",
+    "repair:windows-deps": "npm ci --include=optional"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

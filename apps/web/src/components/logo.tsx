@@ -1,29 +1,16 @@
-/**
- * Couchlist wordmark.
- *
- * The popcorn bucket is inline SVG rather than an image file so it stays crisp
- * and needs no network request.
- */
-export function Logo({ size = 24 }: { size?: number }) {
+/** Couchlist wordmark: red bucket, warm yellow popcorn. */
+export function Logo({ size = 26 }: { size?: number }) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="none"
-        aria-hidden="true"
-        className="shrink-0"
-      >
-        <path
-          d="M5.2 8.5h13.6l-1.5 11.2a1.6 1.6 0 0 1-1.6 1.4H8.3a1.6 1.6 0 0 1-1.6-1.4L5.2 8.5Z"
-          fill="#E7E9EE"
-        />
-        <path d="M9.6 8.5 10.4 21H8.3a1.6 1.6 0 0 1-1.6-1.4L5.2 8.5h4.4Z" fill="#C3C8D2" />
-        <path d="M14.4 8.5h4.4l-1.5 11.2a1.6 1.6 0 0 1-1.6 1.4h-2.1l.8-12.6Z" fill="#C3C8D2" />
-        <circle cx="9" cy="5.6" r="2.6" fill="#F4F4F5" />
-        <circle cx="15" cy="5.6" r="2.6" fill="#F4F4F5" />
-        <circle cx="12" cy="4.2" r="2.6" fill="#E7E9EE" />
+      <svg width={size} height={size} viewBox="0 0 28 28" fill="none" aria-hidden="true" className="shrink-0 drop-shadow-sm">
+        <circle cx="8" cy="8" r="4" fill="#FFD65A" />
+        <circle cx="14" cy="6" r="4.5" fill="#FFE27A" />
+        <circle cx="20" cy="8" r="4" fill="#FFD65A" />
+        <circle cx="11" cy="10" r="4" fill="#FFE89A" />
+        <circle cx="17" cy="10" r="4" fill="#FFE89A" />
+        <path d="M5.2 11.5h17.6l-2.1 13a2 2 0 0 1-2 1.7H9.3a2 2 0 0 1-2-1.7l-2.1-13Z" fill="#E53935" />
+        <path d="M9.2 11.5h3.2l.4 14.7H10L9.2 11.5Zm6.4 0h3.2L18 26.2h-2.8l.4-14.7Z" fill="#FF665F" />
+        <path d="M5.2 11.5h17.6" stroke="#FFB7A8" strokeWidth="1.2" />
       </svg>
       <span className="font-display text-[17px] font-bold tracking-tight">Couchlist</span>
     </span>

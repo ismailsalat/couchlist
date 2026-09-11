@@ -7,6 +7,7 @@ import {
   GuildRepository,
   MediaCacheRepository,
   UserRepository,
+  WatchSourceRepository,
   closeDatabase,
   getDatabase,
   type Database,
@@ -52,6 +53,7 @@ export interface Repositories {
   cache: MediaCacheRepository;
   audit: AuditRepository;
   animeAliases: AnimeAliasRepository;
+  watchSources: WatchSourceRepository;
 }
 
 /** One set of repositories per process, created on first use. */
@@ -69,6 +71,7 @@ export function repos(): Repositories {
     cache: new MediaCacheRepository(db),
     audit: new AuditRepository(db),
     animeAliases: new AnimeAliasRepository(db),
+    watchSources: new WatchSourceRepository(db),
   };
   return repositories;
 }

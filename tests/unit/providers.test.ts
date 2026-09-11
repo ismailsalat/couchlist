@@ -576,6 +576,37 @@ describe("TMDB adapter", () => {
     });
   });
 
+  it("represents TMDB watch providers as one honest JustWatch chooser", async () => {
+    stubJson({
+      id: 157336,
+      results: {
+        US: {
+          link: "https://www.justwatch.com/us/movie/attack-the-block",
+          flatrate: [
+            { provider_id: 8, provider_name: "Netflix" },
+            { provider_id: 9, provider_name: "Prime Video" },
+          ],
+          rent: [{ provider_id: 9, provider_name: "Prime Video" }],
+          buy: [{ provider_id: 2, provider_name: "Apple TV" }],
+        },
+      },
+    });
+
+    const links = await client.watchProviders("157336", "MOVIE");
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({
+      sourceName: "JustWatch",
+      url: "https://www.justwatch.com/us/movie/attack-the-block",
+      accessType: "UNKNOWN",
+      metadata: { attribution: "justwatch" },
+    });
+    expect(links[0]?.metadata?.providerOptions).toEqual([
+      { name: "Netflix", accessTypes: ["SUBSCRIPTION"] },
+      { name: "Prime Video", accessTypes: ["SUBSCRIPTION", "RENT"] },
+      { name: "Apple TV", accessTypes: ["BUY"] },
+    ]);
+  });
+
   it("never puts the api key in the url when a bearer token is used", async () => {
     const spy = vi.fn(
       async () =>

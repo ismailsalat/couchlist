@@ -2,14 +2,9 @@
 
 import { useState } from "react";
 import { ActionToast } from "./action-toast";
+import { STATUS_LABEL, STATUS_STYLE, type ListStatus } from "@/lib/status";
 
-type Status = "WATCHING" | "COMPLETED" | "PLAN_TO_WATCH";
-
-const STATUS_LABEL: Record<Status, string> = {
-  WATCHING: "Watching",
-  COMPLETED: "Completed",
-  PLAN_TO_WATCH: "Plan to Watch",
-};
+type Status = ListStatus;
 
 export interface EntryState {
   status: Status;
@@ -180,7 +175,7 @@ export function EntryControls({
               onClick={() => void setStatus(status)}
               className={
                 selected
-                  ? "btn bg-primary px-4 py-2 text-white"
+                  ? `btn border px-4 py-2 ${STATUS_STYLE[status].badge}`
                   : "btn-secondary"
               }
             >

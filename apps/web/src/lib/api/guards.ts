@@ -4,6 +4,7 @@ import type { User } from '@couchlist/db';
 import { config } from '../config';
 import { repos } from '../db';
 import { currentUser } from '../auth/session';
+import { refreshGuildMembershipsIfStale } from '../services/guild-membership';
 
 /**
  * Authorization guards.
@@ -49,6 +50,7 @@ export async function requireGuildMember(guildIdOrDiscordId: string): Promise<Gu
     });
   }
 
+  await refreshGuildMembershipsIfStale(user);
   if (!(await guilds.isMember(user.id, guild.id))) {
     throw AppError.forbiddenGuild(guild.discordId);
   }
@@ -103,4 +105,24 @@ export async function visibleMemberIds(
   return members
     .filter((member) => member.id === viewerId || member.profileVisibility !== 'PRIVATE')
     .map((member) => member.id);
+}
+
+/**
+ * The operator allowlist for developer tools.
+ *
+ * Reuse the existing bot-owner list rather than turning every private tester
+ * into an administrator or inventing another role system.
+ */
+export function isTrustedOperator(discordUserId: string): boolean {
+  const ids = config().BOT_OWNER_IDS;
+  return ids.length > 0 && ids.includes(discordUserId);
+}
+
+/** The signed-in user, if they are on the operator allowlist. Otherwise 403. */
+export async function requireTrustedOperator(): Promise<User> {
+  const user = await requireUser();
+  if (!isTrustedOperator(user.discordId)) {
+    throw AppError.forbidden({ reason: 'not_trusted_operator' });
+  }
+  return user;
 }

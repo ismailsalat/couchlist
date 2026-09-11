@@ -5,6 +5,8 @@ import {
   canonicalAnimeKeyFromMalId,
 } from "../media/identity.js";
 import type { MediaDetail, MediaSummary } from "../media/types.js";
+import type { ProviderWatchLink } from "../watch/provider-link.js";
+import { WatchAccessType, WatchSourceType } from "../watch/types.js";
 import { fetchJson } from "./http.js";
 
 /**
@@ -35,6 +37,15 @@ const DETAIL_FIELDS = `
   bannerImage
   source
   studios(isMain: true) { nodes { name } }
+`;
+
+const STREAMING_QUERY = `
+  query ($id: Int!) {
+    Media(id: $id, type: ANIME) {
+      id
+      externalLinks { site url type language }
+    }
+  }
 `;
 
 const SEARCH_QUERY = `
@@ -132,6 +143,18 @@ interface AniListMedia {
   studios?: { nodes: Array<{ name: string }> } | null;
 }
 
+interface AniListExternalLink {
+  site?: string | null;
+  url?: string | null;
+  type?: string | null;
+  language?: string | null;
+}
+
+interface AniListStreamingMedia {
+  id: number;
+  externalLinks?: Array<AniListExternalLink | null> | null;
+}
+
 interface GraphQlError {
   message?: string;
   status?: number;
@@ -219,6 +242,41 @@ export class AniListClient {
       { idMal: numeric },
     );
     return data.Media ? toDetail(data.Media) : null;
+  }
+
+  /**
+   * Official streaming platforms AniList knows about for a title.
+   *
+   * AniList tags external links by type; only STREAMING entries are treated as
+   * places to watch. Anything else (news, forums, social) is discarded.
+   */
+  async streamingLinks(id: string): Promise<ProviderWatchLink[]> {
+    const numeric = Number.parseInt(id, 10);
+    if (!Number.isFinite(numeric)) return [];
+
+    const data = await this.request<{ Media: AniListStreamingMedia | null }>(
+      STREAMING_QUERY,
+      { id: numeric },
+    );
+
+    return (data.Media?.externalLinks ?? [])
+      .filter(
+        (link): link is AniListExternalLink & { site: string; url: string } =>
+          link?.type === "STREAMING" &&
+          typeof link.url === "string" &&
+          typeof link.site === "string",
+      )
+      .map((link) => ({
+        sourceName: link.site,
+        url: link.url,
+        sourceType: WatchSourceType.OFFICIAL,
+        // AniList does not say whether a platform is free or paid.
+        accessType: WatchAccessType.UNKNOWN,
+        regionInfo: link.language ?? null,
+        supportsAnime: true,
+        supportsMovies: false,
+        supportsTv: false,
+      }));
   }
 
   private async request<T>(

@@ -1,5 +1,7 @@
 import { MediaProvider, MediaType } from "../media/identity.js";
 import type { MediaDetail, MediaSummary } from "../media/types.js";
+import type { ProviderWatchLink } from "../watch/provider-link.js";
+import { WatchAccessType, WatchSourceType } from "../watch/types.js";
 import { fetchJson } from "./http.js";
 
 /**
@@ -35,8 +37,27 @@ interface TmdbDetail extends TmdbSearchItem {
   production_companies?: Array<{ name: string }>;
 }
 
-export interface TmdbClientOptions {
-  apiKey: string;
+interface TmdbProviderEntry {
+  provider_id?: number;
+  provider_name?: string;
+}
+
+interface TmdbRegionProviders {
+  /** JustWatch deep link for this title and region. */
+  link?: string;
+  flatrate?: TmdbProviderEntry[];
+  free?: TmdbProviderEntry[];
+  ads?: TmdbProviderEntry[];
+  rent?: TmdbProviderEntry[];
+  buy?: TmdbProviderEntry[];
+}
+
+interface TmdbWatchProviderResponse {
+  id?: number;
+  results?: Record<string, TmdbRegionProviders>;
+}
+
+export interface TmdbClientOptions {  apiKey: string;
   baseUrl: string;
   timeoutMs?: number;
 }
@@ -137,13 +158,87 @@ export class TmdbClient {
     return data?.id ? toDetail(data, mediaType) : null;
   }
 
+  /**
+   * Where a title can legally be watched, per region.
+   *
+   * TMDB sources this from JustWatch and it carries an attribution requirement:
+   * surfaces showing this data must credit JustWatch. TMDB reports a tier
+   * (flatrate/free/ads/rent/buy) but never a resolution, so quality stays
+   * unknown rather than being guessed.
+   */
+  async watchProviders(
+    id: string,
+    mediaType: MediaType,
+    region = "US",
+  ): Promise<ProviderWatchLink[]> {
+    if (!this.configured) return [];
+    if (mediaType !== MediaType.MOVIE && mediaType !== MediaType.TV) return [];
+    if (!/^\d+$/.test(id)) return [];
+
+    const segment = mediaType === MediaType.TV ? "tv" : "movie";
+    const data = await this.request<TmdbWatchProviderResponse>(
+      `/${segment}/${id}/watch/providers`,
+      {},
+    );
+
+    const regional = data.results?.[region.toUpperCase()];
+    if (!regional?.link) return [];
+
+    // TMDB/JustWatch gives one chooser URL for the title/region, not a deep
+    // link per streaming service. Represent that honestly as one JustWatch
+    // destination and keep the actual service names/access tiers as metadata.
+    // Creating one source row per provider would collapse onto the same domain
+    // and would falsely imply provider-specific links that TMDB does not give us.
+    const groups: Array<[TmdbProviderEntry[] | undefined, WatchAccessType]> = [
+      [regional.free, WatchAccessType.FREE],
+      [regional.ads, WatchAccessType.FREE_WITH_ADS],
+      [regional.flatrate, WatchAccessType.SUBSCRIPTION],
+      [regional.rent, WatchAccessType.RENT],
+      [regional.buy, WatchAccessType.BUY],
+    ];
+
+    const providers = new Map<string, Set<WatchAccessType>>();
+    for (const [entries, accessType] of groups) {
+      for (const entry of entries ?? []) {
+        const name = entry.provider_name?.trim();
+        if (!name) continue;
+        const accessTypes = providers.get(name) ?? new Set<WatchAccessType>();
+        accessTypes.add(accessType);
+        providers.set(name, accessTypes);
+      }
+    }
+
+    if (providers.size === 0) return [];
+
+    return [
+      {
+        sourceName: 'JustWatch',
+        url: regional.link,
+        sourceType: WatchSourceType.OFFICIAL,
+        // The chooser can contain several different access models. Keep the
+        // single-row field honest and expose the full set in metadata below.
+        accessType: WatchAccessType.UNKNOWN,
+        regionInfo: region.toUpperCase(),
+        supportsAnime: false,
+        supportsMovies: true,
+        supportsTv: true,
+        metadata: {
+          attribution: 'justwatch',
+          providerOptions: [...providers.entries()].map(([name, accessTypes]) => ({
+            name,
+            accessTypes: [...accessTypes],
+          })),
+        },
+      },
+    ];
+  }
+
   private async list(
     path: string,
     mediaType: MediaType,
     limit: number,
     page = 1,
-  ): Promise<MediaSummary[]> {
-    if (!this.configured) return [];
+  ): Promise<MediaSummary[]> {    if (!this.configured) return [];
 
     const safePage = Math.max(1, Math.floor(page));
     const data = await this.request<{ results: TmdbSearchItem[] }>(path, {

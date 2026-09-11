@@ -58,6 +58,7 @@ export async function completeLogin(
     known.filter((id): id is string => id !== null),
   );
 
+  await users.markGuildsSynced(user.id);
   await users.touchLastSeen(user.id);
   await createSession(user.id);
 

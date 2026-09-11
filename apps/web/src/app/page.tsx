@@ -19,6 +19,7 @@ export default async function LandingPage({
     <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-5">
       <header className="flex items-center justify-between py-5">
         <Logo />
+        <a href="/sources" className="text-sm font-bold text-text-secondary hover:text-text-primary">Global Sources</a>
       </header>
 
       <div className="flex flex-1 flex-col items-center justify-center pb-24 text-center">
@@ -39,6 +40,7 @@ export default async function LandingPage({
         <a href="/api/auth/login" className="btn-primary mt-8 px-7 py-3.5 text-base">
           Continue with Discord
         </a>
+        <a href="/sources" className="mt-3 text-sm font-bold text-primary hover:text-primary-hover">Browse Global Sources without signing in →</a>
 
         <p className="muted mt-8 max-w-md leading-relaxed">
           Add your Couchlist friends and see what they&apos;re watching. Discord servers are optional

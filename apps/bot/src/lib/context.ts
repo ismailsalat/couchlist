@@ -6,6 +6,7 @@ import type {
   FriendRepository,
   GuildRepository,
   UserRepository,
+  WatchSourceRepository,
 } from '@couchlist/db';
 import type { Logger } from '@couchlist/shared';
 
@@ -24,5 +25,6 @@ export interface BotContext {
   entries: EntryRepository;
   friends: FriendRepository;
   audit: AuditRepository;
+  watchSources: WatchSourceRepository;
   startedAt: Date;
 }

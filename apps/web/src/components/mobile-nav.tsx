@@ -3,11 +3,12 @@ import Link from "next/link";
 /**
  * Mobile navigation.
  *
- * Kept intentionally simple: four large destinations with real touch targets.
+ * Kept intentionally simple: five large destinations with real touch targets.
  * The extra safe-area padding keeps the controls above iPhone's home gesture.
  */
 const ITEMS = [
   { href: "/home", label: "Home", icon: "home" },
+  { href: "/my-server", label: "Server", icon: "server" },
   { href: "/friends", label: "Friends", icon: "friends" },
   { href: "/watch-together", label: "Watch", icon: "watch" },
   { href: "/profile", label: "Profile", icon: "profile" },
@@ -37,6 +38,14 @@ function NavIcon({ name }: { name: IconName }) {
     return (
       <svg className="mobile-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3.5 10.8 12 3.7l8.5 7.1v8.6a1.6 1.6 0 0 1-1.6 1.6h-4.4v-6h-5v6H5.1a1.6 1.6 0 0 1-1.6-1.6v-8.6Z" />
+      </svg>
+    );
+  }
+
+  if (name === "server") {
+    return (
+      <svg className="mobile-nav-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 4.2h16v5.4H4V4.2Zm0 7.1h16v8.5H4v-8.5Zm3-4.8h2v1H7v-1Zm0 7.2h2v1H7v-1Zm4.2 0h5.8v1h-5.8v-1Z" />
       </svg>
     );
   }

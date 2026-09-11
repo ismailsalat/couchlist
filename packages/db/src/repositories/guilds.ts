@@ -32,6 +32,14 @@ export class GuildRepository {
     return rows[0];
   }
 
+  /** All servers where the Couchlist bot is currently connected. */
+  async listConnectedGuilds(): Promise<DiscordGuildRow[]> {
+    return this.db
+      .select()
+      .from(discordGuilds)
+      .where(eq(discordGuilds.botConnected, true));
+  }
+
   async upsert(input: DiscordGuildInput): Promise<DiscordGuildRow> {
     const rows = await this.db
       .insert(discordGuilds)

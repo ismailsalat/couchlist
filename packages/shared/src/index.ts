@@ -7,3 +7,4 @@ export * from './media/dedupe.js';
 export * from './providers/index.js';
 export * from './scoring/index.js';
 export * from './schemas/index.js';
+export * from './watch/index.js';

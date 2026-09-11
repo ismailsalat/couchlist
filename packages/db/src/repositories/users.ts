@@ -94,6 +94,14 @@ export class UserRepository {
     await this.db.update(users).set({ lastSeenAt: new Date() }).where(eq(users.id, userId));
   }
 
+  /** Records a completed Discord guild refresh, including an empty guild set. */
+  async markGuildsSynced(userId: string, at = new Date()): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ guildsSyncedAt: at, updatedAt: at })
+      .where(eq(users.id, userId));
+  }
+
   /**
    * Everything Couchlist holds about one person, for the data export.
    * Deliberately excludes session tokens.

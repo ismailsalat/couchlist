@@ -41,6 +41,61 @@ export const listStatusEnum = pgEnum('list_status', ['WATCHING', 'COMPLETED', 'P
 export const profileVisibilityEnum = pgEnum('profile_visibility', ['MUTUAL_SERVERS', 'PRIVATE']);
 export const friendshipStatusEnum = pgEnum('friendship_status', ['PENDING', 'ACCEPTED']);
 
+export const watchSourceTypeEnum = pgEnum('watch_source_type', [
+  'OFFICIAL',
+  'FREE_AD_SUPPORTED',
+  'RENT_BUY',
+  'LIBRARY',
+  'PUBLIC_DOMAIN',
+  'COMMUNITY',
+  'UNVERIFIED',
+]);
+export const watchAccessTypeEnum = pgEnum('watch_access_type', [
+  'SUBSCRIPTION',
+  'FREE',
+  'FREE_WITH_ADS',
+  'RENT',
+  'BUY',
+  'LIBRARY_CARD',
+  'UNKNOWN',
+]);
+export const watchAvailabilityStatusEnum = pgEnum('watch_availability_status', [
+  'AVAILABLE',
+  'UNKNOWN',
+  'RECENTLY_UNAVAILABLE',
+]);
+export const watchSourceOriginEnum = pgEnum('watch_source_origin', [
+  'OFFICIAL_API',
+  'MANUAL',
+  'COMMUNITY',
+  'DIRECTORY',
+  'OTHER',
+]);
+export const watchCandidateStatusEnum = pgEnum('watch_candidate_status', [
+  'PENDING',
+  'APPROVED',
+  'REJECTED',
+]);
+export const watchReportReasonEnum = pgEnum('watch_report_reason', [
+  'BROKEN_LINK',
+  'WRONG_TITLE',
+  'WRONG_EPISODE',
+  'MISLEADING_QUALITY',
+  'UNSAFE_REDIRECT',
+  'SPAM',
+  'OTHER',
+]);
+export const watchHealthVoteEnum = pgEnum('watch_health_vote', ['WORKING', 'BROKEN']);
+export const watchQualityEnum = pgEnum('watch_quality', [
+  '4K',
+  '1080p',
+  '720p',
+  'SD',
+  'HD_CLAIMED',
+  'UNKNOWN',
+]);
+export const watchAudioEnum = pgEnum('watch_audio', ['SUB', 'DUB', 'SUB_DUB', 'UNKNOWN']);
+
 export const users = pgTable(
   'users',
   {
@@ -60,6 +115,10 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    // Last successful Discord guild-membership refresh. This lets the web app
+    // refresh joins/leaves without forcing a logout/login loop or hitting Discord
+    // on every page request.
+    guildsSyncedAt: timestamp('guilds_synced_at', { withTimezone: true }),
   },
   (table) => ({
     discordIdKey: uniqueIndex('users_discord_id_key').on(table.discordId),
@@ -307,6 +366,349 @@ export const auditLogs = pgTable(
   }),
 );
 
+/**
+ * Global registry of places a title can be watched.
+ *
+ * One row per service, not per title: adding a source is a database insert, and
+ * nothing about rendering it is hard-coded in the application.
+ */
+export const watchSources = pgTable(
+  'watch_sources',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('wsr')),
+    name: text('name').notNull(),
+    // Normalised (lowercase, no leading www) so two spellings cannot both exist.
+    domain: text('domain').notNull(),
+    homepageUrl: text('homepage_url').notNull(),
+
+    sourceType: watchSourceTypeEnum('source_type').notNull(),
+    accessType: watchAccessTypeEnum('access_type').notNull().default('UNKNOWN'),
+
+    supportsAnime: boolean('supports_anime').notNull().default(false),
+    supportsMovies: boolean('supports_movies').notNull().default(false),
+    supportsTv: boolean('supports_tv').notNull().default(false),
+
+    // Simple operator controls for the public directory. A penalty lowers
+    // ranking without deleting history; a health override is reversible.
+    adminRankPenalty: integer('admin_rank_penalty').notNull().default(0),
+    adminHealthOverride: text('admin_health_override'),
+
+    requiresAccount: boolean('requires_account').notNull().default(false),
+    regionInfo: text('region_info'),
+
+    // Verification is a human decision; enablement is the on/off switch. A row
+    // can be trusted but temporarily disabled, or enabled while still unverified.
+    isVerified: boolean('is_verified').notNull().default(false),
+    isEnabled: boolean('is_enabled').notNull().default(false),
+
+    // Only ever true for sources that explicitly permit embedding. Everything
+    // else opens in a new tab; Couchlist does not frame third-party players.
+    allowsEmbed: boolean('allows_embed').notNull().default(false),
+
+    origin: watchSourceOriginEnum('origin').notNull().default('MANUAL'),
+    originUrl: text('origin_url'),
+    discoveredAt: timestamp('discovered_at', { withTimezone: true }),
+
+    lastHealthCheckAt: timestamp('last_health_check_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    domainKey: uniqueIndex('watch_sources_domain_key').on(table.domain),
+    enabledIdx: index('watch_sources_enabled_idx').on(table.isEnabled, table.sourceType),
+    typeIdx: index('watch_sources_type_idx').on(table.sourceType),
+    adminRankPenaltyCheck: check(
+      'watch_sources_admin_rank_penalty_check',
+      sql`${table.adminRankPenalty} between 0 and 100`,
+    ),
+    adminHealthOverrideCheck: check(
+      'watch_sources_admin_health_override_check',
+      sql`${table.adminHealthOverride} is null or ${table.adminHealthOverride} in ('WORKING', 'DEGRADED', 'DOWN')`,
+    ),
+  }),
+);
+
+/**
+ * Availability of one title on one source.
+ *
+ * `contentKey` is Couchlist's canonical media concept, not a provider id: for
+ * Anime that is `CANONICAL:mal:<id>` once identity has been resolved, so the
+ * same title arriving via AniList, Jikan or Kitsu maps to a single row rather
+ * than three. Movies and TV use the TMDB identity, which is already canonical.
+ */
+export const mediaWatchSources = pgTable(
+  'media_watch_sources',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('mws')),
+    watchSourceId: text('watch_source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+
+    contentKey: text('content_key').notNull(),
+    mediaType: mediaTypeEnum('media_type').notNull(),
+    // Kept for debugging and re-resolution; never used as the identity.
+    provider: mediaProviderEnum('provider'),
+    providerMediaId: text('provider_media_id'),
+    canonicalMediaKey: text('canonical_media_key'),
+
+    accessType: watchAccessTypeEnum('access_type').notNull().default('UNKNOWN'),
+    quality: watchQualityEnum('quality').notNull().default('UNKNOWN'),
+    audio: watchAudioEnum('audio').notNull().default('UNKNOWN'),
+    subAvailable: boolean('sub_available'),
+    dubAvailable: boolean('dub_available'),
+    priceLabel: text('price_label'),
+
+    availabilityUrl: text('availability_url').notNull(),
+    availabilityStatus: watchAvailabilityStatusEnum('availability_status')
+      .notNull()
+      .default('UNKNOWN'),
+
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    metadata: jsonb('metadata'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // The no-duplicate-availability guarantee, enforced by the database.
+    contentSourceKey: uniqueIndex('media_watch_sources_content_source_key').on(
+      table.contentKey,
+      table.watchSourceId,
+    ),
+    contentIdx: index('media_watch_sources_content_idx').on(table.contentKey, table.mediaType),
+    sourceIdx: index('media_watch_sources_source_idx').on(table.watchSourceId),
+    staleIdx: index('media_watch_sources_stale_idx').on(table.lastCheckedAt),
+  }),
+);
+
+/**
+ * Discovered-but-not-trusted sources.
+ *
+ * A submission lands here, gets its domain normalised and deduplicated, and
+ * only becomes a real watch_sources row after a human approves it. Nothing
+ * promotes itself.
+ */
+export const watchSourceCandidates = pgTable(
+  'watch_source_candidates',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('wsc')),
+    domain: text('domain').notNull(),
+    suggestedName: text('suggested_name').notNull(),
+    homepageUrl: text('homepage_url').notNull(),
+
+    origin: watchSourceOriginEnum('origin').notNull().default('COMMUNITY'),
+    originUrl: text('origin_url'),
+    submittedByUserId: text('submitted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    guildId: text('guild_id').references(() => discordGuilds.id, { onDelete: 'set null' }),
+    supportsAnime: boolean('supports_anime').notNull().default(false),
+    supportsMovies: boolean('supports_movies').notNull().default(false),
+    supportsTv: boolean('supports_tv').notNull().default(false),
+    comment: text('comment'),
+    contentKey: text('content_key'),
+    mediaType: mediaTypeEnum('media_type'),
+    mediaTitle: text('media_title'),
+    availabilityUrl: text('availability_url'),
+
+    status: watchCandidateStatusEnum('status').notNull().default('PENDING'),
+    reviewedByUserId: text('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewNotes: text('review_notes'),
+    // Set when approval creates a registry row, so the trail survives.
+    promotedSourceId: text('promoted_source_id').references(() => watchSources.id, {
+      onDelete: 'set null',
+    }),
+
+    discoveredAt: timestamp('discovered_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    domainKey: uniqueIndex('watch_candidates_domain_key').on(table.domain),
+    statusIdx: index('watch_candidates_status_idx').on(table.status, table.discoveredAt),
+  }),
+);
+
+/**
+ * Server-scoped source sharing.
+ *
+ * These rows are social recommendations, not registry entries. A member can
+ * share an external site with one Discord community without publishing it to
+ * Couchlist globally. If the domain is already in the global registry the
+ * optional watchSourceId links the two identities.
+ */
+export const serverWatchPosts = pgTable(
+  'server_watch_posts',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('swp')),
+    guildId: text('guild_id')
+      .notNull()
+      .references(() => discordGuilds.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    watchSourceId: text('watch_source_id').references(() => watchSources.id, {
+      onDelete: 'set null',
+    }),
+
+    domain: text('domain').notNull(),
+    homepageUrl: text('homepage_url').notNull(),
+    suggestedName: text('suggested_name').notNull(),
+    comment: text('comment'),
+
+    contentKey: text('content_key'),
+    mediaType: mediaTypeEnum('media_type'),
+    mediaTitle: text('media_title'),
+
+    supportsAnime: boolean('supports_anime').notNull().default(false),
+    supportsMovies: boolean('supports_movies').notNull().default(false),
+    supportsTv: boolean('supports_tv').notNull().default(false),
+
+    isHidden: boolean('is_hidden').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    guildIdx: index('server_watch_posts_guild_idx').on(table.guildId, table.createdAt),
+    sourceIdx: index('server_watch_posts_source_idx').on(table.watchSourceId),
+    domainIdx: index('server_watch_posts_domain_idx').on(table.guildId, table.domain),
+  }),
+);
+
+/** One 1-5 star rating per user, either global or scoped to one server. */
+export const watchSourceRatings = pgTable(
+  'watch_source_ratings',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('wrt')),
+    watchSourceId: text('watch_source_id').references(() => watchSources.id, {
+      onDelete: 'cascade',
+    }),
+    serverWatchPostId: text('server_watch_post_id').references(() => serverWatchPosts.id, {
+      onDelete: 'cascade',
+    }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    guildId: text('guild_id').references(() => discordGuilds.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    ratingCheck: check('watch_source_ratings_value_check', sql`${table.rating} between 1 and 5`),
+    targetCheck: check(
+      'watch_source_ratings_target_check',
+      sql`((${table.watchSourceId} is not null)::int + (${table.serverWatchPostId} is not null)::int) = 1`,
+    ),
+    globalSourceKey: uniqueIndex('watch_source_ratings_global_source_key')
+      .on(table.watchSourceId, table.userId)
+      .where(sql`${table.watchSourceId} is not null and ${table.guildId} is null`),
+    guildSourceKey: uniqueIndex('watch_source_ratings_guild_source_key')
+      .on(table.watchSourceId, table.userId, table.guildId)
+      .where(sql`${table.watchSourceId} is not null and ${table.guildId} is not null`),
+    postKey: uniqueIndex('watch_source_ratings_post_key')
+      .on(table.serverWatchPostId, table.userId)
+      .where(sql`${table.serverWatchPostId} is not null`),
+    sourceIdx: index('watch_source_ratings_source_idx').on(table.watchSourceId, table.guildId),
+    postIdx: index('watch_source_ratings_post_idx').on(table.serverWatchPostId),
+  }),
+);
+
+/** Fresh, replaceable "works / not working" votes used for reliability. */
+export const watchSourceHealthVotes = pgTable(
+  'watch_source_health_votes',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('whv')),
+    watchSourceId: text('watch_source_id').references(() => watchSources.id, {
+      onDelete: 'cascade',
+    }),
+    serverWatchPostId: text('server_watch_post_id').references(() => serverWatchPosts.id, {
+      onDelete: 'cascade',
+    }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    guildId: text('guild_id').references(() => discordGuilds.id, { onDelete: 'cascade' }),
+    status: watchHealthVoteEnum('status').notNull(),
+    reason: watchReportReasonEnum('reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    targetCheck: check(
+      'watch_source_health_votes_target_check',
+      sql`((${table.watchSourceId} is not null)::int + (${table.serverWatchPostId} is not null)::int) = 1`,
+    ),
+    globalSourceKey: uniqueIndex('watch_source_health_global_source_key')
+      .on(table.watchSourceId, table.userId)
+      .where(sql`${table.watchSourceId} is not null and ${table.guildId} is null`),
+    guildSourceKey: uniqueIndex('watch_source_health_guild_source_key')
+      .on(table.watchSourceId, table.userId, table.guildId)
+      .where(sql`${table.watchSourceId} is not null and ${table.guildId} is not null`),
+    postKey: uniqueIndex('watch_source_health_post_key')
+      .on(table.serverWatchPostId, table.userId)
+      .where(sql`${table.serverWatchPostId} is not null`),
+    sourceIdx: index('watch_source_health_source_idx').on(table.watchSourceId, table.updatedAt),
+    postIdx: index('watch_source_health_post_idx').on(table.serverWatchPostId, table.updatedAt),
+  }),
+);
+
+/**
+ * User reports about a listing, global source, or server recommendation.
+ * Reports accumulate for moderation; one report never removes anything on its own.
+ */
+export const watchSourceReports = pgTable(
+  'watch_source_reports',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('wrp')),
+    mediaWatchSourceId: text('media_watch_source_id').references(() => mediaWatchSources.id, {
+      onDelete: 'cascade',
+    }),
+    watchSourceId: text('watch_source_id').references(() => watchSources.id, {
+      onDelete: 'cascade',
+    }),
+    serverWatchPostId: text('server_watch_post_id').references(() => serverWatchPosts.id, {
+      onDelete: 'cascade',
+    }),
+    reportedByUserId: text('reported_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    reason: watchReportReasonEnum('reason').notNull(),
+    details: text('details'),
+
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedByUserId: text('resolved_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    targetCheck: check(
+      'watch_reports_target_check',
+      sql`((${table.mediaWatchSourceId} is not null)::int + (${table.watchSourceId} is not null)::int + (${table.serverWatchPostId} is not null)::int) = 1`,
+    ),
+    listingIdx: index('watch_reports_listing_idx').on(table.mediaWatchSourceId, table.createdAt),
+    sourceIdx: index('watch_reports_source_idx').on(table.watchSourceId, table.createdAt),
+    postIdx: index('watch_reports_post_idx').on(table.serverWatchPostId, table.createdAt),
+    openIdx: index('watch_reports_open_idx').on(table.resolvedAt),
+    listingReporterKey: uniqueIndex('watch_reports_listing_reporter_key')
+      .on(table.mediaWatchSourceId, table.reportedByUserId)
+      .where(sql`${table.resolvedAt} is null and ${table.mediaWatchSourceId} is not null and ${table.reportedByUserId} is not null`),
+    sourceReporterKey: uniqueIndex('watch_reports_source_reporter_key')
+      .on(table.watchSourceId, table.reportedByUserId)
+      .where(sql`${table.resolvedAt} is null and ${table.watchSourceId} is not null and ${table.reportedByUserId} is not null`),
+    postReporterKey: uniqueIndex('watch_reports_post_reporter_key')
+      .on(table.serverWatchPostId, table.reportedByUserId)
+      .where(sql`${table.resolvedAt} is null and ${table.serverWatchPostId} is not null and ${table.reportedByUserId} is not null`),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type DiscordGuildRow = typeof discordGuilds.$inferSelect;
@@ -316,3 +718,12 @@ export type MediaEntry = typeof mediaEntries.$inferSelect;
 export type NewMediaEntry = typeof mediaEntries.$inferInsert;
 export type MediaCacheRow = typeof mediaCache.$inferSelect;
 export type AuditLogRow = typeof auditLogs.$inferSelect;
+export type WatchSourceRow = typeof watchSources.$inferSelect;
+export type NewWatchSource = typeof watchSources.$inferInsert;
+export type MediaWatchSourceRow = typeof mediaWatchSources.$inferSelect;
+export type NewMediaWatchSource = typeof mediaWatchSources.$inferInsert;
+export type WatchSourceCandidateRow = typeof watchSourceCandidates.$inferSelect;
+export type ServerWatchPostRow = typeof serverWatchPosts.$inferSelect;
+export type WatchSourceRatingRow = typeof watchSourceRatings.$inferSelect;
+export type WatchSourceHealthVoteRow = typeof watchSourceHealthVotes.$inferSelect;
+export type WatchSourceReportRow = typeof watchSourceReports.$inferSelect;

@@ -12,6 +12,7 @@ import {
   FriendRepository,
   GuildRepository,
   UserRepository,
+  WatchSourceRepository,
   closeDatabase,
   getDatabase,
 } from '@couchlist/db';
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
     entries: new EntryRepository(db),
     friends: new FriendRepository(db),
     audit: new AuditRepository(db),
+    watchSources: new WatchSourceRepository(db),
     startedAt: new Date(),
   };
 

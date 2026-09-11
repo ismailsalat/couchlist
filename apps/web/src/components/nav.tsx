@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Logo } from "./logo";
 import { SearchBar } from "./search-bar";
 
-/** Top navigation. Four destinations, nothing else. */
+/** Top navigation. Friends and servers stay first-class Couchlist destinations. */
 export function Nav({
   avatarUrl,
   username,
@@ -33,6 +33,18 @@ export function Nav({
             className="flex min-h-[44px] items-center px-1 text-text-secondary hover:text-text-primary"
           >
             Home
+          </Link>
+          <Link
+            href="/sources"
+            className="hidden text-text-secondary hover:text-text-primary sm:inline"
+          >
+            Global Sources
+          </Link>
+          <Link
+            href="/my-server"
+            className="hidden text-text-secondary hover:text-text-primary sm:inline"
+          >
+            My Server
           </Link>
           <Link
             href="/friends"

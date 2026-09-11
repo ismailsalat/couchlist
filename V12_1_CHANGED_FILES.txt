@@ -1,0 +1,26 @@
+Couchlist v12.1 changed/new files
+
+.env.example
+TEST_V12_1_WINDOWS.cmd
+V12_1_PUBLIC_SOURCES_AND_SERVER_SYNC.md
+apps/web/src/app/api/me/guilds/refresh/route.ts
+apps/web/src/app/globals.css
+apps/web/src/app/home/page.tsx
+apps/web/src/app/my-server/page.tsx
+apps/web/src/app/page.tsx
+apps/web/src/app/server/[guildId]/page.tsx
+apps/web/src/app/sources/page.tsx
+apps/web/src/components/global-sources-directory.tsx
+apps/web/src/components/media-thumbnail.tsx
+apps/web/src/components/nav.tsx
+apps/web/src/components/public-nav.tsx
+apps/web/src/components/refresh-servers-button.tsx
+apps/web/src/components/server-sources.tsx
+apps/web/src/lib/api/guards.ts
+apps/web/src/lib/auth/login.ts
+apps/web/src/lib/services/guild-membership.ts
+packages/db/migrations/0008_guild_membership_refresh.sql
+packages/db/migrations/meta/_journal.json
+packages/db/src/repositories/guilds.ts
+packages/db/src/repositories/users.ts
+packages/db/src/schema.ts

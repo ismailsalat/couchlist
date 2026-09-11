@@ -4,6 +4,8 @@ import {
   canonicalAnimeKeyFromMalId,
 } from '../media/identity.js';
 import type { MediaDetail, MediaSummary } from '../media/types.js';
+import type { ProviderWatchLink } from '../watch/provider-link.js';
+import { WatchAccessType, WatchSourceType } from '../watch/types.js';
 import { fetchJson } from './http.js';
 
 /**
@@ -208,6 +210,43 @@ export class KitsuClient {
     return this.byExternalId('anilist/anime', anilistId);
   }
 
+  /**
+   * Kitsu streaming links.
+   *
+   * Kitsu does publish subtitle and dub locale arrays, so sub/dub here is real
+   * metadata rather than a guess. It still says nothing about resolution.
+   */
+  async streamingLinks(id: string): Promise<ProviderWatchLink[]> {
+    if (!/^\d+$/.test(id)) return [];
+
+    const payload = await this.get<KitsuStreamingResponse>(
+      `/anime/${id}/streaming-links`,
+      {},
+    );
+
+    return (payload.data ?? [])
+      .filter(
+        (entry): entry is { attributes: { url: string; subs?: string[] | null; dubs?: string[] | null } } =>
+          typeof entry?.attributes?.url === 'string',
+      )
+      .map((entry) => {
+        const attributes = entry.attributes;
+        const hasSubs = (attributes.subs ?? []).length > 0;
+        const hasDubs = (attributes.dubs ?? []).length > 0;
+
+        return {
+          sourceName: hostLabel(attributes.url),
+          url: attributes.url,
+          sourceType: WatchSourceType.OFFICIAL,
+          accessType: WatchAccessType.UNKNOWN,
+          audio: hasSubs && hasDubs ? 'SUB_DUB' : hasSubs ? 'SUB' : hasDubs ? 'DUB' : 'UNKNOWN',
+          supportsAnime: true,
+          supportsMovies: false,
+          supportsTv: false,
+        } satisfies ProviderWatchLink;
+      });
+  }
+
   private async get<T>(path: string, params: Record<string, string>): Promise<T> {
     const base = this.options.baseUrl.replace(/\/$/, '');
     const url = new URL(`${base}${path}`);
@@ -321,4 +360,20 @@ function titleCase(value: string): string {
     .filter(Boolean)
     .map((part) => part[0]!.toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
+}
+
+interface KitsuStreamingResponse {
+  data?: Array<{
+    id?: string;
+    attributes?: { url?: string | null; subs?: string[] | null; dubs?: string[] | null };
+  } | null>;
+}
+
+/** Kitsu does not name the platform, so the host stands in for it. */
+function hostLabel(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./u, '');
+  } catch {
+    return 'Unknown platform';
+  }
 }

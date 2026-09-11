@@ -173,39 +173,51 @@ export default async function SearchPage({
               initial={browsePage}
             />
           ) : result && result.results.length > 0 ? (
-            <ul className="card divide-y divide-border">
+            <ul className="grid gap-3 lg:grid-cols-2">
               {result.results.map((item) => (
                 <li
                   key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}
                 >
                   <Link
                     href={mediaPath(item)}
-                    className="flex min-h-[76px] items-center gap-4 px-4 py-3 hover:bg-background/40"
+                    className="card group flex gap-4 p-3 transition hover:-translate-y-0.5 hover:border-primary/45"
                   >
-                    <div className="h-16 w-11 shrink-0 overflow-hidden rounded border border-border bg-background">
+                    <div className="aspect-[2/3] w-[74px] shrink-0 overflow-hidden rounded-xl border border-border bg-background">
                       {item.posterUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
                           src={item.posterUrl}
                           alt=""
-                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
                         />
-                      ) : null}
+                      ) : (
+                        <span
+                          className="flex h-full w-full items-center justify-center text-[10px] font-bold text-text-secondary"
+                          aria-hidden="true"
+                        >
+                          NO ART
+                        </span>
+                      )}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold">{item.title}</p>
-                      <p className="muted">
+
+                    <div className="flex min-w-0 flex-1 flex-col justify-center">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-text-secondary">
                         {MEDIA_TYPE_LABEL[item.mediaType]}
-                        {item.year ? ` · ${item.year}` : ""}
-                        {item.episodeCount
-                          ? ` · ${item.episodeCount} episodes`
-                          : ""}
-                        {item.runtimeMinutes
-                          ? ` · ${item.runtimeMinutes}m`
-                          : ""}
+                      </span>
+                      <p className="mt-1 line-clamp-2 font-display text-base font-bold leading-snug">
+                        {item.title}
                       </p>
+                      <p className="muted mt-1.5 text-xs">
+                        {item.year ?? "Year unknown"}
+                        {item.episodeCount ? ` · ${item.episodeCount} eps` : ""}
+                        {item.seasonCount ? ` · ${item.seasonCount} seasons` : ""}
+                        {item.runtimeMinutes ? ` · ${item.runtimeMinutes}m` : ""}
+                      </p>
+                      <span className="mt-2 text-xs font-bold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                        Open title →
+                      </span>
                     </div>
-                    <span className="muted shrink-0">›</span>
                   </Link>
                 </li>
               ))}

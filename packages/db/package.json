@@ -13,11 +13,13 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "migrate": "tsx src/migrate.ts",
-    "deploy": "tsx src/migrate.ts",
-    "clean": "rm -rf dist tsconfig.tsbuildinfo",
-    "seed": "tsx src/scripts/seed.ts",
-    "reset": "tsx src/scripts/reset.ts"
+    "migrate": "npm run build --silent && node dist/migrate.js",
+    "deploy": "npm run build --silent && node dist/migrate.js",
+    "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('tsconfig.tsbuildinfo',{force:true})\"",
+    "seed": "npm run build --silent && node dist/scripts/seed.js",
+    "reset": "npm run build --silent && node dist/scripts/reset.js",
+    "import:watch-sources": "npm run build --silent && node dist/scripts/import-watch-sources.js",
+    "import:watch-availability": "npm run build --silent && node dist/scripts/import-watch-availability.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

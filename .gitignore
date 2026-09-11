@@ -46,3 +46,4 @@ blob-report/
 # --- OS ----------------------------------------------------------------------
 .DS_Store
 Thumbs.db
+apps/web/next-env.d.ts

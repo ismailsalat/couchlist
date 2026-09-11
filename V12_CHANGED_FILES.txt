@@ -1,0 +1,20 @@
+Couchlist v12 social/watch-source pass
+
+Key additions:
+- apps/web/src/app/my-server/page.tsx
+- apps/web/src/app/api/server/[guildId]/sources/route.ts
+- apps/web/src/app/api/watch/feedback/route.ts
+- apps/web/src/app/api/watch/suggest/route.ts
+- apps/web/src/app/api/dev/watch-sources/manage/route.ts
+- apps/web/src/components/server-tabs.tsx
+- apps/web/src/components/server-sources.tsx
+- packages/db/migrations/0007_watch_social.sql
+- V12_SOCIAL_SOURCES.md
+
+Updated areas:
+- Watch source cards, ratings, reliability, reports, suggestions, sorting and tag colors
+- Server hub and My Server navigation
+- Dev Watch Sources quick-add/review/report UI
+- Discord /watch suggest flow
+- Couchlist red/yellow popcorn branding and PWA icons
+- Database schema/repository/reset/test coverage

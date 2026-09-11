@@ -36,6 +36,41 @@
       "when": 1788908042781,
       "tag": "0004_canonical_anime_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789000000000,
+      "tag": "0005_watch_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789003600000,
+      "tag": "0006_watch_availability_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789007200000,
+      "tag": "0007_watch_social",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789010800000,
+      "tag": "0008_guild_membership_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789014400000,
+      "tag": "0009_source_directory_controls",
+      "breakpoints": true
     }
   ]
 }

@@ -2,8 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppError, mediaPath } from "@couchlist/shared";
 import { Nav } from "@/components/nav";
+import { ServerTabs } from "@/components/server-tabs";
+import { ServerSources } from "@/components/server-sources";
+import { MediaThumbnail } from "@/components/media-thumbnail";
 import { currentUser } from "@/lib/auth/session";
 import { requireGuildMember } from "@/lib/api/guards";
+import { repos } from "@/lib/db";
 import {
   buildGuildPage,
   type GuildMemberPreview,
@@ -13,60 +17,35 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/**
- * Optional community hub unlocked when a server owner connects Couchlist.
- * Keep this page visual and compact: the community's pulse, then its people.
- */
-export default async function ServerPage({
-  params,
-}: {
-  params: Promise<{ guildId: string }>;
-}) {
+export default async function ServerPage({ params }: { params: Promise<{ guildId: string }> }) {
   const user = await currentUser();
   if (!user) redirect("/");
-
   const { guildId } = await params;
-  const page = await loadGuildPageData(guildId);
 
-  if (!page) {
+  const access = await safeGuildAccess(guildId);
+  if (!access) {
     return (
       <>
         <Nav avatarUrl={user.avatarUrl} username={user.username} />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
-          <p className="muted">
-            You don&apos;t have access to that connected server on Couchlist.
-          </p>
-          <Link href="/home" className="btn-secondary mt-6">
-            Back to home
-          </Link>
+          <p className="muted">You don&apos;t have access to that connected server on Couchlist.</p>
+          <Link href="/my-server" className="btn-secondary mt-6">My Server</Link>
         </main>
       </>
     );
   }
 
-  const watchingCount = totalCount(page.currentlyWatching);
-  const wantCount = totalCount(page.wantToWatch);
-  const topRating = page.highestRated.find(
-    (item) => item.averageRating !== null,
-  )?.averageRating;
-
-  // WATCHING is a list status, not literal live presence. Active list watchers
-  // are surfaced first; true LIVE stays reserved for future Watch Parties.
-  const shownMembers = [...page.members]
-    .sort((a, b) => Number(Boolean(b.watching)) - Number(Boolean(a.watching)))
-    .slice(0, 6);
+  const [page, sourcePosts] = await Promise.all([
+    buildGuildPage(access.user.id, access.guildId),
+    repos().watchSources.listServerPosts(access.guildId),
+  ]);
+  if (!page) throw AppError.notFound("server");
 
   return (
     <>
       <Nav avatarUrl={user.avatarUrl} username={user.username} />
-
       <main className="mx-auto max-w-5xl px-5 pb-20">
-        <Link
-          href="/home"
-          className="muted mt-6 inline-flex min-h-[44px] items-center text-sm font-bold hover:text-text-primary"
-        >
-          ← Community Servers
-        </Link>
+        <Link href="/my-server" className="muted mt-6 inline-flex min-h-[44px] items-center text-sm font-bold hover:text-text-primary">← My Servers</Link>
 
         <section className="server-hub-hero mt-2 overflow-hidden rounded-[28px] border border-border px-5 py-5 sm:px-6 sm:py-6">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
@@ -74,265 +53,124 @@ export default async function ServerPage({
               <ServerIcon iconUrl={page.guild.iconUrl} name={page.guild.name} />
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="truncate font-display text-2xl font-bold sm:text-3xl">
-                    {page.guild.name}
-                  </h1>
-                  <span className="rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] text-[#b8c6ff]">
-                    Community
-                  </span>
+                  <h1 className="truncate font-display text-2xl font-bold sm:text-3xl">{page.guild.name}</h1>
+                  <span className="tag tag-community">Community</span>
                 </div>
-                <p className="muted mt-1">
-                  {page.memberCount} Couchlist member
-                  {page.memberCount === 1 ? "" : "s"} · shared server taste
-                </p>
+                <p className="muted mt-1">{page.memberCount} Couchlist member{page.memberCount === 1 ? "" : "s"} · watch, rate, and share together</p>
               </div>
             </div>
-
             <div className="flex flex-wrap gap-2 sm:justify-end">
-              <StatPill value={String(watchingCount)} label="watching" />
-              <StatPill value={String(wantCount)} label="want next" />
-              {topRating !== undefined && topRating !== null ? (
-                <StatPill value={`★ ${topRating.toFixed(1)}`} label="top score" />
-              ) : null}
+              <StatPill value={String(totalCount(page.currentlyWatching))} label="watching" />
+              <StatPill value={String(totalCount(page.wantToWatch))} label="want next" />
+              <StatPill value={String(sourcePosts.length)} label="sources" />
             </div>
           </div>
         </section>
 
-        <section className="mt-8">
-          <div className="mb-4">
-            <h2 className="font-display text-lg font-bold">
-              What {page.guild.name} is into
-            </h2>
-            <p className="muted mt-1">
-              A quick look at what people here are watching, rating, and saving.
-            </p>
-          </div>
-
-          <div className="grid gap-3 lg:grid-cols-3">
-            <PulseCard
-              title="Watching"
-              accent="green"
-              items={page.currentlyWatching.slice(0, 3)}
-              empty="Nobody has something in Watching yet."
+        <ServerTabs
+          overview={<Overview page={page} />}
+          members={<Members page={page} ownUserId={user.id} />}
+          sources={
+            <ServerSources
+              guildDiscordId={page.guild.discordId}
+              initialPosts={sourcePosts.map((post) => ({ ...post, createdAt: post.createdAt.toISOString() }))}
             />
-            <PulseCard
-              title="Top rated"
-              accent="purple"
-              items={page.highestRated.slice(0, 3)}
-              showRating
-              empty="Ratings will show up here."
-            />
-            <PulseCard
-              title="Want to watch"
-              accent="blue"
-              items={page.wantToWatch.slice(0, 3)}
-              empty="Nothing saved for later yet."
-            />
-          </div>
-        </section>
-
-        <section className="mt-9">
-          <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h2 className="font-display text-lg font-bold">People here</h2>
-              <p className="muted mt-1">
-                People with something in Watching appear first.
-              </p>
-            </div>
-            <Link href="/friends" className="btn-secondary">
-              Find friends from {page.guild.name}
-            </Link>
-          </div>
-
-          {shownMembers.length > 0 ? (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {shownMembers.map((member) => (
-                <MemberCard
-                  key={member.id}
-                  member={member}
-                  ownProfile={member.id === user.id}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="card px-5 py-6">
-              <p className="font-bold">No Couchlist members to show yet.</p>
-            </div>
-          )}
-        </section>
+          }
+        />
       </main>
     </>
   );
 }
 
-async function loadGuildPageData(
-  guildId: string,
-): Promise<GuildPageData | null> {
-  try {
-    const access = await requireGuildMember(guildId);
-    const page = await buildGuildPage(access.user.id, access.guildId);
-    if (!page) throw AppError.notFound("server");
-    return page;
-  } catch {
-    return null;
-  }
+async function safeGuildAccess(guildId: string) {
+  try { return await requireGuildMember(guildId); } catch { return null; }
 }
 
-function totalCount(items: TitleTally[]): number {
-  return items.reduce((total, item) => total + item.count, 0);
-}
-
-function StatPill({ value, label }: { value: string; label: string }) {
+function Overview({ page }: { page: GuildPageData }) {
   return (
-    <span className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-border/90 bg-background/50 px-3 py-1.5 text-xs font-bold text-[#dce6f5]">
-      <span className="text-[#8bc8ff]">{value}</span>
-      <span className="text-text-secondary">{label}</span>
-    </span>
-  );
-}
-
-function PulseCard({
-  title,
-  items,
-  empty,
-  showRating = false,
-  accent,
-}: {
-  title: string;
-  items: TitleTally[];
-  empty: string;
-  showRating?: boolean;
-  accent: "green" | "purple" | "blue";
-}) {
-  const accentClass =
-    accent === "green"
-      ? "bg-[#5bd198]"
-      : accent === "purple"
-        ? "bg-[#a98bff]"
-        : "bg-[#7fc8ff]";
-
-  return (
-    <div className="server-pulse-card rounded-[22px] border border-border bg-card/95 p-4">
-      <div className="flex items-center gap-2">
-        <span className={`h-2.5 w-2.5 rounded-full ${accentClass}`} />
-        <h3 className="font-display text-sm font-bold">{title}</h3>
+    <div>
+      <div className="mb-4">
+        <h2 className="font-display text-lg font-bold">What {page.guild.name} is into</h2>
+        <p className="muted mt-1">Your server&apos;s shared taste, updated from member lists.</p>
       </div>
-
-      {items.length > 0 ? (
-        <ol className="mt-3 space-y-1.5">
-          {items.map((item, index) => (
-            <li key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}>
-              <Link
-                href={mediaPath({
-                  provider: item.provider,
-                  mediaType: item.mediaType,
-                  providerMediaId: item.providerMediaId,
-                })}
-                className="flex min-h-[48px] items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition hover:bg-background/45"
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-background text-[10px] font-bold text-[#9fcaff]">
-                  {index + 1}
-                </span>
-                <div className="h-9 w-7 shrink-0 overflow-hidden rounded-md border border-border bg-background">
-                  {item.posterUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.posterUrl}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      className="h-full w-full object-cover"
-                    />
-                  ) : null}
-                </div>
-                <span className="min-w-0 flex-1 truncate text-sm font-bold">
-                  {item.title}
-                </span>
-                <span className="muted shrink-0 text-xs">
-                  {showRating && item.averageRating !== null
-                    ? `★ ${item.averageRating.toFixed(1)}`
-                    : item.count}
-                </span>
-              </Link>
-            </li>
-          ))}
-        </ol>
-      ) : (
-        <p className="muted mt-4 text-sm">{empty}</p>
-      )}
+      <div className="grid gap-3 lg:grid-cols-3">
+        <PulseCard title="Watching" items={page.currentlyWatching.slice(0, 4)} />
+        <PulseCard title="Top rated" items={page.highestRated.slice(0, 4)} showRating />
+        <PulseCard title="Want to watch" items={page.wantToWatch.slice(0, 4)} />
+      </div>
+      <div className="watch-source-card mt-6 rounded-[22px] border p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display font-bold">Community sources</h3>
+            <p className="muted mt-1">Open the Sources tab to see where members recommend watching anime, movies, and TV.</p>
+          </div>
+          <span className="tag tag-community">Made for your server</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function MemberCard({
-  member,
-  ownProfile,
-}: {
-  member: GuildMemberPreview;
-  ownProfile: boolean;
-}) {
-  const name = member.globalName ?? member.username;
+function Members({ page, ownUserId }: { page: GuildPageData; ownUserId: string }) {
   return (
-    <Link
-      href={ownProfile ? "/profile" : `/profile/${member.id}`}
-      className="card flex min-h-[76px] items-center gap-3 px-4 py-3 transition hover:-translate-y-0.5 hover:border-primary/50"
-    >
+    <section>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div><h2 className="font-display text-lg font-bold">Members</h2><p className="muted mt-1">See what people in this server are watching.</p></div>
+        <Link href="/friends" className="btn-secondary">Find friends</Link>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {page.members.map((member) => <MemberCard key={member.id} member={member} ownProfile={member.id === ownUserId} />)}
+      </div>
+    </section>
+  );
+}
+
+function PulseCard({ title, items, showRating = false }: { title: string; items: TitleTally[]; showRating?: boolean }) {
+  return (
+    <div className="server-pulse-card rounded-[22px] border border-border bg-card/95 p-4">
+      <h3 className="font-display text-sm font-bold">{title}</h3>
+      {items.length ? (
+        <ol className="mt-3 space-y-1.5">
+          {items.map((item) => (
+            <li key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}>
+              <Link href={mediaPath(item)} className="group flex min-h-[68px] items-center gap-3 rounded-xl px-2 py-1.5 transition hover:bg-background/55">
+                <MediaThumbnail posterUrl={item.posterUrl} mediaType={item.mediaType} title={item.title} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-bold group-hover:text-white">{item.title}</span>
+                  <span className={`tag mt-1 ${item.mediaType === "ANIME" ? "tag-anime" : item.mediaType === "MOVIE" ? "tag-movie" : "tag-tv"}`}>{item.mediaType === "MOVIE" ? "Movie" : item.mediaType === "TV" ? "TV" : "Anime"}</span>
+                </span>
+                <span className="muted shrink-0 text-xs">{showRating && item.averageRating !== null ? `★ ${item.averageRating.toFixed(1)}` : item.count}</span>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      ) : <p className="muted mt-3 text-xs">Nothing here yet.</p>}
+    </div>
+  );
+}
+
+function MemberCard({ member, ownProfile }: { member: GuildMemberPreview; ownProfile: boolean }) {
+  return (
+    <Link href={ownProfile ? "/profile" : `/profile/${member.id}`} className="card flex items-center gap-3 px-4 py-4 transition hover:border-primary/50">
       {member.avatarUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={member.avatarUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="h-11 w-11 shrink-0 rounded-full border border-border object-cover"
-        />
-      ) : (
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border bg-background text-xs font-bold">
-          {name.slice(0, 1).toUpperCase()}
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-bold">{name}</p>
-          {ownProfile ? (
-            <span className="shrink-0 text-[10px] font-bold text-[#8bc8ff]">You</span>
-          ) : null}
-        </div>
-        {member.watching ? (
-          <p className="muted mt-0.5 truncate text-xs">
-            <span className="text-[#79d9aa]">Watching</span> · {member.watching}
-          </p>
-        ) : (
-          <p className="muted mt-0.5 text-xs">See their taste</p>
-        )}
-      </div>
+        <img src={member.avatarUrl} alt="" className="h-11 w-11 rounded-full border border-border object-cover" />
+      ) : <span className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-background font-bold">{(member.globalName ?? member.username).slice(0,1).toUpperCase()}</span>}
+      <div className="min-w-0"><p className="truncate font-bold">{member.globalName ?? member.username}</p><p className="muted truncate text-xs">{member.watching ? `Watching ${member.watching}` : "No recent watch activity"}</p></div>
     </Link>
   );
 }
 
-function ServerIcon({
-  iconUrl,
-  name,
-}: {
-  iconUrl: string | null;
-  name: string;
-}) {
-  const classes = "h-16 w-16 rounded-2xl sm:h-[72px] sm:w-[72px]";
-  return iconUrl ? (
+function ServerIcon({ iconUrl, name }: { iconUrl: string | null; name: string }) {
+  if (iconUrl) return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={iconUrl}
-      alt={`${name} server icon`}
-      loading="lazy"
-      decoding="async"
-      className={`${classes} shrink-0 border border-border object-cover shadow-lg`}
-    />
-  ) : (
-    <span
-      className={`flex ${classes} shrink-0 items-center justify-center border border-border bg-background font-display text-xl font-bold shadow-lg`}
-      aria-hidden="true"
-    >
-      {name.slice(0, 1).toUpperCase()}
-    </span>
+    <img src={iconUrl} alt="" className="h-16 w-16 rounded-[20px] border border-border object-cover" />
   );
+  return <div className="flex h-16 w-16 items-center justify-center rounded-[20px] border border-border bg-background font-display text-xl font-bold">{name.slice(0,1).toUpperCase()}</div>;
 }
+
+function StatPill({ value, label }: { value: string; label: string }) {
+  return <span className="inline-flex min-h-[38px] items-center gap-1.5 rounded-full border border-border/90 bg-background/50 px-3 py-1.5 text-xs font-bold"><span className="text-[#8bc8ff]">{value}</span><span className="text-text-secondary">{label}</span></span>;
+}
+
+function totalCount(items: TitleTally[]) { return items.reduce((total, item) => total + item.count, 0); }

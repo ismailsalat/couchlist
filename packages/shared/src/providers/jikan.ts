@@ -4,6 +4,8 @@ import {
   canonicalAnimeKeyFromMalId,
 } from '../media/identity.js';
 import type { MediaDetail, MediaSummary } from '../media/types.js';
+import type { ProviderWatchLink } from '../watch/provider-link.js';
+import { WatchAccessType, WatchSourceType } from '../watch/types.js';
 import { fetchJson } from './http.js';
 
 /**
@@ -150,12 +152,47 @@ export class JikanClient {
     return payload.data ? toDetail(payload.data) : null;
   }
 
+  /**
+   * Streaming platforms MyAnimeList lists for a title.
+   *
+   * MAL gives a platform name and a URL and nothing else, so access tier and
+   * quality both stay unknown here.
+   */
+  async streamingLinks(id: string): Promise<ProviderWatchLink[]> {
+    const numeric = Number.parseInt(id, 10);
+    if (!Number.isFinite(numeric)) return [];
+
+    const payload = await fetchJson<JikanStreamingResponse>(
+      this.url(`/anime/${numeric}/streaming`),
+      { providerName: 'jikan', timeoutMs: this.options.timeoutMs, retries: 0 },
+    );
+
+    return (payload.data ?? [])
+      .filter(
+        (entry): entry is { name: string; url: string } =>
+          typeof entry?.name === 'string' && typeof entry.url === 'string',
+      )
+      .map((entry) => ({
+        sourceName: entry.name,
+        url: entry.url,
+        sourceType: WatchSourceType.OFFICIAL,
+        accessType: WatchAccessType.UNKNOWN,
+        supportsAnime: true,
+        supportsMovies: false,
+        supportsTv: false,
+      }));
+  }
+
   private url(path: string, params: Record<string, string> = {}): string {
     const base = this.options.baseUrl.replace(/\/$/, '');
     const url = new URL(`${base}${path}`);
     for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
     return url.toString();
   }
+}
+
+interface JikanStreamingResponse {
+  data?: Array<{ name?: string | null; url?: string | null } | null>;
 }
 
 function toSummary(anime: JikanAnime): MediaSummary {

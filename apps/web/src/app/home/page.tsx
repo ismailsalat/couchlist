@@ -13,6 +13,7 @@ import { currentUser } from "@/lib/auth/session";
 import { repos } from "@/lib/db";
 import { listFriends } from "@/lib/services/friends";
 import { buildGuildPage, type TitleTally } from "@/lib/services/guild";
+import { refreshGuildMembershipsIfStale } from "@/lib/services/guild-membership";
 import {
   getGlobalTrending,
   reconcileAnimeEntriesForUsers,
@@ -29,6 +30,7 @@ export default async function HomePage() {
   if (!user) redirect("/");
 
   const { guilds, entries } = repos();
+  await refreshGuildMembershipsIfStale(user);
   await reconcileAnimeEntriesForUsers([user.id], 12);
   const [friends, userGuilds, counts, globalTrending] = await Promise.all([
     listFriends(user),
