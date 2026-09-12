@@ -41,7 +41,7 @@ export default async function UserProfilePage({
   if (!data.ok) {
     return (
       <>
-        <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} />
+        <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} mobileLabel="Profile" />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
           <p className="muted">
             Add them as a Couchlist friend, or view them through a shared connected server.
@@ -56,7 +56,7 @@ export default async function UserProfilePage({
 
   return (
     <>
-      <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} />
+      <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} mobileLabel="Profile" />
       <ProfileScreen
         profile={data.profile}
         compareHref={`/compare/${data.targetId}`}

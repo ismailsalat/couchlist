@@ -52,7 +52,7 @@ export const environmentSchema = z.object({
 
   // /about bot card. Every visible value can be changed without editing code.
   COUCHLIST_ABOUT_NAME: z.string().default('Couchlist'),
-  COUCHLIST_ABOUT_VERSION: z.string().default('12.4.0'),
+  COUCHLIST_ABOUT_VERSION: z.string().default('12.7.0'),
   COUCHLIST_ABOUT_DESCRIPTION: z.string().default('Track what your friends watch, share sources, and find something to watch together.'),
   COUCHLIST_ABOUT_WEBSITE_URL: z.string().default(''),
   COUCHLIST_ABOUT_SERVER_URL: z.string().default('https://discord.gg/qvGnUFn3VW'),

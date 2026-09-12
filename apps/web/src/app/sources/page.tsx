@@ -5,7 +5,7 @@ import { PublicNav } from '@/components/public-nav';
 
 export const dynamic = 'force-dynamic';
 
-/** Public directory: browsing never requires Discord authentication. */
+/** Public, community-maintained source registry. Browsing never requires login. */
 export default async function GlobalSourcesPage() {
   const user = await currentUser();
   const repository = repos().watchSources;
@@ -39,12 +39,12 @@ export default async function GlobalSourcesPage() {
   return (
     <>
       <PublicNav user={user} />
-      <main className="mx-auto max-w-4xl px-5 pb-24 pt-8 sm:pt-12">
+      <main className="catalog-shell mx-auto max-w-6xl px-5 pb-24 pt-7 sm:pt-10">
         <header className="source-directory-header">
-          <p className="sources-doc-kicker">Directory</p>
-          <h1 className="font-display mt-2 text-3xl font-bold leading-tight sm:text-4xl">Anime, movies, and TV</h1>
+          <p className="catalog-kicker">Directory</p>
+          <h1 className="font-display mt-1 text-2xl font-black sm:text-3xl">Source Directory</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-text-secondary sm:text-base">
-            A simple community directory. Search, vote, and report what is working.
+            A community-maintained index of places people use for anime, movies, and TV. Filter the directory, vote on useful entries, and report what stops working.
           </p>
         </header>
         <GlobalSourcesDirectory sources={items} canVote={Boolean(user)} />

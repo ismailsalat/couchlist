@@ -26,7 +26,7 @@ export default async function ServerPage({ params }: { params: Promise<{ guildId
   if (!access) {
     return (
       <>
-        <Nav avatarUrl={user.avatarUrl} username={user.username} />
+        <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Server" />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
           <p className="muted">You don&apos;t have access to that connected server on Couchlist.</p>
           <Link href="/my-server" className="btn-secondary mt-6">My Server</Link>
@@ -43,7 +43,7 @@ export default async function ServerPage({ params }: { params: Promise<{ guildId
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Server" />
       <main className="mx-auto max-w-5xl px-5 pb-20">
         <Link href="/my-server" className="muted mt-6 inline-flex min-h-[44px] items-center text-sm font-bold hover:text-text-primary">← My Servers</Link>
 

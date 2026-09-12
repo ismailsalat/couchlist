@@ -21,7 +21,7 @@ export default async function WatchTogetherPage() {
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Pick Together" />
 
       <main className="mx-auto max-w-5xl px-5 pb-20">
         <h1 className="font-display mt-8 text-2xl font-bold">Find Something to Watch</h1>

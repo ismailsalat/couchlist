@@ -15,7 +15,7 @@ export default async function MyProfilePage() {
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Profile" />
       <ProfileScreen
         profile={profile}
         privacy={{

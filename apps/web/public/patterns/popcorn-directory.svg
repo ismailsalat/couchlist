@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="320" viewBox="0 0 420 320">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- small popcorn kernel -->
+    <g transform="translate(54 54) rotate(-18)" opacity=".15" stroke="#f1cf67" stroke-width="1.4">
+      <circle cx="0" cy="-7" r="7"/><circle cx="7" cy="0" r="7"/><circle cx="0" cy="7" r="7"/><circle cx="-7" cy="0" r="7"/>
+      <circle cx="0" cy="0" r="4.5"/>
+    </g>
+    <!-- outlined bucket -->
+    <g transform="translate(300 52) rotate(12)" opacity=".105" stroke="#df5b55" stroke-width="1.5">
+      <path d="M-14 -4h28l-3 24a3 3 0 0 1-3 2H-8a3 3 0 0 1-3-2l-3-24Z"/>
+      <path d="M-8 -3l2 24M0 -3v25M8 -3L6 21"/>
+      <path d="M-13 -5c2-8 9-8 12-3 2-7 10-7 12 0 4-4 10 0 8 5H-15c-2-3-1-5 2-2Z" stroke="#f1cf67"/>
+    </g>
+    <!-- medium popcorn kernel -->
+    <g transform="translate(188 166) rotate(31)" opacity=".11" stroke="#e7c965" stroke-width="1.25">
+      <circle cx="0" cy="-9" r="8"/><circle cx="8" cy="-1" r="8"/><circle cx="1" cy="8" r="8"/><circle cx="-8" cy="0" r="8"/>
+      <circle cx="0" cy="0" r="5"/>
+    </g>
+    <!-- small popcorn kernel -->
+    <g transform="translate(360 224) rotate(-42)" opacity=".14" stroke="#f1cf67" stroke-width="1.35">
+      <circle cx="0" cy="-6" r="6"/><circle cx="6" cy="0" r="6"/><circle cx="0" cy="6" r="6"/><circle cx="-6" cy="0" r="6"/>
+      <circle cx="0" cy="0" r="4"/>
+    </g>
+    <!-- tiny kernel -->
+    <g transform="translate(94 270) rotate(20)" opacity=".095" stroke="#f1cf67" stroke-width="1.15">
+      <circle cx="0" cy="-5" r="5"/><circle cx="5" cy="0" r="5"/><circle cx="0" cy="5" r="5"/><circle cx="-5" cy="0" r="5"/>
+    </g>
+  </g>
+</svg>

@@ -22,7 +22,7 @@ export default async function ComparePage({ params }: { params: Promise<{ userId
   } catch {
     return (
       <>
-        <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} />
+        <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} mobileLabel="Compare" />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
           <p className="muted">You can only compare with people you share a server with.</p>
           <Link href="/home" className="btn-secondary mt-6">
@@ -39,7 +39,7 @@ export default async function ComparePage({ params }: { params: Promise<{ userId
 
   return (
     <>
-      <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} />
+      <Nav avatarUrl={viewer.avatarUrl} username={viewer.username} mobileLabel="Compare" />
 
       <main className="mx-auto max-w-5xl px-5 pb-20">
         <h1 className="mt-8 text-xl font-semibold">

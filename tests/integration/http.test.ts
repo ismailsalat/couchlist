@@ -146,8 +146,8 @@ describe("public pages", () => {
     const response = await fetch(`${BASE_URL}/sources`, { redirect: "manual" });
     const html = await response.text();
     expect(response.status).toBe(200);
-    expect(html).toContain("Directory");
-    expect(html).toContain("Anime, movies, and TV");
+    expect(html).toContain("Source Directory");
+    expect(html).toContain("community-maintained index");
   });
 
   it("reports health without leaking infrastructure detail", async () => {

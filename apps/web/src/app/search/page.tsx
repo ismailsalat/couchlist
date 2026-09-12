@@ -7,7 +7,6 @@ import {
 } from "@couchlist/shared";
 import { BrowseGrid } from "@/components/browse-grid";
 import { Nav } from "@/components/nav";
-import { Poster } from "@/components/poster";
 import { SearchBar } from "@/components/search-bar";
 import { EmptyState } from "@/components/section";
 import { currentUser } from "@/lib/auth/session";
@@ -90,6 +89,7 @@ export default async function SearchPage({
         avatarUrl={user.avatarUrl}
         username={user.username}
         showSearch={false}
+        mobileLabel="Catalog"
       />
 
       <main className="mx-auto max-w-5xl px-5 pb-20">
@@ -238,55 +238,55 @@ function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
     discovery.animeTrending.length > 0
       ? discovery.animeTrending
       : discovery.animePopular;
-  const rows = [
+  const groups = [
     {
       key: "anime",
-      title: "Anime Right Now",
-      subtitle: "Anime people are into right now.",
+      title: "Anime",
+      subtitle: "Trending now",
       items: animeItems,
       href: "/search?type=anime&anime=all&sort=trending",
     },
     {
       key: "movie",
-      title: "Movies Right Now",
-      subtitle: "Movies getting attention today.",
+      title: "Movies",
+      subtitle: "Trending now",
       items: discovery.movieTrending,
       href: "/search?type=movie&sort=trending",
     },
     {
       key: "tv",
-      title: "TV Right Now",
-      subtitle: "Shows people are watching right now.",
+      title: "TV",
+      subtitle: "Trending now",
       items: discovery.tvTrending,
       href: "/search?type=tv&sort=trending",
     },
   ];
-  const hasAnything = rows.some((row) => row.items.length > 0);
+  const hasAnything = groups.some((group) => group.items.length > 0);
 
   return (
     <section>
-      <div className="mb-6">
-        <h1 className="font-display text-xl font-bold">Browse or search</h1>
+      <div className="mb-5">
+        <p className="catalog-kicker">Catalog</p>
+        <h1 className="font-display mt-1 text-xl font-black sm:text-2xl">Browse the database</h1>
         <p className="muted mt-1 max-w-2xl">
-          Scroll through popular picks below, or search the full catalog above.
+          A compact index of anime, movies, and TV. Search above when you already know what you want.
         </p>
       </div>
 
       {!hasAnything ? (
         <EmptyState>
-          Popular picks could not load right now. Search above still works for
-          any title.
+          Catalog picks could not load right now. Search above still works for any title.
         </EmptyState>
       ) : (
-        <div className="space-y-8">
-          {rows.map((row) =>
-            row.items.length > 0 ? (
-              <DiscoveryShelf
-                key={row.key}
-                title={row.title}
-                subtitle={row.subtitle}
-                items={row.items}
-                href={row.href}
+        <div className="catalog-index-grid">
+          {groups.map((group) =>
+            group.items.length > 0 ? (
+              <CatalogLane
+                key={group.key}
+                title={group.title}
+                subtitle={group.subtitle}
+                items={group.items}
+                href={group.href}
               />
             ) : null,
           )}
@@ -295,8 +295,7 @@ function DiscoveryStart({ discovery }: { discovery: BrowseCatalog | null }) {
 
       {discovery.degraded ? (
         <p className="muted mt-5 text-xs">
-          One shelf is refreshing. The other categories and search still work
-          normally.
+          One list is refreshing. The other categories and search still work normally.
         </p>
       ) : null}
     </section>
@@ -327,12 +326,12 @@ function CategoryBrowse({
   return (
     <section>
       <div className="mb-5">
-        <h1 className="font-display text-xl font-bold">
+        <p className="catalog-kicker">Catalog</p>
+        <h1 className="font-display mt-1 text-xl font-black sm:text-2xl">
           {sortLabel} {categoryLabel}
         </h1>
         <p className="muted mt-1">
-          Keep scrolling to browse more. Search above when you want something
-          specific.
+          A dense list for browsing. Keep scrolling to load more titles.
         </p>
       </div>
 
@@ -347,7 +346,7 @@ function CategoryBrowse({
   );
 }
 
-function DiscoveryShelf({
+function CatalogLane({
   title,
   subtitle,
   items,
@@ -359,45 +358,33 @@ function DiscoveryShelf({
   href: string;
 }) {
   return (
-    <div>
-      <div className="mb-3 flex items-end justify-between gap-3">
+    <section className="catalog-lane">
+      <div className="catalog-lane-heading">
         <div>
-          <div className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 rounded-full bg-[#7fc8ff]"
-              aria-hidden="true"
-            />
-            <h2 className="font-display text-base font-bold text-[#e4edf7]">
-              {title}
-            </h2>
-          </div>
-          <p className="muted mt-1 text-xs">{subtitle}</p>
+          <h2>{title}</h2>
+          <p>{subtitle}</p>
         </div>
-        <Link
-          href={href}
-          className="shrink-0 text-xs font-bold text-primary hover:text-primary-hover"
-        >
-          See more →
-        </Link>
+        <Link href={href}>View all →</Link>
       </div>
-
-      <div className="poster-shelf -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
-        {items.slice(0, 12).map((item) => (
-          <div
-            key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}
-            className="w-[128px] shrink-0 snap-start sm:w-[142px]"
-          >
-            <Poster
-              provider={item.provider}
-              mediaType={item.mediaType}
-              providerMediaId={item.providerMediaId}
-              title={item.title}
-              posterUrl={item.posterUrl}
-              caption={item.year ? String(item.year) : undefined}
-            />
-          </div>
+      <ol>
+        {items.slice(0, 10).map((item, index) => (
+          <li key={`${item.provider}-${item.mediaType}-${item.providerMediaId}`}>
+            <Link href={mediaPath(item)}>
+              <span className="catalog-lane-rank">{index + 1}</span>
+              <span className="catalog-lane-poster">
+                {item.posterUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.posterUrl} alt="" loading="lazy" />
+                ) : null}
+              </span>
+              <span className="catalog-lane-copy">
+                <strong>{item.title}</strong>
+                <small>{item.year ?? MEDIA_TYPE_LABEL[item.mediaType]}</small>
+              </span>
+            </Link>
+          </li>
         ))}
-      </div>
-    </div>
+      </ol>
+    </section>
   );
 }

@@ -1,37 +1,50 @@
-import Link from "next/link";
+"use client";
 
-/**
- * Mobile navigation.
- *
- * Kept intentionally simple: five large destinations with real touch targets.
- * The extra safe-area padding keeps the controls above iPhone's home gesture.
- */
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
 const ITEMS = [
   { href: "/home", label: "Home", icon: "home" },
   { href: "/sources", label: "Sources", icon: "sources" },
   { href: "/my-server", label: "Server", icon: "server" },
   { href: "/friends", label: "Friends", icon: "friends" },
-  { href: "/watch-together", label: "Watch", icon: "watch" },
+  { href: "/watch-together", label: "Pick", icon: "watch" },
   { href: "/profile", label: "Profile", icon: "profile" },
 ] as const;
 
 type IconName = (typeof ITEMS)[number]["icon"];
 
 export function MobileNav() {
+  const pathname = usePathname();
+
   return (
     <nav aria-label="Main" className="mobile-bottom-nav sm:hidden">
       <ul className="mobile-bottom-nav-inner">
-        {ITEMS.map((item) => (
-          <li key={item.href} className="min-w-0 flex-1">
-            <Link href={item.href} className="mobile-nav-link">
-              <NavIcon name={item.icon} />
-              <span>{item.label}</span>
-            </Link>
-          </li>
-        ))}
+        {ITEMS.map((item) => {
+          const active = isActivePath(pathname, item.href);
+          return (
+            <li key={item.href} className="min-w-0 flex-1">
+              <Link
+                href={item.href}
+                className={`mobile-nav-link${active ? " mobile-nav-link-active" : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                <NavIcon name={item.icon} />
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );
+}
+
+function isActivePath(pathname: string, href: string): boolean {
+  if (href === "/home") return pathname === "/home";
+  if (href === "/my-server") return pathname === "/my-server" || pathname.startsWith("/server/");
+  if (href === "/profile") return pathname === "/profile" || pathname.startsWith("/profile/");
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
 function NavIcon({ name }: { name: IconName }) {

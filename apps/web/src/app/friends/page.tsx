@@ -43,14 +43,14 @@ export default async function FriendsPage({
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Friends" />
 
       <main className="mx-auto max-w-5xl px-5 pb-20">
         <div className="mt-8">
-          <h1 className="font-display text-3xl font-bold">Your Couchlist Friends</h1>
+          <p className="catalog-kicker">People</p>
+          <h1 className="font-display mt-1 text-2xl font-black sm:text-3xl">Friends</h1>
           <p className="muted mt-1 max-w-2xl">
-            Friends follow you across Couchlist. A Discord server is optional — connected servers
-            simply unlock community taste pages and help you discover people you already know.
+            Find people, compare taste, and see what your friends are watching. Connected servers simply help you discover people you already know.
           </p>
         </div>
 

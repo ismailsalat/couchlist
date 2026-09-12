@@ -57,7 +57,7 @@ export default async function MediaPage({
     if (error instanceof AppError && error.code === "CL_NOT_FOUND") notFound();
     return (
       <>
-        <Nav avatarUrl={user.avatarUrl} username={user.username} />
+        <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Title" />
         <main className="mx-auto max-w-5xl px-5 py-16 text-center">
           <p className="muted">
             We couldn&apos;t load this title right now. Try again shortly.
@@ -101,7 +101,7 @@ export default async function MediaPage({
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Title" />
 
       {detail.bannerUrl ? (
         <div className="relative h-48 w-full overflow-hidden border-b border-border sm:h-64">

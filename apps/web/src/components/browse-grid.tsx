@@ -1,8 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { MediaSummary } from "@couchlist/shared";
-import { Poster } from "./poster";
+import { MEDIA_TYPE_LABEL, mediaPath, type MediaSummary } from "@couchlist/shared";
 
 type BrowseFilter = "anime" | "movie" | "tv";
 type BrowseSort = "trending" | "popular" | "top-rated";
@@ -114,9 +114,7 @@ export function BrowseGrid({
       setHasMore(next.hasMore);
       setDegraded(next.degraded);
     } catch {
-      // Stop automatic retries until the user taps Retry. This prevents a bad
-      // provider minute from causing a loop of background requests.
-      setError("More picks didn’t load.");
+      setError("More titles didn’t load.");
       setPaused(true);
     } finally {
       loadingRef.current = false;
@@ -124,9 +122,6 @@ export function BrowseGrid({
     }
   }, [hasMore, page, paused, requestPage]);
 
-  // If the server-side first request hit a temporary provider problem, retry
-  // once in the browser automatically. The user should not have to refresh the
-  // whole page just because Jikan/TMDB had a bad second.
   useEffect(() => {
     if (!initial.degraded) return;
     const timer = window.setTimeout(() => {
@@ -135,9 +130,6 @@ export function BrowseGrid({
     return () => window.clearTimeout(timer);
   }, [initial.degraded, replaceWithFirstPage]);
 
-  // Native browser infinite loading: no dependency, no scroll listener, and no
-  // manual "Load more" button. Already-loaded posters stay mounted when users
-  // scroll back up.
   useEffect(() => {
     const node = sentinelRef.current;
     if (!node || !hasMore || paused || items.length === 0) return;
@@ -155,15 +147,11 @@ export function BrowseGrid({
   if (items.length === 0) {
     return (
       <div className="card px-5 py-10 text-center">
-        <div className="text-2xl" aria-hidden="true">
-          🍿
-        </div>
+        <div className="text-2xl" aria-hidden="true">🍿</div>
         <p className="mt-3 font-bold">
-          {loading ? "Getting picks…" : "These picks didn’t load yet."}
+          {loading ? "Loading catalog…" : "This list didn’t load yet."}
         </p>
-        <p className="muted mt-1">
-          Search still works for any title above.
-        </p>
+        <p className="muted mt-1">Search still works for any title above.</p>
         {!loading ? (
           <button
             type="button"
@@ -179,25 +167,37 @@ export function BrowseGrid({
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-x-3 gap-y-6 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-        {items.map((item) => (
-          <Poster
-            key={identity(item)}
-            provider={item.provider}
-            mediaType={item.mediaType}
-            providerMediaId={item.providerMediaId}
-            title={item.title}
-            posterUrl={item.posterUrl}
-            caption={item.year ? String(item.year) : undefined}
-          />
+      <ol className="catalog-title-list">
+        {items.map((item, index) => (
+          <li key={identity(item)}>
+            <Link href={mediaPath(item)} className="catalog-title-row">
+              <span className="catalog-title-rank" aria-hidden="true">{index + 1}</span>
+              <span className="catalog-title-poster">
+                {item.posterUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={item.posterUrl} alt="" loading="lazy" />
+                ) : (
+                  <span>NO ART</span>
+                )}
+              </span>
+              <span className="catalog-title-copy">
+                <strong>{item.title}</strong>
+                <span>
+                  {MEDIA_TYPE_LABEL[item.mediaType]}
+                  {item.year ? ` · ${item.year}` : ""}
+                  {item.episodeCount ? ` · ${item.episodeCount} eps` : ""}
+                  {item.seasonCount ? ` · ${item.seasonCount} seasons` : ""}
+                </span>
+              </span>
+              <span className="catalog-title-open">Open →</span>
+            </Link>
+          </li>
         ))}
-      </div>
+      </ol>
 
-      <div ref={sentinelRef} className="mt-8 flex min-h-14 flex-col items-center justify-center gap-2 pb-2 text-center">
+      <div ref={sentinelRef} className="mt-6 flex min-h-14 flex-col items-center justify-center gap-2 pb-2 text-center">
         {loading ? (
-          <p className="muted text-sm" aria-live="polite">
-            Loading more…
-          </p>
+          <p className="muted text-sm" aria-live="polite">Loading more…</p>
         ) : error ? (
           <>
             <p className="text-sm font-semibold text-[#ffb8b8]">{error}</p>
@@ -219,9 +219,7 @@ export function BrowseGrid({
         )}
 
         {degraded && !error ? (
-          <p className="muted text-xs">
-            This list may be shorter right now. Search still works normally.
-          </p>
+          <p className="muted text-xs">This list may be shorter right now. Search still works normally.</p>
         ) : null}
       </div>
     </div>

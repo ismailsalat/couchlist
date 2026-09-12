@@ -963,3 +963,610 @@ button.tag:hover { transform: translateY(-1px); }
     font-size: 0.68rem;
   }
 }
+
+/* v12.5 catalog-first visual system ---------------------------------------
+ * Couchlist should read like a modern social catalog / directory, not a
+ * streaming storefront. Poster art supplies the color; the shell stays quiet.
+ */
+body {
+  background:
+    radial-gradient(circle at 50% -14rem, rgba(75, 107, 190, 0.13), transparent 34rem),
+    linear-gradient(180deg, #080c12 0%, #070a0f 48%, #080c12 100%);
+}
+
+.catalog-shell {
+  width: 100%;
+}
+
+.catalog-kicker {
+  color: #8190a3;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.catalog-home-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.25rem;
+  padding-bottom: 1.2rem;
+  border-bottom: 1px solid #23303c;
+}
+
+.library-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.library-stat-card {
+  display: flex;
+  min-height: 76px;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid #243240;
+  border-radius: 14px;
+  background: #0d141c;
+  padding: 0.9rem 1rem;
+  transition: border-color 120ms ease, background-color 120ms ease, transform 120ms ease;
+}
+.library-stat-card:hover {
+  border-color: #3b5168;
+  background: #111a24;
+  transform: translateY(-1px);
+}
+.library-stat-value {
+  color: #f5f7fa;
+  font-family: "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+  font-size: 1.45rem;
+  font-weight: 900;
+  line-height: 1;
+}
+.library-stat-label {
+  margin-top: 0.35rem;
+  color: #8f9cac;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+.catalog-inline-link {
+  flex: 0 0 auto;
+  color: #9eb7ff;
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+/* Bottom nav has one consistent active state on every signed-in page. */
+.mobile-nav-link-active {
+  color: #f3f6fb;
+  background: rgba(91, 124, 250, 0.11);
+}
+.mobile-nav-link-active .mobile-nav-icon {
+  color: #8ea8ff;
+}
+
+/* Directory results are separate records, not one continuous streaming list. */
+.source-directory-list {
+  display: grid;
+  gap: 0.55rem;
+  overflow: visible;
+  border: 0;
+}
+.source-directory-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  padding: 0.9rem 0.95rem;
+  border: 1px solid #24313d;
+  border-radius: 13px;
+  background: #0d141b;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+.source-directory-row:last-child {
+  border-bottom: 1px solid #24313d;
+}
+.source-directory-row:hover {
+  border-color: #385067;
+  background: #101922;
+}
+.source-directory-count {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin: 1.1rem 0 0.65rem;
+}
+.source-directory-main {
+  align-items: center;
+}
+.source-directory-domain {
+  color: #8995a4;
+}
+.source-directory-meta {
+  color: #abb5c1;
+}
+.source-site-icon,
+.source-site-icon-sm {
+  background: #111a23;
+  border-color: #2a3947;
+}
+.source-open-button {
+  background: rgba(240, 217, 138, 0.035);
+}
+.source-suggestion-box {
+  margin-top: 1.5rem;
+  border: 1px solid #24313d;
+  border-radius: 13px;
+  background: #0d141b;
+  padding: 1rem;
+}
+
+/* Generic content panels stay visually distinct without cinematic gradients. */
+.card,
+.server-pulse-card,
+.community-card {
+  background: #0d141c;
+  border-color: #243240;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+.card:hover,
+.server-pulse-card:hover,
+.community-card:hover {
+  border-color: #33485d;
+  background: #101923;
+}
+
+@media (max-width: 700px) {
+  .catalog-home-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.9rem;
+  }
+  .library-stats-grid {
+    gap: 0.45rem;
+  }
+  .library-stat-card {
+    min-height: 68px;
+    padding: 0.75rem 0.7rem;
+  }
+  .library-stat-value {
+    font-size: 1.2rem;
+  }
+  .library-stat-label {
+    font-size: 0.65rem;
+  }
+  .source-directory-row {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+    padding: 0.85rem;
+  }
+  .source-directory-actions {
+    padding-left: 2.9rem;
+  }
+  .source-directory-tools {
+    gap: 0.65rem;
+  }
+  .source-directory-search {
+    min-height: 44px;
+  }
+}
+
+/* v12.6 directory-first cleanup -------------------------------------------
+ * Home is the dashboard, /search is the catalog index, and /sources is a
+ * compact community directory. The shell keeps subtle Couchlist warmth
+ * without looking like a streaming storefront.
+ */
+body {
+  background:
+    radial-gradient(circle at 8% 5%, rgba(229, 57, 53, 0.07), transparent 22rem),
+    radial-gradient(circle at 92% 14%, rgba(255, 205, 72, 0.055), transparent 20rem),
+    radial-gradient(circle at 50% -10rem, rgba(76, 111, 205, 0.14), transparent 34rem),
+    linear-gradient(180deg, #080c12 0%, #091019 48%, #080c12 100%);
+  background-attachment: fixed;
+}
+
+/* Browse is deliberately a database/index, not another poster-heavy Home. */
+.catalog-index-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+}
+.catalog-lane {
+  overflow: hidden;
+  border: 1px solid #283746;
+  border-radius: 15px;
+  background: rgba(13, 20, 28, 0.92);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+.catalog-lane-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 0.9rem 0.7rem;
+  border-bottom: 1px solid #24323f;
+}
+.catalog-lane-heading h2 {
+  color: #f4f7fb;
+  font-family: "Arial Rounded MT Bold", "Trebuchet MS", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 900;
+}
+.catalog-lane-heading p {
+  margin-top: 0.08rem;
+  color: #7f8d9e;
+  font-size: 0.66rem;
+}
+.catalog-lane-heading a {
+  flex: 0 0 auto;
+  color: #91aaff;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+.catalog-lane ol { list-style: none; }
+.catalog-lane li + li { border-top: 1px solid #202d38; }
+.catalog-lane li > a {
+  display: grid;
+  grid-template-columns: 1.7rem 2.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.65rem;
+  min-height: 56px;
+  padding: 0.48rem 0.7rem;
+  transition: background-color 120ms ease;
+}
+.catalog-lane li > a:hover { background: #111a24; }
+.catalog-lane-rank {
+  color: #718094;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+}
+.catalog-lane-poster {
+  width: 2.2rem;
+  height: 3rem;
+  overflow: hidden;
+  border: 1px solid #293947;
+  border-radius: 6px;
+  background: #101720;
+}
+.catalog-lane-poster img { width: 100%; height: 100%; object-fit: cover; }
+.catalog-lane-copy { min-width: 0; }
+.catalog-lane-copy strong {
+  display: block;
+  overflow: hidden;
+  color: #e9eef5;
+  font-size: 0.76rem;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.catalog-lane-copy small {
+  display: block;
+  margin-top: 0.15rem;
+  color: #788697;
+  font-size: 0.63rem;
+}
+
+.catalog-title-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  list-style: none;
+}
+.catalog-title-row {
+  display: grid;
+  grid-template-columns: 1.8rem 3rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 76px;
+  border: 1px solid #263644;
+  border-radius: 12px;
+  background: rgba(13, 20, 28, 0.9);
+  padding: 0.55rem 0.7rem;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.catalog-title-row:hover { border-color: #3a5167; background: #111a24; }
+.catalog-title-rank { color: #718094; font-size: 0.72rem; font-weight: 900; text-align: center; }
+.catalog-title-poster {
+  width: 2.8rem;
+  height: 4rem;
+  overflow: hidden;
+  border: 1px solid #2a3947;
+  border-radius: 7px;
+  background: #111922;
+}
+.catalog-title-poster img { width: 100%; height: 100%; object-fit: cover; }
+.catalog-title-poster > span { display: grid; height: 100%; place-items: center; color: #667383; font-size: 0.5rem; font-weight: 900; }
+.catalog-title-copy { min-width: 0; }
+.catalog-title-copy strong { display: block; overflow: hidden; color: #edf2f7; font-size: 0.82rem; text-overflow: ellipsis; white-space: nowrap; }
+.catalog-title-copy > span { display: block; margin-top: 0.22rem; color: #7f8c9c; font-size: 0.66rem; }
+.catalog-title-open { color: #8097e8; font-size: 0.66rem; font-weight: 900; opacity: 0; transition: opacity 120ms ease; }
+.catalog-title-row:hover .catalog-title-open { opacity: 1; }
+
+/* Source directory: EverythingMoe-like information density, Couchlist style. */
+.source-index-layout {
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
+  gap: 1.15rem;
+  align-items: start;
+}
+.source-index-rail {
+  position: sticky;
+  top: 5.25rem;
+  overflow: hidden;
+  border: 1px solid #293846;
+  border-radius: 14px;
+  background: rgba(13, 20, 28, 0.94);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+.source-index-rail-title {
+  padding: 0.75rem 0.8rem 0.55rem;
+  color: #758496;
+  font-size: 0.64rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+.source-index-rail-group { border-top: 1px solid #22303c; border-bottom: 1px solid #22303c; }
+.source-index-rail-button {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-left: 2px solid transparent;
+  padding: 0.42rem 0.72rem;
+  color: #9ba8b8;
+  font-size: 0.71rem;
+  font-weight: 800;
+  text-align: left;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.source-index-rail-button:hover { background: #111a24; color: #eef3f8; }
+.source-index-rail-button span:last-child { color: #637184; font-size: 0.62rem; }
+.source-index-rail-button-active { border-left-color: #6f8cff; background: rgba(94, 126, 255, 0.09); color: #edf2ff; }
+.source-index-suggest-link {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  color: #e4ca74;
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: left;
+}
+.source-directory-mobile-filters { display: none; }
+.source-index-panel {
+  margin-top: 0.85rem;
+  overflow: hidden;
+  border: 1px solid #2b3a48;
+  border-radius: 14px;
+  background: rgba(11, 17, 24, 0.78);
+}
+.source-index-panel-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 0.9rem;
+  border-bottom: 1px solid #2a3946;
+  background: #101821;
+}
+.source-index-panel-heading h2 { margin-top: 0.1rem; color: #f0f4f8; font-family: "Arial Rounded MT Bold", "Trebuchet MS", sans-serif; font-size: 0.95rem; font-weight: 900; }
+.source-index-panel-heading > p { color: #8290a0; font-size: 0.7rem; }
+.source-index-panel-heading > p strong { color: #e8edf3; }
+.source-index-panel .source-directory-list { display: block; }
+.source-index-panel .source-directory-list > li + li { border-top: 1px solid #23313d; }
+.source-index-panel .source-directory-row {
+  grid-template-columns: 2rem minmax(0, 1fr) auto;
+  min-height: 82px;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 0;
+  background: #0c131b;
+  box-shadow: none;
+  padding: 0.68rem 0.8rem;
+}
+.source-index-panel .source-directory-list > li:nth-child(even) .source-directory-row { background: #0e161f; }
+.source-index-panel .source-directory-row:hover { background: #131d27; }
+.source-index-rank { color: #667587; font-size: 0.72rem; font-weight: 900; text-align: center; }
+.source-index-panel .source-directory-name { font-size: 0.9rem; }
+.source-index-panel .source-directory-meta { margin-top: 0.22rem; font-size: 0.68rem; }
+.source-index-panel .source-directory-reliability { margin-top: 0.18rem; font-size: 0.65rem; }
+.source-index-panel .source-vote-button,
+.source-index-panel .source-open-button { min-height: 32px; padding: 0.35rem 0.55rem; font-size: 0.68rem; }
+
+@media (max-width: 900px) {
+  .catalog-index-grid { grid-template-columns: 1fr; }
+  .catalog-lane ol { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-lane li + li { border-top: 0; }
+  .catalog-lane li:nth-child(n + 3) { border-top: 1px solid #202d38; }
+  .catalog-lane li:nth-child(even) { border-left: 1px solid #202d38; }
+  .source-index-layout { grid-template-columns: 1fr; }
+  .source-index-rail { display: none; }
+  .source-directory-mobile-filters { display: flex; }
+}
+
+@media (max-width: 700px) {
+  body {
+    background:
+      radial-gradient(circle at -10% 3%, rgba(229, 57, 53, 0.055), transparent 15rem),
+      radial-gradient(circle at 108% 12%, rgba(255, 205, 72, 0.04), transparent 14rem),
+      linear-gradient(180deg, #080c12 0%, #091019 55%, #080c12 100%);
+    background-attachment: scroll;
+  }
+  .catalog-lane ol { display: block; }
+  .catalog-lane li:nth-child(even) { border-left: 0; }
+  .catalog-lane li:nth-child(n + 2) { border-top: 1px solid #202d38; }
+  .catalog-title-list { grid-template-columns: 1fr; }
+  .catalog-title-row { grid-template-columns: 1.55rem 2.7rem minmax(0, 1fr); min-height: 68px; padding: 0.48rem 0.55rem; }
+  .catalog-title-open { display: none; }
+  .catalog-title-poster { width: 2.5rem; height: 3.55rem; }
+  .source-index-panel { border-radius: 12px; }
+  .source-index-panel-heading { padding: 0.7rem 0.75rem; }
+  .source-index-panel .source-directory-row {
+    grid-template-columns: 1.55rem minmax(0, 1fr);
+    gap: 0.55rem;
+    padding: 0.65rem 0.65rem 0.7rem;
+  }
+  .source-index-rank { padding-top: 0.3rem; }
+  .source-index-panel .source-directory-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    padding-left: 0;
+  }
+  .source-index-panel .source-site-icon-sm { width: 34px; height: 34px; flex-basis: 34px; }
+  .source-index-panel .source-site-icon-sm img { width: 22px; height: 22px; }
+}
+
+/* v12.7 permanent directory shell -----------------------------------------
+ * A quiet Couchlist pattern replaces cinematic wallpaper. The repeated
+ * popcorn marks act like brand stationery: visible enough to feel intentional,
+ * faint enough that catalog data and posters stay in charge.
+ */
+html {
+  background: #080c12;
+}
+
+body {
+  background-color: #080c12;
+  background-image:
+    url("/patterns/popcorn-directory.svg"),
+    radial-gradient(circle at 4% 2%, rgba(210, 70, 62, 0.11), transparent 26rem),
+    radial-gradient(circle at 96% 8%, rgba(241, 207, 103, 0.085), transparent 24rem),
+    radial-gradient(circle at 48% -9rem, rgba(76, 111, 205, 0.15), transparent 38rem),
+    linear-gradient(180deg, #080c12 0%, #0a1119 46%, #080c12 100%);
+  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: 420px 320px, auto, auto, auto, auto;
+  background-position: 0 0, 0 0, 100% 0, 50% 0, 0 0;
+  background-attachment: fixed, fixed, fixed, fixed, fixed;
+}
+
+/* The pattern remains a background texture, never a content competitor. */
+.app-top-nav {
+  background: rgba(8, 12, 18, 0.94);
+  border-bottom-color: rgba(42, 54, 68, 0.88);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+  backdrop-filter: blur(18px) saturate(115%);
+}
+
+.catalog-shell {
+  position: relative;
+}
+
+.catalog-home-header {
+  align-items: flex-start;
+  padding: 1rem 1.05rem 1.05rem;
+  border: 1px solid rgba(44, 58, 72, 0.92);
+  border-radius: 15px;
+  background: rgba(10, 17, 25, 0.84);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.16);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.library-stats-grid {
+  gap: 0.6rem;
+}
+
+.library-stat-card {
+  background: rgba(13, 20, 28, 0.9);
+}
+
+.home-directory-links {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #263543;
+  border-radius: 14px;
+  background: rgba(10, 16, 23, 0.82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.home-directory-link {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  gap: 0.16rem;
+  padding: 0.78rem 2rem 0.78rem 0.85rem;
+  border-right: 1px solid #22313e;
+  transition: background-color 120ms ease;
+}
+.home-directory-link:last-child { border-right: 0; }
+.home-directory-link:hover { background: rgba(19, 29, 39, 0.92); }
+.home-directory-link-label {
+  color: #edf2f7;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+.home-directory-link-detail {
+  overflow: hidden;
+  color: #7f8d9d;
+  font-size: 0.65rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-directory-link-arrow {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  color: #7894ff;
+  font-size: 0.82rem;
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+
+/* Directory surfaces stay clearly separated from the patterned page. */
+.source-index-rail,
+.source-index-panel,
+.catalog-lane,
+.catalog-title-row,
+.card,
+.server-pulse-card,
+.community-card {
+  -webkit-backdrop-filter: blur(9px);
+  backdrop-filter: blur(9px);
+}
+
+.source-index-panel {
+  border-color: #314252;
+  background: rgba(9, 15, 22, 0.9);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
+}
+.source-index-panel .source-directory-list > li + li {
+  border-top-color: #2a3946;
+}
+.source-index-panel .source-directory-row {
+  background: rgba(12, 19, 27, 0.96);
+}
+.source-index-panel .source-directory-list > li:nth-child(even) .source-directory-row {
+  background: rgba(15, 24, 33, 0.98);
+}
+.source-index-panel .source-directory-row:hover {
+  background: #15202b;
+}
+
+@media (max-width: 760px) {
+  body {
+    background-image:
+      url("/patterns/popcorn-directory.svg"),
+      radial-gradient(circle at -8% 2%, rgba(210, 70, 62, 0.09), transparent 18rem),
+      radial-gradient(circle at 108% 10%, rgba(241, 207, 103, 0.07), transparent 16rem),
+      linear-gradient(180deg, #080c12 0%, #091019 52%, #080c12 100%);
+    background-repeat: repeat, no-repeat, no-repeat, no-repeat;
+    background-size: 330px 251px, auto, auto, auto;
+    background-attachment: scroll, scroll, scroll, scroll;
+  }
+
+  .catalog-home-header {
+    padding: 0.9rem;
+  }
+
+  .home-directory-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-directory-link:nth-child(2) { border-right: 0; }
+  .home-directory-link:nth-child(-n + 2) { border-bottom: 1px solid #22313e; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body { background-attachment: scroll; }
+}

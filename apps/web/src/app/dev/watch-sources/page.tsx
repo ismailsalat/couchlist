@@ -22,7 +22,7 @@ export default async function DevWatchSourcesPage() {
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Admin" />
       <main className="mobile-page-shell mx-auto max-w-5xl px-5 pb-20">
         <header className="mt-8">
           <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-text-secondary">Dev tools</p>

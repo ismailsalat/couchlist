@@ -28,6 +28,25 @@ export interface GlobalSourceItem {
 type Filter = 'ALL' | 'ANIME' | 'MOVIES' | 'TV' | 'OFFICIAL' | 'COMMUNITY' | 'UNVERIFIED' | 'FREE' | 'SUBSCRIPTION' | 'RENT_BUY';
 type Sort = 'LIKED' | 'VOTES' | 'WORKING' | 'NEW';
 
+const FILTERS: Array<[Filter, string]> = [
+  ['ALL', 'All sources'],
+  ['ANIME', 'Anime'],
+  ['MOVIES', 'Movies'],
+  ['TV', 'TV'],
+  ['OFFICIAL', 'Official'],
+  ['COMMUNITY', 'Community'],
+  ['UNVERIFIED', 'Unverified'],
+  ['FREE', 'Free'],
+  ['SUBSCRIPTION', 'Subscription'],
+  ['RENT_BUY', 'Rent / Buy'],
+];
+const SORTS: Array<[Sort, string]> = [
+  ['LIKED', 'Most liked'],
+  ['VOTES', 'Most votes'],
+  ['WORKING', 'Recently working'],
+  ['NEW', 'Newest'],
+];
+
 export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSourceItem[]; canVote: boolean }) {
   const [directorySources, setDirectorySources] = useState(sources);
   const [query, setQuery] = useState('');
@@ -58,83 +77,110 @@ export function GlobalSourcesDirectory({ sources, canVote }: { sources: GlobalSo
       });
   }, [directorySources, query, filter, sort]);
 
-  return (
-    <div className="mt-6">
-      <div className="source-directory-tools">
-        <input
-          className="input source-directory-search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search sources…"
-          aria-label="Search source directory"
-        />
+  const filterLabel = FILTERS.find(([value]) => value === filter)?.[1] ?? 'All sources';
 
-        <div className="source-directory-filter-scroller" aria-label="Filter sources">
+  return (
+    <div className="source-index-layout mt-6">
+      <aside className="source-index-rail" aria-label="Source directory sections">
+        <p className="source-index-rail-title">Directory</p>
+        <div className="source-index-rail-group">
           {FILTERS.map(([value, label]) => (
             <button
               key={value}
               type="button"
               onClick={() => setFilter(value)}
-              className={filter === value ? 'source-filter-chip source-filter-chip-active' : 'source-filter-chip'}
+              className={filter === value ? 'source-index-rail-button source-index-rail-button-active' : 'source-index-rail-button'}
             >
-              {label}
+              <span>{label}</span>
+              <span>{countFor(directorySources, value)}</span>
             </button>
           ))}
         </div>
+        <button type="button" className="source-index-suggest-link" onClick={() => document.getElementById('suggest-source')?.scrollIntoView({ behavior: 'smooth' })}>
+          Suggest a source ↓
+        </button>
+      </aside>
 
-        <div className="source-directory-sort-compact">
-          <label htmlFor="source-sort">Sort</label>
-          <select id="source-sort" value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
-            {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          {(filter !== 'ALL' || query) ? (
-            <button type="button" className="source-clear-button" onClick={() => { setFilter('ALL'); setQuery(''); }}>Clear</button>
-          ) : null}
+      <div className="min-w-0">
+        <div className="source-directory-tools">
+          <input
+            className="input source-directory-search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search sources…"
+            aria-label="Search source directory"
+          />
+
+          <div className="source-directory-filter-scroller source-directory-mobile-filters" aria-label="Filter sources">
+            {FILTERS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={filter === value ? 'source-filter-chip source-filter-chip-active' : 'source-filter-chip'}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="source-directory-sort-compact">
+            <label htmlFor="source-sort">Sort</label>
+            <select id="source-sort" value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+              {SORTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+            {(filter !== 'ALL' || query) ? (
+              <button type="button" className="source-clear-button" onClick={() => { setFilter('ALL'); setQuery(''); }}>Clear</button>
+            ) : null}
+          </div>
         </div>
+
+        <SourceSafetyNote />
+
+        <section className="source-index-panel" aria-labelledby="source-index-heading">
+          <div className="source-index-panel-heading">
+            <div>
+              <p className="catalog-kicker">{filterLabel}</p>
+              <h2 id="source-index-heading">Source index</h2>
+            </div>
+            <p><strong>{filtered.length}</strong> source{filtered.length === 1 ? '' : 's'}</p>
+          </div>
+
+          {filtered.length ? (
+            <ol className="source-directory-list">
+              {filtered.map((source, index) => (
+                <li key={source.id}>
+                  <SourceDirectoryRow
+                    rank={index + 1}
+                    source={source}
+                    canVote={canVote}
+                    onStats={(next) => setDirectorySources((current) => current.map((item) => item.id === source.id ? { ...item, ...next } : item))}
+                  />
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="source-directory-empty">
+              <p className="font-display font-bold">No matching sources.</p>
+              <p className="muted mt-1">Try another search or category.</p>
+            </div>
+          )}
+        </section>
+
+        <PublicSuggestion />
       </div>
-
-      <SourceSafetyNote />
-
-      <div className="source-directory-count">
-        <strong>{filtered.length}</strong> source{filtered.length === 1 ? '' : 's'}
-      </div>
-
-      {filtered.length ? (
-        <div className="source-directory-list">
-          {filtered.map((source) => (
-            <SourceDirectoryRow
-              key={source.id}
-              source={source}
-              canVote={canVote}
-              onStats={(next) => setDirectorySources((current) => current.map((item) => item.id === source.id ? { ...item, ...next } : item))}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="source-directory-empty">
-          <p className="font-display font-bold">No matching sources.</p>
-          <p className="muted mt-1">Try another search or filter.</p>
-        </div>
-      )}
-
-      <PublicSuggestion />
     </div>
   );
 }
 
-const FILTERS: Array<[Filter, string]> = [
-  ['ALL', 'All'], ['ANIME', 'Anime'], ['MOVIES', 'Movies'], ['TV', 'TV'],
-  ['OFFICIAL', 'Official'], ['COMMUNITY', 'Community'], ['UNVERIFIED', 'Unverified'],
-  ['FREE', 'Free'], ['SUBSCRIPTION', 'Subscription'], ['RENT_BUY', 'Rent / Buy'],
-];
-const SORTS: Array<[Sort, string]> = [['LIKED', 'Most liked'], ['VOTES', 'Most votes'], ['WORKING', 'Recently working'], ['NEW', 'Newest']];
-
 function SourceDirectoryRow({
   source,
+  rank,
   canVote,
   onStats,
 }: {
   source: GlobalSourceItem;
+  rank: number;
   canVote: boolean;
   onStats: (stats: Partial<GlobalSourceItem>) => void;
 }) {
@@ -177,6 +223,7 @@ function SourceDirectoryRow({
 
   return (
     <article className="source-directory-row">
+      <span className="source-index-rank" aria-hidden="true">{rank}</span>
       <div className="source-directory-main">
         <SourceSiteIcon domain={source.domain} name={source.name} size="sm" />
         <div className="min-w-0 flex-1">
@@ -283,6 +330,21 @@ function PublicSuggestion() {
 
 function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
   return <label className="inline-flex items-center gap-2"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />{label}</label>;
+}
+
+function countFor(sources: GlobalSourceItem[], filter: Filter): number {
+  if (filter === 'ALL') return sources.length;
+  return sources.filter((source) => {
+    if (filter === 'ANIME') return source.supportsAnime;
+    if (filter === 'MOVIES') return source.supportsMovies;
+    if (filter === 'TV') return source.supportsTv;
+    if (filter === 'OFFICIAL') return source.sourceType === 'OFFICIAL';
+    if (filter === 'COMMUNITY') return source.sourceType === 'COMMUNITY';
+    if (filter === 'UNVERIFIED') return source.sourceType === 'UNVERIFIED';
+    if (filter === 'FREE') return source.accessType === 'FREE' || source.accessType === 'FREE_WITH_ADS';
+    if (filter === 'SUBSCRIPTION') return source.accessType === 'SUBSCRIPTION';
+    return source.accessType === 'RENT' || source.accessType === 'BUY' || source.sourceType === 'RENT_BUY';
+  }).length;
 }
 
 function healthMeta(value: GlobalSourceItem['healthStatus'], signalCount: number) {

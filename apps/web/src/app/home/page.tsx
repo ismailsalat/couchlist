@@ -21,10 +21,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-/**
- * Home stays deliberately familiar: a cozy hero, a tiny first-use guide,
- * useful discovery, friends, then optional Discord communities.
- */
+/** Home is a catalog dashboard first: library, discovery, people, communities. */
 export default async function HomePage() {
   const user = await currentUser();
   if (!user) redirect("/");
@@ -39,8 +36,7 @@ export default async function HomePage() {
     getGlobalTrending(20),
   ]);
 
-  const trackedCount =
-    counts.WATCHING + counts.COMPLETED + counts.PLAN_TO_WATCH;
+  const trackedCount = counts.WATCHING + counts.COMPLETED + counts.PLAN_TO_WATCH;
   const isNewUser = trackedCount === 0;
   const friendIds = friends.map((friend) => friend.id);
   await reconcileAnimeEntriesForUsers(
@@ -48,10 +44,7 @@ export default async function HomePage() {
     16,
   );
   const [popular, communitySnapshots] = await Promise.all([
-    entries.popularAmong(
-      friendIds.length > 0 ? [...friendIds, user.id] : [],
-      4,
-    ),
+    entries.popularAmong(friendIds.length > 0 ? [...friendIds, user.id] : [], 4),
     Promise.all(userGuilds.map((guild) => buildGuildPage(user.id, guild.id))),
   ]);
 
@@ -70,74 +63,59 @@ export default async function HomePage() {
       updatedAt: friend.watching!.updatedAt,
       sharedServers: friend.sharedServers,
     }))
-    .sort(
-      (left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt),
-    )
+    .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
     .slice(0, 5);
 
   return (
     <>
-      <Nav avatarUrl={user.avatarUrl} username={user.username} />
+      <Nav avatarUrl={user.avatarUrl} username={user.username} mobileLabel="Home" showSearch={false} />
 
-      <main className="mx-auto max-w-5xl px-5 pb-20">
-        <div className="mt-6 sm:hidden">
+      <main className="catalog-shell mx-auto max-w-5xl px-5 pb-20">
+        <div className="mt-5">
           <SearchBar />
+          <p className="muted mt-2 text-xs">Search the catalog for anime, movies, and TV.</p>
         </div>
 
-        <section className="cozy-hero mt-6 overflow-hidden rounded-[28px] border border-border">
-          <div className="cozy-hero-copy">
-            <span className="cozy-kicker">Couchlist</span>
-            <h1 className="font-display mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-              Good shows.
-              <br />
-              <span className="text-[#7fc8ff]">Better company.</span>
+        <header className="catalog-home-header mt-7">
+          <div className="min-w-0">
+            <p className="catalog-kicker">Your Couchlist</p>
+            <h1 className="font-display mt-1 text-2xl font-black sm:text-3xl">
+              Welcome back, {user.globalName ?? user.username}
             </h1>
-            <p className="mt-3 max-w-md text-sm font-medium leading-6 text-[#b7c2d3] sm:text-base">
-              Keep your list simple, see what your people are into, and find
-              something worth staying in for.
+            <p className="muted mt-2 max-w-2xl">
+              Track your list, see what your people like, and browse community sources from one place.
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/search" className="btn-primary">
-                Find something to watch
-              </Link>
-              <Link href="/watch-together" className="btn-secondary">
-                Pick with friends
-              </Link>
-            </div>
           </div>
-          <div className="cozy-couch" aria-hidden="true">
-            <div className="cozy-lamp" />
-            <div className="cozy-tv">one more episode?</div>
-            <div className="cozy-person">
-              <span className="cozy-head" />
-              <span className="cozy-body" />
-              <span className="cozy-leg cozy-leg-one" />
-              <span className="cozy-leg cozy-leg-two" />
-            </div>
-            <div className="cozy-sofa" />
-          </div>
+        </header>
+
+        <section className="library-stats-grid mt-5" aria-label="Your library summary">
+          <LibraryStat label="Watching" value={counts.WATCHING} href="/profile" />
+          <LibraryStat label="Plan to watch" value={counts.PLAN_TO_WATCH} href="/profile" />
+          <LibraryStat label="Completed" value={counts.COMPLETED} href="/profile" />
         </section>
+
+        <nav className="home-directory-links mt-3" aria-label="Couchlist shortcuts">
+          <HomeDirectoryLink href="/search" label="Catalog" detail="Browse titles" />
+          <HomeDirectoryLink href="/sources" label="Sources" detail="Community directory" />
+          <HomeDirectoryLink href="/friends" label="Friends" detail="People and taste" />
+          <HomeDirectoryLink href="/my-server" label="Servers" detail="Shared catalogs" />
+        </nav>
 
         {isNewUser ? <NewUserGuide /> : null}
 
         <TrendingSection
           anime={globalTrending.anime}
-          movies={globalTrending.moviesAndTv.filter(
-            (item) => item.mediaType === "MOVIE",
-          )}
-          tv={globalTrending.moviesAndTv.filter(
-            (item) => item.mediaType === "TV",
-          )}
+          movies={globalTrending.moviesAndTv.filter((item) => item.mediaType === "MOVIE")}
+          tv={globalTrending.moviesAndTv.filter((item) => item.mediaType === "TV")}
           degraded={globalTrending.degraded}
         />
 
-        <Section title="Friends Watching">
+        <Section title="Friends Activity">
           {items.length > 0 ? (
             <FriendActivity items={items} />
           ) : (
             <EmptyState>
-              Add a Couchlist friend to see what they&apos;re watching. Friends
-              work even if you don&apos;t share a Discord server.
+              Add a Couchlist friend to see what they are watching and compare taste.
             </EmptyState>
           )}
         </Section>
@@ -160,25 +138,14 @@ export default async function HomePage() {
             </div>
           ) : (
             <EmptyState>
-              This fills in automatically as you and your friends add titles.
-              For now, try something from Trending above.
+              This fills in as you and your friends add titles. Trending above is a good place to start.
             </EmptyState>
           )}
         </Section>
 
-        <Section title="Community Servers">
+        <Section title="Your Servers">
           {userGuilds.length > 0 ? (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-primary/20 bg-primary/[0.07] px-4 py-3">
-                <p className="text-sm font-bold text-[#c5d0ff]">
-                  Server perks unlocked ✦
-                </p>
-                <p className="muted mt-1">
-                  These are Discord servers connected to Couchlist. Open one to
-                  see what members are watching, rating, and saving for later.
-                </p>
-              </div>
-
+            <div className="space-y-3">
               {userGuilds.map((guild, index) => {
                 const snapshot = communitySnapshots[index];
                 const watching = snapshot?.currentlyWatching.slice(0, 3) ?? [];
@@ -187,68 +154,65 @@ export default async function HomePage() {
                   <Link
                     key={guild.id}
                     href={`/server/${guild.discordId}`}
-                    className="community-card block rounded-[24px] border border-border bg-card/95 p-4 transition hover:border-primary/50"
+                    className="community-card block rounded-2xl border border-border bg-card/95 p-4 transition hover:border-primary/50"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-3">
                         <ServerIcon iconUrl={guild.iconUrl} name={guild.name} />
                         <div className="min-w-0">
-                          <p className="truncate font-display text-base font-bold">
-                            {guild.name}
-                          </p>
+                          <p className="truncate font-display text-base font-bold">{guild.name}</p>
                           <p className="muted">
-                            {snapshot?.memberCount ?? 0} Couchlist member
-                            {snapshot?.memberCount === 1 ? "" : "s"} · Discord
-                            community
+                            {snapshot?.memberCount ?? 0} Couchlist member{snapshot?.memberCount === 1 ? "" : "s"}
                           </p>
                         </div>
                       </div>
-                      <span className="rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 text-[10px] font-bold text-[#afbdff]">
-                        Open community →
-                      </span>
+                      <span className="catalog-inline-link">Open →</span>
                     </div>
-
                     {watching.length > 0 || wanted.length > 0 ? (
                       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        <CommunityMiniList
-                          label="Watching in this server"
-                          items={watching}
-                        />
-                        <CommunityMiniList
-                          label="Want to watch next"
-                          items={wanted}
-                        />
+                        <CommunityMiniList label="Watching" items={watching} />
+                        <CommunityMiniList label="Planning" items={wanted} />
                       </div>
-                    ) : (
-                      <div className="mt-4 rounded-2xl border border-border/80 bg-background/45 px-4 py-3">
-                        <p className="text-sm font-bold">
-                          Nothing tracked here yet.
-                        </p>
-                        <p className="muted mt-1">
-                          As members add titles, this card will show the
-                          server&apos;s shared taste.
-                        </p>
-                      </div>
-                    )}
+                    ) : null}
                   </Link>
                 );
               })}
             </div>
           ) : (
-            <div className="card px-5 py-7">
-              <p className="font-display text-lg font-bold">
-                Servers are optional.
-              </p>
-              <p className="muted mt-1 max-w-2xl">
-                Couchlist works with just your friends. If a server owner adds
-                the Couchlist bot, members unlock a shared community page
-                without changing their personal friend list.
-              </p>
-            </div>
+            <EmptyState>
+              Servers are optional. Add the Couchlist bot to a Discord community to unlock a shared catalog page.
+            </EmptyState>
           )}
         </Section>
       </main>
     </>
+  );
+}
+
+function HomeDirectoryLink({
+  href,
+  label,
+  detail,
+}: {
+  href: string;
+  label: string;
+  detail: string;
+}) {
+  return (
+    <Link href={href} className="home-directory-link">
+      <span className="home-directory-link-label">{label}</span>
+      <span className="home-directory-link-detail">{detail}</span>
+      <span className="home-directory-link-arrow" aria-hidden="true">→</span>
+    </Link>
+  );
+}
+
+function LibraryStat({ label, value, href }: { label: string; value: number; href: string }) {
+  return (
+    <Link href={href} className="library-stat-card">
+      <span className="library-stat-value">{value}</span>
+      <span className="library-stat-label">{label}</span>
+    </Link>
   );
 }
 
@@ -302,16 +266,16 @@ function TrendingSection({
     <section className="mt-10">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 className="font-display text-lg font-bold">Trending Right Now</h2>
+          <h2 className="font-display text-lg font-bold">Discover</h2>
           <p className="muted mt-1">
-            A quick global starting point when your Couchlist is still quiet.
+            Popular titles across the catalog right now.
           </p>
         </div>
         <Link
           href="/search"
           className="text-sm font-bold text-primary hover:text-primary-hover"
         >
-          Search anything →
+          Browse catalog →
         </Link>
       </div>
 
