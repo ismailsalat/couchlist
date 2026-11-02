@@ -127,6 +127,13 @@
       "when": 1789126000000,
       "tag": "0017_avoid_warning_and_avatars",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789212400000,
+      "tag": "0018_trusted_sources",
+      "breakpoints": true
     }
   ]
 }

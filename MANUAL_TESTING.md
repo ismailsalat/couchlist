@@ -84,6 +84,38 @@ Signed out, in a private window:
 - [ ] With more than three contributors, the Credit card shows a shortened
       line ("Mina, Jay and 3 others") and a "Show N more contributors" button.
 
+### Signing up holds you until you verify
+
+- [ ] Sign up. Press the back button from the code page: you land back on it.
+- [ ] Type `/` or `/saved` into the address bar: same.
+- [ ] Use the code. The site opens up and the account menu appears.
+- [ ] Sign up again with another address and click "Use a different address".
+      You are signed out and can browse normally.
+
+### Trusted picks
+
+- [ ] Mark a low-scoring source as trusted with order 10. It jumps to the top
+      of Discover, above sources with far more votes.
+- [ ] It shows a gold Trusted mark, and the note appears on hover.
+- [ ] It does not jump the queue when sorting by name — that would look broken.
+- [ ] Untick it. The note and the mark both go, and it returns to its place.
+
+### Deleting a source
+
+- [ ] Open Edit on a source with votes and saves. "Delete permanently" says
+      plainly that hiding is usually better.
+- [ ] The confirmation names how many votes and saves go with it.
+- [ ] The delete button stays disabled until the domain is typed exactly.
+- [ ] Delete it. It is gone from Discover, from Saved, and from any collection.
+- [ ] The account that voted on it still exists and can still sign in.
+
+### When email breaks
+
+- [ ] Set a wrong RESEND_API_KEY and try to sign up. The admin overview says
+      the key was rejected, and names the variable.
+- [ ] Set MAIL_FROM to an unverified domain. The admin overview explains the
+      restriction rather than showing a bare 403.
+
 ### Votes and saves
 
 - [ ] Like something. It fills in and turns red, and the count goes up by one.
@@ -152,6 +184,17 @@ Signed out, in a private window:
       (`/api/admin/candidates/<id>/icon`) while signed out — it 401s.
 
 ## 5. On a real phone
+
+The one thing an emulator cannot show you is the status bar. Check these on
+actual hardware:
+
+- [ ] The header starts **below** the clock and the battery, not behind them.
+- [ ] Nothing touches the left or right edge of the screen.
+- [ ] Rotate to landscape on a notched phone: content stays clear of the
+      camera housing on whichever side it ends up.
+- [ ] Nothing sits under the home indicator at the bottom.
+- [ ] Install it to the home screen and open it from there. That is the mode
+      where the status bar overlaps, so it is the one that matters.
 
 An emulator is not a phone. Check on actual hardware:
 

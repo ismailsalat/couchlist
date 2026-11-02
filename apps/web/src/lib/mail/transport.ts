@@ -1,6 +1,7 @@
 import 'server-only';
 import { createLogger } from '@couchlist/shared';
 import { config } from '../config';
+import { recordMailAttempt } from './health';
 
 /**
  * Outbound email.
@@ -53,6 +54,11 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
   }
 
   if (transport === 'none') {
+    recordMailAttempt({
+      at: new Date(),
+      ok: false,
+      detail: 'RESEND_API_KEY and MAIL_FROM are not set, so nothing was sent.',
+    });
     logger.error('mail_provider_not_configured', {
       to: message.to,
       subject: message.subject,
@@ -85,6 +91,7 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
         // The address is not logged with the body, to keep logs clean of PII.
         detail: detail.slice(0, 500),
       });
+      recordMailAttempt({ at: new Date(), ok: false, status: response.status, detail: detail.slice(0, 500) });
       return {
         delivered: false,
         transport: 'none',
@@ -94,9 +101,11 @@ export async function sendMail(message: MailMessage): Promise<MailResult> {
     }
 
     logger.info('mail_sent', { subject: message.subject });
+    recordMailAttempt({ at: new Date(), ok: true });
     return { delivered: true, transport: 'resend' };
   } catch (error) {
     logger.error('mail_send_failed', { message: (error as Error).message });
+    recordMailAttempt({ at: new Date(), ok: false, detail: (error as Error).message });
     return {
       delivered: false,
       transport: 'none',

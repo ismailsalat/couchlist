@@ -100,6 +100,8 @@ export default async function CollectionPage({
                   hasLotsOfAds: item.source.hasLotsOfAds,
                   shouldAvoid: item.source.shouldAvoid,
                   avoidReason: item.source.avoidReason,
+                  trustedRank: item.source.trustedRank,
+                  trustedNote: item.source.trustedNote,
                   hasIcon: item.source.iconMime !== null,
                   likes: 0,
                   dislikes: 0,

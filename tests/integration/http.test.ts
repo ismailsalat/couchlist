@@ -186,7 +186,9 @@ beforeAll(async () => {
       RATE_LIMIT_MUTATIONS_PER_MINUTE: '10000',
       LOG_LEVEL: 'error',
     },
-    stdio: 'ignore',
+    // SHOW_SERVER_LOG=1 surfaces the server's own errors when a test fails
+    // for a reason the HTTP status alone does not explain.
+    stdio: process.env.SHOW_SERVER_LOG ? 'inherit' : 'ignore',
     windowsHide: true,
   });
 
@@ -834,6 +836,184 @@ describe('cross-site request forgery', () => {
       headers: { origin: 'https://evil.example' },
     });
     expect(response.status).toBe(200);
+  });
+});
+
+describe('trusted picks and deletion', () => {
+  async function makeSource(id: string, name: string, domain: string) {
+    await db.execute(sql`
+      insert into watch_sources (id, name, domain, homepage_url, source_type, supports_tv, is_enabled)
+      values (${id}, ${name}, ${domain}, ${'https://' + domain + '/'}, 'COMMUNITY', true, true)
+      on conflict (domain) do nothing
+    `);
+    return id;
+  }
+
+  async function patch(sourceId: string, who: Account, body: Record<string, unknown>) {
+    return fetch(`${BASE_URL}/api/admin/sources/${sourceId}`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json', cookie: who.cookie, origin: BASE_URL },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it('lifts a trusted pick above a better-scoring source', async () => {
+    const adminUser = await admin();
+    const low = await makeSource('wsr_trust_low', 'Trust Low', 'trust-low.test');
+
+    // Give an existing source real votes so it would normally outrank ours.
+    const voters = await Promise.all([createAccount(), createAccount(), createAccount()]);
+    const rival = (
+      await db.execute(
+        sql`select id from watch_sources where is_enabled = true and id <> ${low} limit 1`,
+      )
+    ).rows[0] as { id: string };
+    for (const voter of voters) {
+      await post(`/api/sources/${rival.id}/vote`, voter, { value: 'LIKE' });
+    }
+
+    const order = async () => {
+      const html = await (await fetch(BASE_URL)).text();
+      return html.indexOf('Trust Low');
+    };
+
+    const before = await order();
+
+    const promoted = await patch(low, adminUser, {
+      name: 'Trust Low',
+      url: 'https://trust-low.test/',
+      categories: ['TV'],
+      trustedRank: 10,
+      trustedNote: 'Reliable for years',
+      isEnabled: true,
+      adminRankPenalty: 0,
+    });
+    expect(promoted.status).toBe(200);
+
+    const html = await (await fetch(BASE_URL)).text();
+    const after = html.indexOf('Trust Low');
+    expect(after).toBeGreaterThan(-1);
+    // It moved up, and it says why.
+    expect(after).toBeLessThan(before === -1 ? Number.MAX_SAFE_INTEGER : before);
+    expect(html).toContain('Trusted');
+    expect(html).toContain('Reliable for years');
+  });
+
+  it('drops the note when the pick is withdrawn', async () => {
+    const adminUser = await admin();
+    const id = await makeSource('wsr_trust_off', 'Trust Off', 'trust-off.test');
+
+    await patch(id, adminUser, {
+      name: 'Trust Off',
+      url: 'https://trust-off.test/',
+      categories: ['TV'],
+      trustedRank: 5,
+      trustedNote: 'Temporary',
+      isEnabled: true,
+      adminRankPenalty: 0,
+    });
+    await patch(id, adminUser, {
+      name: 'Trust Off',
+      url: 'https://trust-off.test/',
+      categories: ['TV'],
+      trustedRank: null,
+      trustedNote: 'Temporary',
+      isEnabled: true,
+      adminRankPenalty: 0,
+    });
+
+    const row = (
+      await db.execute(
+        sql`select trusted_rank, trusted_note, trusted_at from watch_sources where id = ${id}`,
+      )
+    ).rows[0] as { trusted_rank: number | null; trusted_note: string | null; trusted_at: Date | null };
+    expect(row.trusted_rank).toBeNull();
+    expect(row.trusted_note).toBeNull();
+    expect(row.trusted_at).toBeNull();
+  });
+
+  it('refuses a trusted pick from a normal account', async () => {
+    const contributor = await createAccount();
+    const id = await makeSource('wsr_trust_guard', 'Trust Guard', 'trust-guard.test');
+
+    const response = await patch(id, contributor, {
+      name: 'Trust Guard',
+      url: 'https://trust-guard.test/',
+      categories: ['TV'],
+      trustedRank: 1,
+    });
+    expect([401, 403, 404]).toContain(response.status);
+  });
+
+  it('deletes a source only when the domain is typed back', async () => {
+    const adminUser = await admin();
+    const voter = await createAccount();
+    const id = await makeSource('wsr_delete_me', 'Delete Me', 'delete-me.test');
+    await post(`/api/sources/${id}/vote`, voter, { value: 'LIKE' });
+    await post(`/api/sources/${id}/save`, voter, {});
+
+    // What would go with it, before anything goes.
+    const refs = await fetch(`${BASE_URL}/api/admin/sources/${id}/references`, authed(adminUser));
+    expect(refs.status).toBe(200);
+    const counts = await refs.json();
+    expect(counts.votes).toBe(1);
+    expect(counts.saves).toBe(1);
+
+    const wrong = await fetch(`${BASE_URL}/api/admin/sources/${id}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({ confirmDomain: 'not-the-domain.test' }),
+    });
+    expect(wrong.status).toBe(400);
+    // Still there.
+    expect((await fetch(`${BASE_URL}/sources/${id}`)).status).toBe(200);
+
+    const right = await fetch(`${BASE_URL}/api/admin/sources/${id}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({ confirmDomain: 'Delete-Me.TEST', reason: 'duplicate' }),
+    });
+    expect(right.status).toBe(200);
+
+    const gone = await db.execute(
+      sql`select count(*)::int as n from watch_sources where id = ${id}`,
+    );
+    expect((gone.rows[0] as { n: number }).n).toBe(0);
+
+    // Everything hanging off it went too, and the voter's account did not.
+    for (const table of ['source_votes', 'source_bookmarks', 'source_contributions']) {
+      const left = await db.execute(
+        sql.raw(`select count(*)::int as n from ${table} where source_id = 'wsr_delete_me'`),
+      );
+      expect((left.rows[0] as { n: number }).n).toBe(0);
+    }
+    const accountStillThere = await db.execute(
+      sql`select count(*)::int as n from users where email = ${voter.email}`,
+    );
+    expect((accountStillThere.rows[0] as { n: number }).n).toBe(1);
+
+    // The removal is on record even though its subject is not.
+    const audit = await db.execute(
+      sql`select count(*)::int as n from audit_logs where action = 'source_deleted'`,
+    );
+    expect((audit.rows[0] as { n: number }).n).toBeGreaterThan(0);
+  });
+
+  it('refuses deletion from a normal account', async () => {
+    const contributor = await createAccount();
+    const id = await makeSource('wsr_delete_guard', 'Delete Guard', 'delete-guard.test');
+
+    const response = await fetch(`${BASE_URL}/api/admin/sources/${id}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: contributor.cookie, origin: BASE_URL },
+      body: JSON.stringify({ confirmDomain: 'delete-guard.test' }),
+    });
+    expect([401, 403, 404]).toContain(response.status);
+
+    const still = await db.execute(
+      sql`select count(*)::int as n from watch_sources where id = ${id}`,
+    );
+    expect((still.rows[0] as { n: number }).n).toBe(1);
   });
 });
 

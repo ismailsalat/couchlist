@@ -85,3 +85,25 @@ export function StopOctagon({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/**
+ * A moderator's pick.
+ *
+ * Gold rather than orange or red, which are reserved for warnings, and a
+ * filled star so it reads as an endorsement at a glance. The note explains
+ * why in the moderator's own words; without one it still says what it is,
+ * because a mark nobody can interpret is just decoration.
+ */
+export function TrustedMark({ note }: { note?: string | null }) {
+  return (
+    <span
+      title={note ?? 'A moderator vouched for this one'}
+      className="inline-flex items-center gap-1 rounded-pill border border-trusted-line bg-trusted-bg px-[7px] py-px text-xs font-bold text-trusted-text"
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24" fill="currentColor" className="h-3 w-3">
+        <path d="M12 1.8l3.09 6.26 6.91 1-5 4.87 1.18 6.88L12 17.56l-6.18 3.25L7 13.93l-5-4.87 6.91-1z" />
+      </svg>
+      Trusted
+    </span>
+  );
+}

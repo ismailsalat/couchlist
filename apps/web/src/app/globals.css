@@ -40,6 +40,15 @@
    * list of their own votes. Neither is orange or red-as-warning, which is
    * reserved below.
    */
+  /*
+   * A moderator's pick. Gold: warm, but outside the orange-and-red range
+   * reserved for warnings, so a trusted mark and a caution never read as the
+   * same kind of thing.
+   */
+  --cl-trusted-bg: #413721;
+  --cl-trusted-text: #ffd98a;
+  --cl-trusted-line: #6f5b2c;
+
   --cl-voted-bg: #2f3a4a;
   --cl-voted-text: #c3d6ee;
   --cl-voted-line: #4d6180;
@@ -269,19 +278,30 @@ h3 {
 
 /* A source description is one line on desktop and wraps to two on a phone,
    so a long description cannot push the row's actions off screen. */
+/*
+ * A source's one-line description.
+ *
+ * Two lines wherever the row is narrow enough that one would be cut in the
+ * middle of a sentence, which includes every phone and every tablet. A single
+ * ellipsised line only once the container is wide enough that most
+ * descriptions fit in it whole, where a second line would just leave a ragged
+ * gap under every row.
+ */
 .cl-desc-clamp {
-  white-space: nowrap;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
-@media (max-width: 600px) {
+
+@media (min-width: 1024px) {
   .cl-desc-clamp {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
+    display: block;
+    white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -347,5 +367,30 @@ h3 {
   }
   .cl-vote:active {
     transform: none;
+  }
+}
+
+/*
+ * The page shell, and the device's safe areas.
+ *
+ * `env(safe-area-inset-*)` is zero on a desktop browser and on a phone held
+ * in a way that needs no inset, so `max()` keeps the ordinary padding in
+ * those cases and grows only where the hardware demands it: the status bar
+ * and camera housing at the top, the home indicator at the bottom, and the
+ * rounded corners either side in landscape.
+ */
+.cl-shell {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+}
+
+@media (min-width: 640px) {
+  .cl-shell {
+    padding-top: max(1.5rem, env(safe-area-inset-top));
+    padding-right: max(1.5rem, env(safe-area-inset-right));
+    padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    padding-left: max(1.5rem, env(safe-area-inset-left));
   }
 }

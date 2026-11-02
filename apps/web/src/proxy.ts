@@ -44,13 +44,56 @@ const PRIVATE_PREFIXES = [
 const PRIVATE_PAGES = ['/saved', '/account', '/submissions', '/submit', '/collections'];
 
 const SESSION_COOKIE = 'couchlist_session';
+const UNVERIFIED_COOKIE = 'couchlist_unverified';
 
 /** Routes whose response body is a file a stranger uploaded. */
 const SERVES_UPLOADED_BYTES =
   /^\/api\/(?:sources\/[^/]+\/icon|admin\/candidates\/[^/]+\/icon|users\/[^/]+\/avatar)$/u;
 
+/**
+ * The only places an unverified session may go.
+ *
+ * Signing up used to leave you apparently signed in while your code sat
+ * unread, so pressing back from the verification page landed you on a site
+ * that looked like it had let you in. It had not: voting and contributing
+ * were refused server-side either way. Rather than explain that, the hold is
+ * now real — until the address is confirmed there is one page to be on, and
+ * a way out of it.
+ */
+const UNVERIFIED_MAY_VISIT = [
+  '/verify-email',
+  '/login',
+  '/signup',
+  '/forgot-password',
+  '/reset-password',
+  '/api/auth',
+  '/api/health',
+];
+
+function allowedWhileUnverified(path: string): boolean {
+  return UNVERIFIED_MAY_VISIT.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const path = request.nextUrl.pathname;
+
+  /*
+   * The cookie is a hint, not an authority: it saves a database round trip on
+   * every request, and nothing is granted on the strength of it. Clearing it
+   * by hand gets someone back to pages that are public anyway.
+   */
+  if (
+    request.cookies.has(SESSION_COOKIE) &&
+    request.cookies.has(UNVERIFIED_COOKIE) &&
+    !allowedWhileUnverified(path) &&
+    !path.startsWith('/_next') &&
+    path !== '/manifest.webmanifest'
+  ) {
+    const verify = new URL('/verify-email', request.url);
+    const held = NextResponse.redirect(verify, 307);
+    held.headers.set('Cache-Control', 'private, no-store');
+    return held;
+  }
 
   if (PRIVATE_PAGES.includes(path) && !request.cookies.has(SESSION_COOKIE)) {
     // Carry where they were going, so signing in resumes it.

@@ -241,6 +241,12 @@ export const adminSourceSchema = z.object({
   hasLotsOfAds: z.boolean().default(false),
   shouldAvoid: z.boolean().default(false),
   /*
+   * Null means "not a pick". A number pins it above everything unpicked,
+   * lowest first, so a moderator can order their own picks.
+   */
+  trustedRank: z.number().int().min(0).max(9999).nullable().optional(),
+  trustedNote: trimmed(160).optional().nullable(),
+  /*
    * Shown to readers beside the warning, so it is held to the same length as
    * a description rather than being a private moderator note.
    */
@@ -264,6 +270,18 @@ export const adminReviewSchema = z.object({
       avoidReason: trimmed(160).optional().nullable(),
     })
     .optional(),
+});
+
+/**
+ * Deleting a source for good.
+ *
+ * The domain has to be typed back. It is the one field that is both visible
+ * on screen and impossible to produce by clicking in the wrong place, which
+ * is the whole point of asking for it.
+ */
+export const adminDeleteSourceSchema = z.object({
+  confirmDomain: trimmed(255).min(1),
+  reason: trimmed(300).optional(),
 });
 
 export const adminHideSchema = z.object({

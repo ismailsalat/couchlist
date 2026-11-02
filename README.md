@@ -42,6 +42,12 @@ or mirror video, comics or translated pages.
   and both survive a reload.
 - **Take your list with you** — the saved list exports as a spreadsheet, plain
   text, Markdown or JSON.
+- **Trusted picks** — a moderator can pin sources above the ranking, in an
+  order they choose, with a note saying why. Gold star, reserved colour, and
+  it never looks like a warning.
+- **Verification actually gates the account** — signing up holds you on the
+  code page until the address is confirmed. Browsing, the back button and a
+  typed URL all land back there, and there is a way out that is not the code.
 
 ## Running it locally
 

@@ -22,7 +22,7 @@ import {
 import type { User } from '@couchlist/db';
 import { config } from '../config';
 import { repos } from '../db';
-import { createSession, destroySession } from './session';
+import { createSession, markSessionVerified, destroySession } from './session';
 import { passwordResetEmail, sendMail, verificationEmail } from '../mail/transport';
 
 /**
@@ -196,6 +196,7 @@ export async function verifyEmail(user: User, code: string): Promise<void> {
   }
 
   await accounts.markEmailVerified(user.id);
+  await markSessionVerified();
   logger.info('email_verified');
 }
 
@@ -237,7 +238,7 @@ export async function signIn(input: LoginInput): Promise<User> {
   }
 
   await grantBootstrapAdmin(user);
-  await createSession(user.id);
+  await createSession(user.id, Boolean(user.emailVerifiedAt));
   logger.info('login_succeeded');
   return user;
 }
@@ -340,7 +341,7 @@ export async function changePassword(
   await accounts.updatePasswordHash(user.id, await hashPassword(newPassword));
   await dropAllSessions(db, user.id);
   // The caller is still the owner, so give them a fresh session.
-  await createSession(user.id);
+  await createSession(user.id, Boolean(user.emailVerifiedAt));
 }
 
 export async function deleteOwnAccount(user: User, password: string): Promise<void> {

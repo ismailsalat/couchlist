@@ -144,6 +144,70 @@ test.describe('signing up through the form', () => {
     await expect(page.getByRole('button', { name: /Account menu/ })).toBeVisible();
   });
 
+  /*
+   * The complaint that prompted this: you sign up, land on the code page,
+   * press back, and the site behaves as though it let you in. It had not —
+   * voting and contributing were refused server-side — but nothing said so.
+   * Now the hold is real, so back goes back to the code page.
+   */
+  test('cannot wander off the verification page until the code is used', async ({ page }) => {
+    const email = `held-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
+
+    await page.goto('/signup');
+    await page.getByLabel('Display name').fill('Held Person');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Create account' }).click();
+
+    const code = page.getByText(/^\d{6}$/);
+    await expect(code).toBeVisible();
+    const digits = (await code.textContent())!.trim();
+
+    await page.getByRole('link', { name: 'Enter this code' }).click();
+    await expect(page).toHaveURL(/\/verify-email/);
+
+    // The back button, which is what was reported.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/verify-email/);
+
+    // And typing a URL directly, which is the same thing without the history.
+    await page.goto('/saved');
+    await expect(page).toHaveURL(/\/verify-email/);
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/verify-email/);
+
+    // Using the code lifts the hold, and the site opens up.
+    await page.getByLabel('Verification code').fill(digits);
+    await page.getByRole('button', { name: 'Verify email' }).click();
+    await expect(page.getByRole('button', { name: /Account menu/ })).toBeVisible();
+
+    await page.goto('/');
+    await expect(page).toHaveURL(/\/$|\/\?/);
+    await expect(page.getByRole('button', { name: /Account menu/ })).toBeVisible();
+  });
+
+  /** Being held somewhere must never mean being stuck there. */
+  test('offers a way out of the hold without using the code', async ({ page }) => {
+    const email = `stuck-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
+
+    await page.goto('/signup');
+    await page.getByLabel('Display name').fill('Stuck Person');
+    await page.getByLabel('Email').fill(email);
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+    await page.getByLabel('Confirm password').fill(PASSWORD);
+    await page.getByRole('button', { name: 'Create account' }).click();
+    await expect(page.getByText(/^\d{6}$/)).toBeVisible();
+
+    await page.goto('/verify-email');
+    await page.getByRole('button', { name: /Use a different address/ }).click();
+
+    // Signed out, and free to move again.
+    await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
+    await page.goto('/guides');
+    await expect(page).toHaveURL(/\/guides/);
+  });
+
   /**
    * A typed-once password is a password you can be locked out of. The
    * confirmation has to stop the form in the browser, without a round trip
@@ -372,33 +436,6 @@ test.describe('reaching a website', () => {
   });
 });
 
-test.describe('an unverified account', () => {
-  /*
-   * Signing up signs you in. Without saying so, pressing back from the code
-   * page looks like a bug, which is exactly what it looked like.
-   */
-  test('is told it is signed in while the code is still unused', async ({ page }) => {
-    const email = `unver-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`;
-
-    await page.goto('/signup');
-    await page.getByLabel('Display name').fill('Unverified Person');
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
-    await page.getByLabel('Confirm password').fill(PASSWORD);
-    await page.getByRole('button', { name: 'Create account' }).click();
-    await expect(page.getByText(/^\d{6}$/)).toBeVisible();
-
-    // The state is explained on every page, not only the one you came from.
-    await page.goto('/');
-    const banner = page.getByText(/You are signed in, and browsing works/);
-    await expect(banner).toBeVisible();
-    await expect(page.getByRole('button', { name: /Account menu/ })).toBeVisible();
-
-    await page.goto('/verify-email');
-    await expect(page.getByText(/You are already signed in as/)).toBeVisible();
-  });
-});
-
 /** The address playwright.config.ts names in ADMIN_EMAILS. */
 const ADMIN_EMAIL = 'e2e-admin@example.test';
 
@@ -459,6 +496,34 @@ test.describe('the review queue', () => {
 });
 
 test.describe('layout', () => {
+  /*
+   * The row is a grid so the description can drop under the name on a phone
+   * and sit beside it on a desktop. If it ever goes back to squeezing both
+   * onto one line, descriptions become three words wide again.
+   */
+  test('gives the description the full row width on a phone', async ({ page }) => {
+    await page.setViewportSize({ width: 393, height: 852 });
+    await page.goto('/');
+
+    const described = page
+      .locator('article')
+      .filter({ has: page.locator('p.cl-desc-clamp') })
+      .first();
+    if ((await described.count()) === 0) test.skip(true, 'no described sources listed');
+
+    const description = described.locator('p.cl-desc-clamp').first();
+    const name = described.getByRole('link').first();
+
+    const descBox = (await description.boundingBox())!;
+    const nameBox = (await name.boundingBox())!;
+
+    // Wider than the name column, which is the whole point of the change.
+    expect(descBox.width).toBeGreaterThan(nameBox.width);
+    // And below it, not beside it.
+    expect(descBox.y).toBeGreaterThan(nameBox.y);
+  });
+
+
   test('no horizontal overflow at 320px', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 720 });
 

@@ -144,14 +144,14 @@ export function SourceRowActions({
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-0 sm:gap-1.5">
+    <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
       <button
         type="button"
         onClick={() => void castVote('LIKE')}
         disabled={busy !== null}
         aria-pressed={vote === 'LIKE'}
         aria-label={vote === 'LIKE' ? `Remove your like from ${sourceName}` : `Like ${sourceName}`}
-        className={`cl-touch cl-pill cl-vote flex h-11 w-11 flex-col items-center justify-center gap-0 rounded-pill border-2 text-xs font-bold tabular-nums disabled:opacity-60 sm:h-8 sm:w-auto sm:min-w-[58px] sm:flex-row sm:gap-1.5 sm:px-2 sm:py-1.5 ${
+        className={`cl-touch cl-pill cl-vote flex h-11 w-auto min-w-[46px] flex-row items-center justify-center gap-1 rounded-pill border-2 px-1.5 text-xs font-bold tabular-nums disabled:opacity-60 sm:h-8 sm:min-w-[58px] sm:gap-1.5 sm:px-2 sm:py-1.5 ${
           vote === 'LIKE'
             ? 'cl-voted border-selected bg-selected text-selected-fg shadow-pop-red'
             : 'border-line bg-bg text-text hover:border-accent hover:bg-accent-soft hover:text-accent'
@@ -198,7 +198,7 @@ export function SourceRowActions({
         disabled={busy !== null}
         aria-pressed={saved}
         aria-label={saved ? `Remove ${sourceName} from saved` : `Save ${sourceName}`}
-        className={`cl-touch cl-pill cl-vote flex h-11 w-11 items-center justify-center rounded-full border-2 p-1.5 disabled:opacity-60 sm:h-8 sm:w-8 ${
+        className={`cl-touch cl-pill cl-vote flex h-11 w-8 items-center justify-center rounded-full border-2 p-1 disabled:opacity-60 sm:h-8 sm:w-8 ${
           saved
             ? 'cl-voted border-accent bg-accent-soft text-accent'
             : 'border-transparent text-muted hover:border-accent hover:bg-accent-soft hover:text-accent'

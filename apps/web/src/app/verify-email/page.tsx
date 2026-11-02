@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AuthShell } from '@/components/auth-shell';
 import { VerifyEmailForm } from '@/components/verify-email-form';
+import { SignOutLink } from '@/components/sign-out-link';
 import { requireUserOrLogin } from '@/lib/auth/require-page-user';
 
 export const dynamic = 'force-dynamic';
@@ -29,17 +29,13 @@ export default async function VerifyEmailPage({
       <VerifyEmailForm />
 
       {/*
-       * Says plainly what state the reader is already in. Without this, the
-       * back button looks like it skipped a step it did not skip.
+       * The way out, said plainly. The hold is deliberate, so the page that
+       * imposes it has to offer both exits: finish, or leave.
        */}
       <p className="m-0 mt-4 border-t border-line pt-4 text-sm text-muted">
-        You are already signed in as {user.displayName ?? user.email}. Browsing, searching and
-        reading guides all work now &mdash; the code is only needed before you vote, save or
-        contribute.{' '}
-        <Link href="/" className="text-accent">
-          Have a look round first
-        </Link>
-        .
+        Signed in as {user.displayName ?? user.email}. Until this address is confirmed, this is
+        the only page available &mdash; that is how we know an account belongs to someone.{' '}
+        <SignOutLink />
       </p>
     </AuthShell>
   );

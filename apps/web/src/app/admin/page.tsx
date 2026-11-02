@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { repos } from '@/lib/db';
+import { mailTransport } from '@/lib/mail/transport';
+import { explainMailFailure, lastMailFailure } from '@/lib/mail/health';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +47,8 @@ export default async function AdminHomePage() {
         hint="Search, edit, hide and restore."
       />
 
+      <MailStatus />
+
       {neverReviewed > 0 ? (
         <div className="rounded-card border border-warn-line bg-warn-bg p-4 text-sm text-warn-text sm:col-span-2">
           <p className="m-0 font-semibold">{neverReviewed} guides have never been reviewed.</p>
@@ -82,5 +86,73 @@ function Card({
       <p className="m-0 mt-1 text-2xl font-semibold tabular-nums text-text">{value}</p>
       <p className="m-0 mt-1.5 text-sm text-muted">{hint}</p>
     </Link>
+  );
+}
+
+/**
+ * Whether verification email is actually working.
+ *
+ * The failure mode for outbound mail is silence: somebody waits for a code
+ * that never comes, and nothing on screen says so. This panel is here so the
+ * first person likely to notice — a moderator — can see the provider's own
+ * reason without reading server logs.
+ */
+function MailStatus() {
+  const transport = mailTransport();
+  const failure = lastMailFailure();
+  const guidance = failure ? explainMailFailure(failure.detail, failure.status) : null;
+
+  if (transport === 'resend' && !failure) {
+    return (
+      <div className="rounded-card border border-line bg-surface p-4 text-sm text-muted sm:col-span-2">
+        <p className="m-0">
+          <span className="font-semibold text-text">Email is configured</span> and the last send
+          went through.
+        </p>
+      </div>
+    );
+  }
+
+  const tone =
+    transport === 'none' || failure
+      ? 'border-danger-line bg-danger-bg text-danger-text'
+      : 'border-warn-line bg-warn-bg text-warn-text';
+
+  return (
+    <div className={`rounded-card border p-4 text-sm sm:col-span-2 ${tone}`}>
+      <p className="m-0 font-semibold">
+        {transport === 'none'
+          ? 'Verification emails are not being sent.'
+          : transport === 'log'
+            ? 'Verification emails are printed to the log, not sent.'
+            : 'The last verification email did not go out.'}
+      </p>
+
+      {transport === 'none' ? (
+        <p className="m-0 mt-1.5">
+          RESEND_API_KEY and MAIL_FROM are not set, so nobody can finish signing up.
+        </p>
+      ) : null}
+
+      {transport === 'log' ? (
+        <p className="m-0 mt-1.5">
+          MAIL_TRANSPORT is set to log. The six-digit code appears in the server output instead of
+          an inbox. That is fine locally and wrong in production.
+        </p>
+      ) : null}
+
+      {failure ? (
+        <>
+          <p className="m-0 mt-1.5">
+            Last failure {failure.at.toISOString().replace('T', ' ').slice(0, 16)} UTC
+            {failure.status ? ` — the provider answered ${failure.status}` : ''}.
+          </p>
+          {guidance ? <p className="m-0 mt-1.5 font-semibold">{guidance}</p> : null}
+          {failure.detail ? (
+            <p className="m-0 mt-1.5 break-words font-mono text-xs opacity-80">{failure.detail}</p>
+          ) : null}
+        </>
+      ) : null}
+    </div>
   );
 }

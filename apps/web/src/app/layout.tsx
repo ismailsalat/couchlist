@@ -42,7 +42,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to content
         </a>
-        <div className="mx-auto max-w-[1040px] p-2 sm:p-6">
+        {/*
+          * cl-shell carries the device's safe areas.
+          *
+          * The app asks for viewport-fit=cover and a translucent status bar,
+          * which together put the page underneath the clock and the battery.
+          * That is the right choice — the background should run to the edge of
+          * the screen — but only if something then keeps the content out from
+          * under them, which is what this does. Without it the header sits
+          * behind the status bar on any phone with a notch or an island.
+          */}
+        <div className="cl-shell mx-auto max-w-[1040px]">
           <div className="overflow-hidden rounded-[20px] border border-line bg-bg">{children}</div>
         </div>
       </body>

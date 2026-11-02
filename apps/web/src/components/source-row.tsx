@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { SourceCategory } from '@couchlist/shared';
-import { AdsWarning, AvoidWarning, CategoryPill } from './ui/category-pill';
+import { AdsWarning, AvoidWarning, CategoryPill, TrustedMark } from './ui/category-pill';
 import { SourceRowActions } from './source-row-actions';
 
 /**
@@ -27,6 +27,8 @@ export interface SourceRowData {
   hasLotsOfAds: boolean;
   shouldAvoid: boolean;
   avoidReason: string | null;
+  trustedRank: number | null;
+  trustedNote: string | null;
   likes: number;
   dislikes: number;
   /** True when a contributor supplied a site icon. */
@@ -58,12 +60,18 @@ export function SourceRow({
       className="cl-row border-b border-line last:border-b-0 even:[&_.cl-tile]:rotate-3"
     >
       {/*
-        * Wraps on a narrow screen: the name and description keep the full
-        * width of the first line, and the controls drop to a second line of
-        * their own. Squeezing three controls in beside the text left room
-        * for about four words of description, which is not a description.
+        * A grid, not a flex row.
+        *
+        * On a phone the controls and the text cannot both have the width they
+        * want. Flex settled that by squeezing the description to three words
+        * a line; this lets the description drop underneath and use the whole
+        * row instead, while the name, the pills and the controls stay on the
+        * line above. From the small breakpoint up there is room for all of it
+        * side by side, so the description moves back beside the name.
+        *
+        * Everything keeps a 44px touch target even where it looks smaller.
         */}
-      <div className="flex min-h-row flex-wrap items-center gap-x-2 gap-y-1 rounded-[9px] px-0.5 py-2.5 hover:bg-hover sm:flex-nowrap sm:gap-3 sm:px-[7px]">
+      <div className="grid min-h-row grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 rounded-[9px] px-0.5 py-2 hover:bg-hover sm:gap-x-3 sm:px-[7px] sm:py-2.5">
         <span className="w-5 min-w-5 shrink-0 text-center text-sm font-semibold tabular-nums text-muted sm:w-7 sm:min-w-7 sm:text-base">
           {position}
         </span>
@@ -75,36 +83,25 @@ export function SourceRow({
           hasIcon={source.hasIcon}
         />
 
-        <div className="min-w-0 flex-1 basis-40">
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-[7px]">
-            {/* The name is the link to the source page: one obvious target,
-                and it keeps working when the row's expand button is hidden on
-                a narrow screen. */}
-            <Link
-              href={`/sources/${source.id}`}
-              className="text-[13px] font-bold text-text [overflow-wrap:anywhere] hover:text-accent sm:text-sm"
-            >
-              {source.name}
-            </Link>
-            {source.categories.map((category) => (
-              <CategoryPill key={category} category={category} />
-            ))}
-            {source.hasLotsOfAds ? <AdsWarning /> : null}
-            {source.shouldAvoid ? <AvoidWarning reason={source.avoidReason} /> : null}
-          </div>
-
-          {source.description ? (
-            <p className="cl-desc-clamp m-0 mt-0.5 text-sm text-muted">{source.description}</p>
-          ) : null}
-
-          {note ? (
-            <p className="m-0 mt-1 text-xs text-muted">
-              <span className="text-text">Your note:</span> {note}
-            </p>
-          ) : null}
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-[7px]">
+          {/* The name is the link to the source page: one obvious target,
+              and it keeps working when the row's expand button is hidden on
+              a narrow screen. */}
+          <Link
+            href={`/sources/${source.id}`}
+            className="text-[13px] font-bold text-text [overflow-wrap:anywhere] hover:text-accent sm:text-sm"
+          >
+            {source.name}
+          </Link>
+          {source.trustedRank !== null ? <TrustedMark note={source.trustedNote} /> : null}
+          {source.categories.map((category) => (
+            <CategoryPill key={category} category={category} />
+          ))}
+          {source.hasLotsOfAds ? <AdsWarning /> : null}
+          {source.shouldAvoid ? <AvoidWarning reason={source.avoidReason} /> : null}
         </div>
 
-        <div className="flex w-full items-center justify-end gap-1 sm:w-auto sm:gap-1.5">
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
           <VisitLink name={source.name} domain={source.domain} homepageUrl={source.homepageUrl} />
 
           <SourceRowActions
@@ -117,6 +114,23 @@ export function SourceRow({
             canInteract={canInteract}
           />
         </div>
+
+        {/*
+          * The description spans the controls on a phone and sits under the
+          * name alone from the small breakpoint up, which is why it is a grid
+          * child rather than a sibling of the name.
+          */}
+        {source.description ? (
+          <p className="cl-desc-clamp col-start-3 col-end-5 m-0 text-sm text-muted sm:col-end-4">
+            {source.description}
+          </p>
+        ) : null}
+
+        {note ? (
+          <p className="col-start-3 col-end-5 m-0 text-xs text-muted sm:col-end-4">
+            <span className="text-text">Your note:</span> {note}
+          </p>
+        ) : null}
       </div>
     </article>
   );
@@ -193,7 +207,7 @@ function VisitLink({
       rel="noopener noreferrer nofollow"
       title={`Open ${domain} in a new tab`}
       aria-label={`Open ${name} website in a new tab`}
-      className="cl-touch cl-pill flex h-11 w-9 shrink-0 items-center justify-center rounded-pill border-2 border-line bg-bg text-muted hover:border-accent hover:bg-accent-soft hover:text-accent sm:h-8 sm:w-8"
+      className="cl-touch cl-pill flex h-11 w-8 shrink-0 items-center justify-center rounded-pill border-2 border-line bg-bg text-muted hover:border-accent hover:bg-accent-soft hover:text-accent sm:h-8 sm:w-8"
     >
       <svg
         aria-hidden="true"

@@ -77,6 +77,8 @@ export default async function AdminSourcesPage({
                   hasLotsOfAds: source.hasLotsOfAds,
                   shouldAvoid: source.shouldAvoid,
                   avoidReason: source.avoidReason,
+                  trustedRank: source.trustedRank,
+                  trustedNote: source.trustedNote,
                   isEnabled: row.isEnabled,
                   hiddenReason: row.hiddenReason,
                   adminRankPenalty: source.adminRankPenalty,

@@ -511,6 +511,15 @@ export const watchSources = pgTable(
     shouldAvoid: boolean('should_avoid').notNull().default(false),
     avoidReason: text('avoid_reason'),
 
+    /*
+     * A moderator's pick. Null is the normal state and the usual ranking
+     * applies; a number pins the source above everything unpicked, lowest
+     * first, so the order of the picks is chosen rather than accidental.
+     */
+    trustedRank: integer('trusted_rank'),
+    trustedNote: text('trusted_note'),
+    trustedAt: timestamp('trusted_at', { withTimezone: true }),
+
     supportsAnime: boolean('supports_anime').notNull().default(false),
     supportsMovies: boolean('supports_movies').notNull().default(false),
     supportsTv: boolean('supports_tv').notNull().default(false),

@@ -13,3 +13,4 @@ export * from './guides/index.js';
 export * from './auth/index.js';
 export * from './images/index.js';
 export * from './export/saved.js';
+export * from './mail/failure.js';

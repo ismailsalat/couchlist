@@ -47,24 +47,6 @@ export function SiteHeader({
         <AccountMenu viewer={viewerSummary(user)} />
       </div>
 
-      {/*
-       * Signing up signs you in straight away, so you can browse while the
-       * code is still in your inbox. That is deliberate, but without saying
-       * so it reads as a bug: you press back from the code page and find
-       * yourself apparently logged in with no explanation. This line is that
-       * explanation, and it stays until the address is verified.
-       */}
-      {user && !user.emailVerifiedAt ? (
-        <p className="order-3 m-0 flex w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-field border border-warn-line bg-warn-bg px-3 py-2 text-xs text-warn-text">
-          <span>
-            You are signed in, and browsing works. Verify your email to vote, save and
-            contribute.
-          </span>
-          <Link href="/verify-email" className="font-semibold text-warn-text underline">
-            Enter your code
-          </Link>
-        </p>
-      ) : null}
     </header>
   );
 }

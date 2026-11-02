@@ -35,6 +35,9 @@ export interface DirectorySource {
   hasLotsOfAds: boolean;
   shouldAvoid: boolean;
   avoidReason: string | null;
+  /** Null unless a moderator picked it. Lower sorts higher. */
+  trustedRank: number | null;
+  trustedNote: string | null;
   /** True when a contributor supplied a site icon. Not the bytes. */
   hasIcon: boolean;
   likes: number;
@@ -134,6 +137,8 @@ function toDirectorySource(row: WatchSourceRow & { likes: number; dislikes: numb
     hasLotsOfAds: row.hasLotsOfAds,
     shouldAvoid: row.shouldAvoid,
     avoidReason: row.avoidReason,
+    trustedRank: row.trustedRank,
+    trustedNote: row.trustedNote,
     // Only the type is on the row, so this costs nothing.
     hasIcon: row.iconMime !== null,
     likes: row.likes,
@@ -236,12 +241,27 @@ export class SourceDirectoryRepository {
       - (${watchSources.adminRankPenalty}::numeric / 100)
     )`;
 
+    /*
+     * Moderator picks come first, in the order the moderator chose.
+     *
+     * This sits in front of every sort rather than only the recommended one,
+     * because a pick means "this belongs at the top", and a reader who
+     * switches to newest has not stopped wanting the good ones first. NULLS
+     * LAST puts everything unpicked behind, where the normal ranking decides.
+     *
+     * Name sort is the exception: somebody asking for alphabetical order has
+     * asked for exactly one thing, and quietly putting six sources above the
+     * As would make the list look broken.
+     */
+    const trustedFirst = sql`${watchSources.trustedRank} asc nulls last`;
+
     const orderBy =
       sort === SourceSort.NAME
         ? [asc(sql`lower(${watchSources.name})`)]
         : sort === SourceSort.NEWEST
-          ? [desc(watchSources.createdAt), asc(sql`lower(${watchSources.name})`)]
+          ? [trustedFirst, desc(watchSources.createdAt), asc(sql`lower(${watchSources.name})`)]
           : [
+              trustedFirst,
               desc(score),
               desc(sql`(${likes}) + (${dislikes})`),
               asc(sql`lower(${watchSources.name})`),
@@ -276,6 +296,39 @@ export class SourceDirectoryRepository {
   async findById(id: string, options: { includeHidden?: boolean } = {}): Promise<DirectorySource | undefined> {
     const page = await this.list({ ids: [id], limit: 1, includeHidden: options.includeHidden });
     return page.sources[0];
+  }
+
+  /**
+   * What would go with a source if it were deleted.
+   *
+   * Shown to a moderator before they confirm, because "delete this listing"
+   * and "delete this listing, forty-one votes, nine saves and the credit of
+   * the person who found it" are different decisions and only one of them is
+   * what the button appears to offer.
+   */
+  async referenceCounts(sourceId: string): Promise<{
+    votes: number;
+    saves: number;
+    contributions: number;
+    reports: number;
+    collections: number;
+  }> {
+    const rows = await this.db.execute(sql`
+      select
+        (select count(*) from source_votes where source_id = ${sourceId})::int as votes,
+        (select count(*) from source_bookmarks where source_id = ${sourceId})::int as saves,
+        (select count(*) from source_contributions where source_id = ${sourceId})::int as contributions,
+        (select count(*) from watch_source_reports where watch_source_id = ${sourceId})::int as reports,
+        (select count(*) from source_collection_items where source_id = ${sourceId})::int as collections
+    `);
+    const row = rows.rows[0] as Record<string, number> | undefined;
+    return {
+      votes: row?.votes ?? 0,
+      saves: row?.saves ?? 0,
+      contributions: row?.contributions ?? 0,
+      reports: row?.reports ?? 0,
+      collections: row?.collections ?? 0,
+    };
   }
 
   async findRowById(id: string): Promise<WatchSourceRow | undefined> {
