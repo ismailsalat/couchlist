@@ -54,6 +54,16 @@ or mirror video, comics or translated pages.
 - **Admin bulk actions** — tick rows and delete them in one confirmed step
   that lists every name first, and add a listing directly without suggesting
   it to yourself and approving your own suggestion.
+- **Links are checked, people are not surprised** — a weekly job sends one
+  `HEAD` request per source and records what came back. Three consecutive
+  failures, a redirect somewhere else, or three different people reporting the
+  same site put it on an admin queue; nothing is hidden or re-ranked
+  automatically, because one bad afternoon on somebody else's server is not a
+  reason to delete a good listing. Every source page says when it was last
+  checked, so the directory reads as maintained rather than abandoned.
+- **One click to say a link is dead** — on a source page, next to the
+  corrections link. The full report form is right for "this site has malware"
+  and far too much for "the page did not load".
 - **Verification actually gates the account** — signing up holds you on the
   code page until the address is confirmed. Browsing, the back button and a
   typed URL all land back there, and there is a way out that is not the code.
@@ -118,6 +128,24 @@ environment or a hosted-looking database.
 The guides are real content, but every one says **"not yet reviewed"** until a
 moderator checks its links in `/admin/guides`. That is deliberate: they came
 from the design reference and have not been verified.
+
+### Checking the links
+
+```bash
+npm run check:links                # everything due (last checked 6+ days ago)
+npm run check:links -- --all       # everything, ignoring the window
+npm run check:links -- --limit 20  # a handful, for a quick look
+```
+
+One `HEAD` request per source, four at a time, ten-second timeout, with an
+honest user agent. Three consecutive failures put a source on
+`/admin/attention`; any success resets the count. Nothing is hidden or
+re-ranked automatically. In production this runs weekly from a scheduler —
+`docs/DEPLOYMENT.md` has the Railway cron settings.
+
+Against the seeded example sources every check fails, because `.invalid`
+domains cannot resolve by design. That is a convenient way to see the admin
+queue with something in it.
 
 ### If something goes wrong
 

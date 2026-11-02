@@ -13,19 +13,25 @@ export const dynamic = 'force-dynamic';
  * all. It is not the only check: every admin API route calls `requireAdmin`
  * independently, so hiding a link is never what keeps someone out.
  *
- * Four sections and no more: Sources, Suggestions, Reports and Guides.
+ * Five sections: Needs attention, Sources, Suggestions, Reports and Guides.
+ *
+ * "Needs attention" leads because it is the only one that fills up on its
+ * own. The others wait for somebody to do something; this one grows while
+ * nobody is looking, which is exactly why it should be the first thing seen.
  * Account moderation and imports stay out of the everyday workflow.
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdminPage();
-  const { contributions, guides } = repos();
+  const { contributions, guides, sources } = repos();
 
-  const [savedCount, pendingSuggestions, openReports, pendingGuides] = await Promise.all([
-    savedCountFor(user),
-    contributions.pendingCandidateCount(),
-    contributions.openReportCount(),
-    guides.pendingSuggestionCount(),
-  ]);
+  const [savedCount, pendingSuggestions, openReports, pendingGuides, needsAttention] =
+    await Promise.all([
+      savedCountFor(user),
+      contributions.pendingCandidateCount(),
+      contributions.openReportCount(),
+      guides.pendingSuggestionCount(),
+      sources.needingAttention().then((rows) => rows.length),
+    ]);
 
   return (
     <>
@@ -38,6 +44,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </p>
 
         <nav aria-label="Admin sections" className="my-5 flex flex-wrap gap-1.5">
+          <AdminTab href="/admin/attention" label="Needs attention" count={needsAttention} />
           <AdminTab href="/admin/sources" label="Sources" />
           <AdminTab href="/admin/suggestions" label="Suggestions" count={pendingSuggestions} />
           <AdminTab href="/admin/reports" label="Reports" count={openReports} />

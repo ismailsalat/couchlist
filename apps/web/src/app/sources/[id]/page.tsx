@@ -15,9 +15,12 @@ import {
 import { SourceRowActions } from "@/components/source-row-actions";
 import { SimilarSources } from "@/components/similar-sources";
 import { ContributorCredits } from "@/components/contributor-credits";
+import { LastChecked } from "@/components/last-checked";
+import { LooksDeadButton } from "@/components/looks-dead-button";
 import { SavedNote } from "@/components/saved-note";
 import { RecordVisit } from "@/components/record-visit";
 import { optionalUser } from "@/lib/api/guards";
+import { nowForRender } from "@/lib/clock";
 import { savedCountFor } from "@/lib/directory/page-data";
 import { repos } from "@/lib/db";
 
@@ -80,6 +83,8 @@ export default async function SourcePage({
       sources.similar(source.id, 5),
     ]);
 
+  // Read once, outside render, and passed down as a value.
+  const now = nowForRender();
   const saved = savedIds.has(source.id);
   const canInteract = Boolean(user?.emailVerifiedAt);
   const ratio = likeRatio(voteState);
@@ -229,6 +234,13 @@ export default async function SourcePage({
             </span>
           </div>
 
+          <LastChecked
+            at={source.lastHealthCheckAt}
+            status={source.healthStatus}
+            failures={source.healthFailures}
+            now={now}
+          />
+
           <p className="m-0 mt-4 text-xs text-muted">
             Couchlist lists this website. It does not host, proxy or vouch for
             its content. Consider an{" "}
@@ -302,6 +314,16 @@ export default async function SourcePage({
             </div>
 
             <div className="flex flex-wrap gap-2.5">
+              {/*
+                * One click for the commonest problem. Asking for a form, a
+                * reason and a description to say "this did not load" means
+                * most people never say it, and the listing stays wrong.
+                */}
+              <LooksDeadButton
+                sourceId={source.id}
+                sourceName={source.name}
+                canReport={Boolean(user?.emailVerifiedAt)}
+              />
               <Link
                 href={`/sources/${source.id}/correct`}
                 className={secondaryActionClass}

@@ -559,3 +559,55 @@ test.describe('layout', () => {
     }
   });
 });
+
+test.describe('saying a link is dead', () => {
+  /*
+   * The whole point of the one-click report is that it is one click. If this
+   * ever grows a form, a confirm or a page change, it has stopped being the
+   * thing that gets a dead link reported.
+   */
+  test('takes one click and says so', async ({ page }) => {
+    await signUpAndVerify(page);
+
+    await page.goto('/');
+    await page.locator('article').first().getByRole('link').first().click();
+    await expect(page).toHaveURL(/\/sources\//);
+
+    const button = page.getByRole('button', { name: 'Link looks dead' });
+    await expect(button).toBeVisible();
+
+    const reported = page.waitForResponse(
+      (response) =>
+        response.url().includes('/api/sources/report') && response.request().method() === 'POST',
+    );
+    await button.click();
+    expect((await reported).status()).toBe(200);
+
+    await expect(page.getByText('a moderator will check it')).toBeVisible();
+    // Nothing public changed: the listing is still a listing.
+    await expect(page.getByRole('link', { name: /Visit website/ })).toBeVisible();
+  });
+
+  test('asks a signed-out reader to sign in instead of swallowing the click', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('article').first().getByRole('link').first().click();
+
+    const link = page.getByRole('link', { name: 'Link looks dead' });
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', /\/login\?next=/);
+  });
+});
+
+test.describe('the attention queue', () => {
+  test('leads the admin tabs and explains itself when empty', async ({ page }) => {
+    await signInAsAdmin(page);
+    await page.goto('/admin/attention');
+
+    await expect(page.getByRole('link', { name: /Needs attention/ })).toBeVisible();
+    // Either state is correct; what matters is that the page renders and says
+    // plainly that nothing has been hidden behind the moderator's back.
+    const empty = page.getByText('Nothing needs a decision.');
+    const listed = page.getByText('Nothing has been hidden or changed');
+    await expect(empty.or(listed).first()).toBeVisible();
+  });
+});

@@ -46,6 +46,7 @@ removed, and no row is deleted.
 | `0017_avoid_warning_and_avatars` | Adds `should_avoid` and `avoid_reason` to `watch_sources`, `proposed_should_avoid` to `watch_source_candidates`, a `user_id` target on `source_icons` (so profile pictures reuse the validated-image table) and `avatar_mime` on `users`. Replaces the icon target check so exactly one of source, candidate or user owns each image. |
 | `0018_trusted_sources` | Adds `trusted_rank`, `trusted_note` and `trusted_at` to `watch_sources`, with a bounds check and a partial index. Null means the usual ranking applies; a number pins the source above everything unpicked. |
 | `0019_source_quality` | Adds `quality_label` to `watch_sources`, a short free-text note bounded to twelve characters by a check constraint. |
+| `0020_link_health` | Adds `health_status`, `health_status_code`, `health_failures` and `health_detail` to `watch_sources`, plus two partial indexes: one that finds the sources due for a check, one that finds the sources currently failing. Nothing is backfilled, so every source starts as never-checked and the page says nothing about it until the checker has run. |
 
 Two changes are worth reading closely before you run them.
 
@@ -120,6 +121,53 @@ deploy cannot wipe production data by accident.
    have not been verified against current documentation.
 4. Check `/api/health` reports `database: healthy` and `mail: configured`.
 5. Spot-check `/robots.txt` and `/sitemap.xml` against your real domain.
+6. Add the weekly link check (below) and run it once by hand, so
+   `/admin/attention` starts from a known state.
+
+## The weekly link check
+
+Nothing checks links unless you schedule it. The command is:
+
+```
+npm run check:links
+```
+
+It takes the sources whose last check is older than six days, sends one `HEAD`
+request each (four at a time, ten-second timeout), and records what came back.
+A source that fails is counted, not hidden: three consecutive failures put it
+on `/admin/attention` for a person to decide about. Any success resets the
+count to zero, because one bad afternoon on somebody else's server is not
+evidence of anything.
+
+On Railway, add it as a **cron schedule** on a service that shares this
+project's `DATABASE_URL`:
+
+| Setting | Value |
+| --- | --- |
+| Schedule | `0 4 * * 1` (Mondays, 04:00 UTC) |
+| Command | `node packages/db/dist/scripts/check-links.js` |
+
+The command runs the file the deploy build already produced, rather than
+`npm run check:links`, which compiles first and so needs the dev
+dependencies. A production image may not have them, and a cron job is a bad
+place to discover that. Locally, where the dev dependencies are there,
+`npm run check:links` is the same thing and does the compile for you.
+
+Weekly is deliberate. The sites in the directory did not ask to be monitored,
+and one request a week per source is a courtesy that still catches a dead
+domain long before a reader does. Do not shorten it to hourly: it adds nothing
+and starts to look like traffic.
+
+The run is safe to repeat and safe to interrupt. It writes one row at a time,
+so a cancelled run leaves the sources it reached updated and the rest due next
+time. `npm run check:links -- --limit 20` checks a handful by hand;
+`-- --all` ignores the six-day window and checks everything, which is useful
+once, immediately after deploying, and rarely after that.
+
+Two things it deliberately does not do: it never follows a redirect into a
+private address (the hop is re-validated each time and recorded as `REFUSED`),
+and it never changes what a reader sees. Hiding a listing stays a human
+decision.
 
 ## Retiring the bot service
 

@@ -40,8 +40,10 @@ export default defineConfig({
           // One fixed address is promoted on sign-in, so the suite can reach
           // the moderation pages without a second mechanism for granting it.
           ADMIN_EMAILS: 'e2e-admin@example.test',
-          DATABASE_URL:
-            process.env.DATABASE_URL ?? 'postgresql://postgres@127.0.0.1:5432/couchlist',
+          // Only forwarded when the shell already has one. A hardcoded
+          // fallback here would override the password in the project's .env
+          // and fail on any machine whose Postgres wants one.
+          ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
         },
       },
 });

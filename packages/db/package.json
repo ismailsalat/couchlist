@@ -21,7 +21,8 @@
     "import:watch-sources": "npm run build --silent && node dist/scripts/import-watch-sources.js",
     "import:watch-availability": "npm run build --silent && node dist/scripts/import-watch-availability.js",
     "seed:guides": "npm run build --silent && node dist/scripts/seed-guides.js",
-    "admin:grant": "npm run build --silent && node dist/scripts/grant-admin.js"
+    "admin:grant": "npm run build --silent && node dist/scripts/grant-admin.js",
+    "check:links": "npm run build --silent && node dist/scripts/check-links.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

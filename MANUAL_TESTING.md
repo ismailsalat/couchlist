@@ -208,6 +208,35 @@ Signed out, in a private window:
 - [ ] While a suggestion is still pending, open its icon URL
       (`/api/admin/candidates/<id>/icon`) while signed out — it 401s.
 
+## 4b. Link health and the attention queue
+
+The seeded example sources live on `.invalid` domains, so every check against
+them fails. That is the fastest way to see this working.
+
+- [ ] Run `npm run check:links -- --all`. It reports how many it checked and
+      how many failed, one line per unhealthy source.
+- [ ] Run it twice more. The failure count climbs; it does not reset.
+- [ ] Open a source page. It says when the link was last checked, in days.
+- [ ] Open a source that has failed three times. The wording is careful: it
+      says the address could not be reached and that a moderator has been
+      asked to look. It does **not** say the site is dead, and the listing,
+      its votes and its Visit button are all unchanged.
+- [ ] Open `/admin/attention`. The failing sources are listed with a plain
+      reason, a count, and a line saying nothing has been hidden.
+- [ ] Point a listing at a real site that redirects (for example
+      `http://github.com/`). Run the checker. The source is listed as having
+      moved, with the advice to update the address rather than delete it.
+- [ ] Point a listing at a working site and run the checker twice. It leaves
+      the attention queue, and the source page says it was checked today.
+- [ ] As a signed-in verified account, open a source page and press **Link
+      looks dead**. It reports in one click and thanks you. Press it again
+      after a reload: still accepted, still one open report.
+- [ ] Signed out, the same control is a link to sign in, not a dead button.
+- [ ] Have three different accounts report the same source. It appears on
+      `/admin/attention` with "3 people reported this", without any failed
+      check.
+- [ ] Confirm `/admin/attention` 404s or redirects for a non-admin account.
+
 ## 5. On a real phone
 
 The one thing an emulator cannot show you is the status bar. Check these on
@@ -227,6 +256,10 @@ An emulator is not a phone. Check on actual hardware:
 - [ ] The guide topic grid works with a thumb.
 - [ ] Focusing a search field does not zoom the page.
 - [ ] Nothing scrolls sideways.
+- [ ] On a source page, the "last checked" line sits quietly under the Visit
+      button and does not crowd it.
+- [ ] "Link looks dead" is an easy thumb target and does not sit flush against
+      "Suggest a correction".
 
 ## 6. Accessibility
 

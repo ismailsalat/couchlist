@@ -39,6 +39,11 @@ export interface DirectorySource {
   trustedRank: number | null;
   trustedNote: string | null;
   qualityLabel: string | null;
+  /** When the address was last checked, and how it answered. */
+  lastHealthCheckAt: Date | null;
+  healthStatus: string | null;
+  /** How many checks in a row failed. Zero when the last check was fine. */
+  healthFailures: number;
   /** True when a contributor supplied a site icon. Not the bytes. */
   hasIcon: boolean;
   likes: number;
@@ -141,6 +146,9 @@ function toDirectorySource(row: WatchSourceRow & { likes: number; dislikes: numb
     trustedRank: row.trustedRank,
     trustedNote: row.trustedNote,
     qualityLabel: row.qualityLabel,
+    lastHealthCheckAt: row.lastHealthCheckAt,
+    healthStatus: row.healthStatus,
+    healthFailures: row.healthFailures,
     // Only the type is on the row, so this costs nothing.
     hasIcon: row.iconMime !== null,
     likes: row.likes,
@@ -331,6 +339,55 @@ export class SourceDirectoryRepository {
       reports: row?.reports ?? 0,
       collections: row?.collections ?? 0,
     };
+  }
+
+  /**
+   * Sources a moderator should look at.
+   *
+   * Three different signals, deliberately in one list rather than three
+   * pages: a run of failed checks, a move or a refusal that needs a decision,
+   * and several people independently reporting the same thing. They mean
+   * different things but they all end in the same question — is this listing
+   * still right — and splitting them would just mean checking three places.
+   *
+   * Ordered by how loud the signal is, so the worst is first.
+   */
+  async needingAttention(limit = 100): Promise<
+    Array<{
+      source: DirectorySource;
+      openReports: number;
+      lastCheckedAt: Date | null;
+      healthStatus: string | null;
+      healthStatusCode: number | null;
+      healthDetail: string | null;
+      healthFailures: number;
+    }>
+  > {
+    const reports = await this.openReportCounts();
+    const reported = [...reports.entries()].filter(([, count]) => count >= 3).map(([id]) => id);
+
+    const rows = await this.db
+      .select()
+      .from(watchSources)
+      .where(
+        or(
+          sql`${watchSources.healthFailures} >= 3`,
+          sql`${watchSources.healthStatus} in ('MOVED', 'REFUSED')`,
+          reported.length > 0 ? inArray(watchSources.id, reported) : sql`false`,
+        ),
+      )
+      .orderBy(desc(watchSources.healthFailures), asc(sql`lower(${watchSources.name})`))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      source: toDirectorySource({ ...row, likes: 0, dislikes: 0 }),
+      openReports: reports.get(row.id) ?? 0,
+      lastCheckedAt: row.lastHealthCheckAt,
+      healthStatus: row.healthStatus,
+      healthStatusCode: row.healthStatusCode,
+      healthDetail: row.healthDetail,
+      healthFailures: row.healthFailures,
+    }));
   }
 
   /** The rows behind a set of ids, for an action that spans several. */

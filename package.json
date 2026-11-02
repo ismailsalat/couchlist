@@ -17,9 +17,9 @@
     "start": "npm run start --workspace @couchlist/web",
     "lint": "npm run lint --workspace @couchlist/web",
     "typecheck": "tsc --build --force && npm run typecheck --workspace @couchlist/web",
-    "test": "vitest run",
-    "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
+    "test": "npm run build --workspace @couchlist/shared && vitest run",
+    "test:unit": "npm run build --workspace @couchlist/shared && vitest run tests/unit",
+    "test:integration": "npm run build --workspace @couchlist/shared && vitest run tests/integration",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "db:migrate": "npm run build --workspace @couchlist/shared && npm run migrate --workspace @couchlist/db",
@@ -30,7 +30,8 @@
     "watch:sources:import": "npm run build --workspace @couchlist/shared && npm run import:watch-sources --workspace @couchlist/db --",
     "repair:windows-deps": "npm ci --include=optional",
     "db:seed:guides": "npm run build --workspace @couchlist/shared && npm run seed:guides --workspace @couchlist/db",
-    "admin:grant": "npm run build --workspace @couchlist/shared && npm run admin:grant --workspace @couchlist/db --"
+    "admin:grant": "npm run build --workspace @couchlist/shared && npm run admin:grant --workspace @couchlist/db --",
+    "check:links": "npm run build --workspace @couchlist/shared && npm run check:links --workspace @couchlist/db --"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

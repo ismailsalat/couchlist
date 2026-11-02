@@ -562,6 +562,18 @@ export const watchSources = pgTable(
     discoveredAt: timestamp('discovered_at', { withTimezone: true }),
 
     lastHealthCheckAt: timestamp('last_health_check_at', { withTimezone: true }),
+
+    /*
+     * The result of that last look.
+     *
+     * `healthFailures` counts consecutive failures, not total: one timeout is
+     * weather, three in a row is a dead site, and a success resets it so a
+     * flaky host cannot accumulate its way to being flagged over a year.
+     */
+    healthStatus: text('health_status'),
+    healthStatusCode: integer('health_status_code'),
+    healthFailures: integer('health_failures').notNull().default(0),
+    healthDetail: text('health_detail'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

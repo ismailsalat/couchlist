@@ -1779,3 +1779,161 @@ describe('private data boundaries', () => {
     expect(response.status).toBe(401);
   });
 });
+
+describe('link health, reporting and the attention queue', () => {
+  /**
+   * The markup with React's text-node separators removed.
+   *
+   * React writes `Link checked <!-- -->2 days ago<!-- -->.`, so asserting on
+   * a sentence that interpolates a value needs the comments gone first.
+   */
+  function sentences(html: string): string {
+    return html.replace(/<!--.*?-->/g, '');
+  }
+
+  async function setHealth(
+    sourceId: string,
+    fields: { checkedDaysAgo?: number | null; status?: string | null; failures?: number },
+  ) {
+    const checked =
+      fields.checkedDaysAgo === undefined || fields.checkedDaysAgo === null
+        ? null
+        : fields.checkedDaysAgo;
+    await db.execute(sql`
+      update watch_sources set
+        last_health_check_at = ${checked === null ? null : sql`now() - (${checked} || ' days')::interval`},
+        health_status = ${fields.status ?? null},
+        health_failures = ${fields.failures ?? 0}
+      where id = ${sourceId}
+    `);
+  }
+
+  it('says when a listing was last checked, and says nothing when it never was', async () => {
+    const checked = await seedSource('Checked Recently', 'checkedrecently.test');
+    const never = await seedSource('Never Checked', 'neverchecked.test');
+    await setHealth(checked, { checkedDaysAgo: 2, status: 'OK' });
+
+    const [withLine, withoutLine] = await Promise.all([
+      fetch(`${BASE_URL}/sources/${checked}`).then((r) => r.text()),
+      fetch(`${BASE_URL}/sources/${never}`).then((r) => r.text()),
+    ]);
+
+    expect(sentences(withLine)).toContain('Link checked 2 days ago.');
+    expect(withoutLine).not.toContain('Link checked');
+  });
+
+  it('does not claim upkeep when the last check is older than a month', async () => {
+    const stale = await seedSource('Stale Check', 'stalecheck.test');
+    await setHealth(stale, { checkedDaysAgo: 90, status: 'OK' });
+
+    const html = await fetch(`${BASE_URL}/sources/${stale}`).then((r) => r.text());
+    expect(html).not.toContain('Link checked');
+  });
+
+  it('reports a failing check carefully, without calling the source dead', async () => {
+    const failing = await seedSource('Failing Check', 'failingcheck.test');
+    await setHealth(failing, { checkedDaysAgo: 1, status: 'UNREACHABLE', failures: 3 });
+
+    const html = await fetch(`${BASE_URL}/sources/${failing}`).then((r) => r.text());
+    expect(html).toContain('could not reach this address');
+    expect(html).toContain('may be temporary');
+    // Still listed, still votable: the automated check decides nothing.
+    expect(html).toContain('Failing Check');
+  });
+
+  it('files a broken-link report in one click, and treats a repeat as success', async () => {
+    const account = await createAccount();
+    const id = await seedSource('One Click Dead', 'oneclickdead.test');
+
+    const first = await post('/api/sources/report', account, {
+      sourceId: id,
+      reason: 'BROKEN_LINK',
+    });
+    expect(first.status).toBe(200);
+    await expect(first.json()).resolves.toMatchObject({ ok: true, alreadyReported: false });
+
+    const again = await post('/api/sources/report', account, {
+      sourceId: id,
+      reason: 'BROKEN_LINK',
+    });
+    expect(again.status).toBe(200);
+    await expect(again.json()).resolves.toMatchObject({ ok: true, alreadyReported: true });
+
+    const { rows } = await db.execute(sql`
+      select count(*)::int as n from watch_source_reports
+      where watch_source_id = ${id} and resolved_at is null
+    `);
+    expect((rows[0] as { n: number }).n).toBe(1);
+  });
+
+  it('shows the attention queue to an admin only', async () => {
+    const adminUser = await admin();
+    const outsider = await createAccount();
+
+    const [mine, theirs] = await Promise.all([
+      fetch(`${BASE_URL}/admin/attention`, authed(adminUser)),
+      fetch(`${BASE_URL}/admin/attention`, { ...authed(outsider), redirect: 'manual' }),
+    ]);
+
+    expect(mine.status).toBe(200);
+    expect([302, 307, 308, 403, 404]).toContain(theirs.status);
+  });
+
+  it('lists a repeatedly failing source in the attention queue', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Three Strikes', 'threestrikes.test');
+    await setHealth(id, { checkedDaysAgo: 1, status: 'UNREACHABLE', failures: 3 });
+
+    const html = await fetch(`${BASE_URL}/admin/attention`, authed(adminUser)).then((r) =>
+      r.text(),
+    );
+    expect(html).toContain('Three Strikes');
+    expect(html).toContain('Did not answer');
+  });
+
+  it('lists a moved source, and leaves a healthy one alone', async () => {
+    const adminUser = await admin();
+    const moved = await seedSource('Moved Away', 'movedaway.test');
+    const fine = await seedSource('Perfectly Fine', 'perfectlyfine.test');
+    await setHealth(moved, { checkedDaysAgo: 1, status: 'MOVED' });
+    await setHealth(fine, { checkedDaysAgo: 1, status: 'OK' });
+
+    const html = await fetch(`${BASE_URL}/admin/attention`, authed(adminUser)).then((r) =>
+      r.text(),
+    );
+    expect(html).toContain('Moved Away');
+    expect(html).not.toContain('Perfectly Fine');
+  });
+
+  it('raises a source once enough different people report it', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Crowd Reported', 'crowdreported.test');
+
+    const reporters = await Promise.all([createAccount(), createAccount(), createAccount()]);
+    for (const reporter of reporters) {
+      const response = await post('/api/sources/report', reporter, {
+        sourceId: id,
+        reason: 'BROKEN_LINK',
+      });
+      expect(response.status).toBe(200);
+    }
+
+    const html = await fetch(`${BASE_URL}/admin/attention`, authed(adminUser)).then((r) =>
+      r.text(),
+    );
+    expect(html).toContain('Crowd Reported');
+  });
+
+  it('does not raise a source on one report alone', async () => {
+    const adminUser = await admin();
+    const reporter = await createAccount();
+    const id = await seedSource('Single Report', 'singlereport.test');
+
+    await post('/api/sources/report', reporter, { sourceId: id, reason: 'BROKEN_LINK' });
+
+    const html = await fetch(`${BASE_URL}/admin/attention`, authed(adminUser)).then((r) =>
+      r.text(),
+    );
+    expect(html).not.toContain('Single Report');
+  });
+});

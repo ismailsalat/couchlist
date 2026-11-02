@@ -33,10 +33,13 @@ outstanding:
   type and size, and revoking public access to a deleted picture, need to be
   written with the storage backend. Until then a profile shows a letter tile.
 - **Google sign-in.** The brief marks it optional and later. Not started.
-- **Automatic link health checking.** No background job checks whether a listed
-  source still responds. The report flow is how a broken link is found. If this
-  is added, the SSRF constraints in `packages/shared/src/watch/url.ts` are the
-  place to start: it already rejects private addresses and non-HTTP schemes.
+- **Automatic link health checking.** Done, with one thing left to you: it
+  does not run unless you schedule it. `npm run check:links` is the command and
+  `docs/DEPLOYMENT.md` has the Railway cron settings. The checker re-validates
+  every redirect hop through `packages/shared/src/watch/url.ts`, so a listed
+  site cannot redirect it into a private address. What it deliberately does not
+  do is act: a failing source is put in front of a moderator on
+  `/admin/attention` and nothing public changes until a person decides.
 - **Account merging for old Discord users.** Legacy Discord accounts are intact
   and keep their contribution credit, but there is no flow to link one to a new
   email account. The brief forbids merging by display name or unverified email,
