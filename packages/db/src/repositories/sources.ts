@@ -38,6 +38,7 @@ export interface DirectorySource {
   /** Null unless a moderator picked it. Lower sorts higher. */
   trustedRank: number | null;
   trustedNote: string | null;
+  qualityLabel: string | null;
   /** True when a contributor supplied a site icon. Not the bytes. */
   hasIcon: boolean;
   likes: number;
@@ -139,6 +140,7 @@ function toDirectorySource(row: WatchSourceRow & { likes: number; dislikes: numb
     avoidReason: row.avoidReason,
     trustedRank: row.trustedRank,
     trustedNote: row.trustedNote,
+    qualityLabel: row.qualityLabel,
     // Only the type is on the row, so this costs nothing.
     hasIcon: row.iconMime !== null,
     likes: row.likes,
@@ -329,6 +331,12 @@ export class SourceDirectoryRepository {
       reports: row?.reports ?? 0,
       collections: row?.collections ?? 0,
     };
+  }
+
+  /** The rows behind a set of ids, for an action that spans several. */
+  async rowsByIds(ids: string[]): Promise<WatchSourceRow[]> {
+    if (ids.length === 0) return [];
+    return this.db.select().from(watchSources).where(inArray(watchSources.id, ids));
   }
 
   async findRowById(id: string): Promise<WatchSourceRow | undefined> {

@@ -1017,6 +1017,150 @@ describe('trusted picks and deletion', () => {
   });
 });
 
+describe('adding and bulk-deleting sources as an admin', () => {
+  /** Counts rows for a set of ids, parameterised rather than interpolated. */
+  async function countByIds(ids: string[]): Promise<number> {
+    const rows = await db.execute(
+      sql`select count(*)::int as n from watch_sources
+          where id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+    );
+    return (rows.rows[0] as { n: number }).n;
+  }
+
+  it('adds a listing directly, without the suggestion queue', async () => {
+    const adminUser = await admin();
+
+    const created = await fetch(`${BASE_URL}/api/admin/sources`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({
+        name: 'Added Directly',
+        url: 'https://added-directly.test/',
+        description: 'Entered by a moderator.',
+        categories: ['Movies'],
+        qualityLabel: '4K',
+        trustedRank: 50,
+        trustedNote: 'Known good',
+      }),
+    });
+    expect(created.status).toBe(200);
+    const { id } = await created.json();
+
+    // Public immediately, with the quality badge and the star.
+    const html = await (await fetch(BASE_URL)).text();
+    expect(html).toContain('Added Directly');
+    expect(html).toContain('4K');
+    expect(html).toContain('Trusted pick');
+
+    // No credit invented: nobody found it.
+    const credits = await db.execute(
+      sql`select count(*)::int as n from source_contributions where source_id = ${id}`,
+    );
+    expect((credits.rows[0] as { n: number }).n).toBe(0);
+
+    // And no pending suggestion was created on the way.
+    const pending = await db.execute(
+      sql`select count(*)::int as n from watch_source_candidates where domain = 'added-directly.test'`,
+    );
+    expect((pending.rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it('refuses a second listing for a domain already present', async () => {
+    const adminUser = await admin();
+    const body = {
+      name: 'Twice Over',
+      url: 'https://twice-over.test/',
+      categories: ['TV'],
+    };
+    const post1 = () =>
+      fetch(`${BASE_URL}/api/admin/sources`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+        body: JSON.stringify(body),
+      });
+
+    expect((await post1()).status).toBe(200);
+    expect((await post1()).status).toBe(400);
+  });
+
+  it('refuses both actions from a normal account', async () => {
+    const contributor = await createAccount();
+
+    const created = await fetch(`${BASE_URL}/api/admin/sources`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: contributor.cookie, origin: BASE_URL },
+      body: JSON.stringify({ name: 'Nope', url: 'https://nope.test/', categories: ['TV'] }),
+    });
+    expect([401, 403, 404]).toContain(created.status);
+
+    const deleted = await fetch(`${BASE_URL}/api/admin/sources`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: contributor.cookie, origin: BASE_URL },
+      body: JSON.stringify({ ids: ['wsr_example_anime1'], confirmCount: 1 }),
+    });
+    expect([401, 403, 404]).toContain(deleted.status);
+  });
+
+  it('deletes many at once, and only when the count agrees', async () => {
+    const adminUser = await admin();
+
+    const ids: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const response = await fetch(`${BASE_URL}/api/admin/sources`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+        body: JSON.stringify({
+          name: `Bulk ${index}`,
+          url: `https://bulk-${index}.test/`,
+          categories: ['TV'],
+        }),
+      });
+      expect(response.status).toBe(200);
+      ids.push((await response.json()).id);
+    }
+
+    const bulk = (body: unknown) =>
+      fetch(`${BASE_URL}/api/admin/sources`, {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+        body: JSON.stringify(body),
+      });
+
+    /*
+     * A count that disagrees with the selection means the list changed under
+     * the moderator. Refusing is the point: they agreed to delete a different
+     * number of things than they are about to.
+     */
+    const mismatched = await bulk({ ids, confirmCount: 2 });
+    expect(mismatched.status).toBe(400);
+
+    const stillThere = await countByIds(ids);
+    expect(stillThere).toBe(3);
+
+    const removed = await bulk({ ids, confirmCount: 3, reason: 'test duplicates' });
+    expect(removed.status).toBe(200);
+    expect((await removed.json()).deleted).toBe(3);
+
+    expect(await countByIds(ids)).toBe(0);
+
+    const audit = await db.execute(
+      sql`select count(*)::int as n from audit_logs where action = 'sources_bulk_deleted'`,
+    );
+    expect((audit.rows[0] as { n: number }).n).toBeGreaterThan(0);
+  });
+
+  it('refuses a selection larger than any real one', async () => {
+    const adminUser = await admin();
+    const ids = Array.from({ length: 201 }, (_, index) => `wsr_fake_${index}`);
+    const response = await fetch(`${BASE_URL}/api/admin/sources`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({ ids, confirmCount: 201 }),
+    });
+    expect(response.status).toBe(400);
+  });
+});
+
 describe('profile pictures', () => {
   const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 1, 2, 3]);
 

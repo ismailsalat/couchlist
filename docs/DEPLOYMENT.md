@@ -45,6 +45,7 @@ removed, and no row is deleted.
 | `0016_source_icons_and_grouped_suggestions` | Adds `source_icons` (the uploaded bytes, capped at 256 KB and limited to PNG/JPEG/WebP by a check constraint) and an `icon_mime` column on `watch_sources` and `watch_source_candidates`. Replaces the one-pending-suggestion-per-domain unique index with one per *submitter* per domain, so several people can suggest the same website and all be credited. |
 | `0017_avoid_warning_and_avatars` | Adds `should_avoid` and `avoid_reason` to `watch_sources`, `proposed_should_avoid` to `watch_source_candidates`, a `user_id` target on `source_icons` (so profile pictures reuse the validated-image table) and `avatar_mime` on `users`. Replaces the icon target check so exactly one of source, candidate or user owns each image. |
 | `0018_trusted_sources` | Adds `trusted_rank`, `trusted_note` and `trusted_at` to `watch_sources`, with a bounds check and a partial index. Null means the usual ranking applies; a number pins the source above everything unpicked. |
+| `0019_source_quality` | Adds `quality_label` to `watch_sources`, a short free-text note bounded to twelve characters by a check constraint. |
 
 Two changes are worth reading closely before you run them.
 

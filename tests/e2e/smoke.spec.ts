@@ -408,6 +408,29 @@ test.describe('signed in', () => {
   });
 });
 
+test.describe('finding a way to contribute', () => {
+  /*
+   * Suggesting a source used to live only in the footer, under a long list.
+   * That is the one place a reader who has just failed to find what they
+   * wanted will not look, which is exactly the moment they would want it.
+   */
+  test('offers suggesting a source without scrolling to the footer', async ({ page }) => {
+    await page.goto('/');
+
+    const suggest = page.getByRole('link', { name: /Suggest/ }).first();
+    await expect(suggest).toBeVisible();
+    await expect(suggest).toHaveAttribute('href', '/submit');
+
+    // Above the fold, which is the whole point.
+    const box = (await suggest.boundingBox())!;
+    const viewport = page.viewportSize()!;
+    expect(box.y).toBeLessThan(viewport.height);
+
+    await suggest.click();
+    await expect(page).toHaveURL(/\/submit|\/login/);
+  });
+});
+
 test.describe('reaching a website', () => {
   /*
    * Two destinations from one row, on purpose: the name explains the source,

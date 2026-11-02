@@ -40,6 +40,8 @@ const config: Config = {
         'trusted-bg': 'var(--cl-trusted-bg)',
         'trusted-text': 'var(--cl-trusted-text)',
         'trusted-line': 'var(--cl-trusted-line)',
+        'quality-text': 'var(--cl-quality-text)',
+        'quality-line': 'var(--cl-quality-line)',
         'voted-bg': 'var(--cl-voted-bg)',
         'voted-text': 'var(--cl-voted-text)',
         'voted-line': 'var(--cl-voted-line)',

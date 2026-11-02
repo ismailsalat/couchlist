@@ -516,6 +516,13 @@ export const watchSources = pgTable(
      * applies; a number pins the source above everything unpicked, lowest
      * first, so the order of the picks is chosen rather than accidental.
      */
+    /*
+     * A short moderator-set quality note: 4K, HD, HQ scans. Free text within
+     * twelve characters, because one list holds video and reading sources and
+     * no fixed set of values says anything useful about both.
+     */
+    qualityLabel: text('quality_label'),
+
     trustedRank: integer('trusted_rank'),
     trustedNote: text('trusted_note'),
     trustedAt: timestamp('trusted_at', { withTimezone: true }),

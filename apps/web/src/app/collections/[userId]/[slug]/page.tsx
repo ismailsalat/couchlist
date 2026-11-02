@@ -102,6 +102,7 @@ export default async function CollectionPage({
                   avoidReason: item.source.avoidReason,
                   trustedRank: item.source.trustedRank,
                   trustedNote: item.source.trustedNote,
+                  qualityLabel: item.source.qualityLabel,
                   hasIcon: item.source.iconMime !== null,
                   likes: 0,
                   dislikes: 0,

@@ -1,5 +1,7 @@
 import { parseCategoryFilter } from '@couchlist/shared';
 import { SourceAdminRow } from '@/components/admin/source-admin-row';
+import { AddSourceForm } from '@/components/admin/add-source-form';
+import { SourceSelectionProvider } from '@/components/admin/source-selection';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { repos } from '@/lib/db';
@@ -61,6 +63,17 @@ export default async function AdminSourcesPage({
         {listing.total} source{listing.total === 1 ? '' : 's'}, hidden ones included.
       </p>
 
+      <AddSourceForm />
+
+      <SourceSelectionProvider
+        sources={rows
+          .filter((entry) => entry.row)
+          .map(({ source }) => ({
+            id: source.id,
+            name: source.name,
+            domain: source.domain,
+          }))}
+      >
       <div className="rounded-card border border-line bg-surface">
         {rows.length > 0 ? (
           rows.map(({ source, row }) =>
@@ -79,6 +92,7 @@ export default async function AdminSourcesPage({
                   avoidReason: source.avoidReason,
                   trustedRank: source.trustedRank,
                   trustedNote: source.trustedNote,
+                  qualityLabel: source.qualityLabel,
                   isEnabled: row.isEnabled,
                   hiddenReason: row.hiddenReason,
                   adminRankPenalty: source.adminRankPenalty,
@@ -93,6 +107,7 @@ export default async function AdminSourcesPage({
           <EmptyState title="No sources match that search." />
         )}
       </div>
+      </SourceSelectionProvider>
 
       <Pagination
         total={listing.total}

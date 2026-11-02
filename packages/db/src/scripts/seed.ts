@@ -36,10 +36,13 @@ const EXAMPLE_SOURCES = [
     description: 'Example listing — independent films, documentaries and overlooked favourites.',
     categories: { movies: true },
     likes: 30,
+    qualityLabel: '4K',
     dislikes: 3,
   },
   {
     id: 'wsr_example_anime1',
+    trustedRank: 100,
+    trustedNote: 'Reliable for years, no sign-in, no pop-ups',
     name: 'AniHarbor',
     domain: 'aniharbor.invalid',
     description: 'Example listing — a starting point for anime series and films.',
@@ -72,6 +75,7 @@ const EXAMPLE_SOURCES = [
     description: 'Example listing — full-colour stories for one more chapter.',
     categories: { manhwa: true },
     likes: 15,
+    qualityLabel: 'HQ scans',
     dislikes: 2,
   },
   {
@@ -165,7 +169,7 @@ export async function seed(connectionString: string): Promise<void> {
     await db.execute(sql`
       insert into watch_sources (
         id, name, domain, homepage_url, source_type, description, has_lots_of_ads,
-        should_avoid, avoid_reason,
+        should_avoid, avoid_reason, quality_label, trusted_rank, trusted_note,
         supports_anime, supports_movies, supports_tv, supports_manga, supports_manhwa, supports_comics,
         is_enabled
       )
@@ -173,6 +177,7 @@ export async function seed(connectionString: string): Promise<void> {
         ${source.id}, ${source.name}, ${source.domain}, ${'https://' + source.domain + '/'},
         'COMMUNITY', ${source.description}, ${source.hasLotsOfAds ?? false},
         ${source.shouldAvoid ?? false}, ${source.avoidReason ?? null},
+        ${source.qualityLabel ?? null}, ${source.trustedRank ?? null}, ${source.trustedNote ?? null},
         ${source.categories.anime ?? false}, ${source.categories.movies ?? false},
         ${source.categories.tv ?? false}, ${source.categories.manga ?? false},
         ${source.categories.manhwa ?? false}, ${source.categories.comics ?? false},

@@ -1,6 +1,12 @@
 import Link from 'next/link';
 import type { SourceCategory } from '@couchlist/shared';
-import { AdsWarning, AvoidWarning, CategoryPill, TrustedMark } from './ui/category-pill';
+import {
+  AdsWarning,
+  AvoidWarning,
+  CategoryPill,
+  QualityBadge,
+  TrustedMark,
+} from './ui/category-pill';
 import { SourceRowActions } from './source-row-actions';
 
 /**
@@ -29,6 +35,7 @@ export interface SourceRowData {
   avoidReason: string | null;
   trustedRank: number | null;
   trustedNote: string | null;
+  qualityLabel: string | null;
   likes: number;
   dislikes: number;
   /** True when a contributor supplied a site icon. */
@@ -84,6 +91,16 @@ export function SourceRow({
         />
 
         <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 sm:gap-x-[7px]">
+          {/*
+            * The star leads, before the name.
+            *
+            * A moderator's pick is the one thing here that is a judgement
+            * rather than a fact, and putting it first lets a reader scan a
+            * column of stars down the left of the names without reading
+            * anything else.
+            */}
+          {source.trustedRank !== null ? <TrustedMark note={source.trustedNote} /> : null}
+
           {/* The name is the link to the source page: one obvious target,
               and it keeps working when the row's expand button is hidden on
               a narrow screen. */}
@@ -93,7 +110,7 @@ export function SourceRow({
           >
             {source.name}
           </Link>
-          {source.trustedRank !== null ? <TrustedMark note={source.trustedNote} /> : null}
+          {source.qualityLabel ? <QualityBadge label={source.qualityLabel} /> : null}
           {source.categories.map((category) => (
             <CategoryPill key={category} category={category} />
           ))}

@@ -246,6 +246,8 @@ export const adminSourceSchema = z.object({
    */
   trustedRank: z.number().int().min(0).max(9999).nullable().optional(),
   trustedNote: trimmed(160).optional().nullable(),
+  /** A short note on quality: 4K, HD, HQ scans. Twelve characters, no more. */
+  qualityLabel: trimmed(12).optional().nullable(),
   /*
    * Shown to readers beside the warning, so it is held to the same length as
    * a description rather than being a private moderator note.
@@ -282,6 +284,35 @@ export const adminReviewSchema = z.object({
 export const adminDeleteSourceSchema = z.object({
   confirmDomain: trimmed(255).min(1),
   reason: trimmed(300).optional(),
+});
+
+/**
+ * Deleting several sources at once.
+ *
+ * Typing one domain back is the right friction for one deletion and the wrong
+ * friction for twenty: a moderator clearing out duplicates would end up
+ * copying domains for ten minutes, and friction people route around protects
+ * nothing. The confirmation here is the count instead, which cannot be
+ * produced by a stray click either, and the interface lists every name before
+ * asking for it.
+ */
+export const adminBulkDeleteSchema = z.object({
+  ids: z.array(trimmed(64).min(1)).min(1).max(200),
+  /** Must equal ids.length. A selection that changed under you will not match. */
+  confirmCount: z.number().int().min(1).max(200),
+  reason: trimmed(300).optional(),
+});
+
+/** Creating a listing directly, without it passing through the queue. */
+export const adminCreateSourceSchema = z.object({
+  name: trimmed(80).min(2),
+  url: externalUrlSchema,
+  description: trimmed(240).optional(),
+  categories: categoryListSchema,
+  hasLotsOfAds: z.boolean().default(false),
+  qualityLabel: trimmed(12).optional().nullable(),
+  trustedRank: z.number().int().min(0).max(9999).nullable().optional(),
+  trustedNote: trimmed(160).optional().nullable(),
 });
 
 export const adminHideSchema = z.object({

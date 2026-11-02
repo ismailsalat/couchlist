@@ -49,6 +49,10 @@
   --cl-trusted-text: #ffd98a;
   --cl-trusted-line: #6f5b2c;
 
+  /* Quality: cool and quiet. It is a specification, not an opinion. */
+  --cl-quality-text: #9fd8d2;
+  --cl-quality-line: #3f5f5c;
+
   --cl-voted-bg: #2f3a4a;
   --cl-voted-text: #c3d6ee;
   --cl-voted-line: #4d6180;

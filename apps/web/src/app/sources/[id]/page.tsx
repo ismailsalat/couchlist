@@ -4,7 +4,14 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, Flag, PencilLine } from "lucide-react";
 import { confidenceWeightedLikeRatio, likeRatio } from "@couchlist/shared";
 import { SiteHeader } from "@/components/site-header";
-import { AdsWarning, AvoidWarning, CategoryPill, StopOctagon } from "@/components/ui/category-pill";
+import {
+  AdsWarning,
+  AvoidWarning,
+  CategoryPill,
+  QualityBadge,
+  StopOctagon,
+  TrustedMark,
+} from "@/components/ui/category-pill";
 import { SourceRowActions } from "@/components/source-row-actions";
 import { SimilarSources } from "@/components/similar-sources";
 import { ContributorCredits } from "@/components/contributor-credits";
@@ -116,17 +123,21 @@ export default async function SourcePage({
               ) : null}
 
               <div className="min-w-0">
-                <h1 className="m-0 text-xl font-semibold tracking-tight sm:text-2xl">
+                <h1 className="m-0 flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
+                  {source.trustedRank !== null ? (
+                    <TrustedMark note={source.trustedNote} />
+                  ) : null}
                   {source.name}
                 </h1>
                 <p className="m-0 mt-1 text-sm text-muted">{source.domain}</p>
 
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {source.qualityLabel ? <QualityBadge label={source.qualityLabel} /> : null}
                   {source.categories.map((category) => (
                     <CategoryPill key={category} category={category} />
                   ))}
                   {source.hasLotsOfAds ? <AdsWarning /> : null}
-                {source.shouldAvoid ? <AvoidWarning /> : null}
+                  {source.shouldAvoid ? <AvoidWarning reason={source.avoidReason} /> : null}
                 </div>
               </div>
             </div>

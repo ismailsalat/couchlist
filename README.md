@@ -42,9 +42,18 @@ or mirror video, comics or translated pages.
   and both survive a reload.
 - **Take your list with you** — the saved list exports as a spreadsheet, plain
   text, Markdown or JSON.
+- **Four marks, four shapes** — a category is a rounded pill, a quality note
+  is a square outline, a warning is a notched banner, and a moderator's pick
+  is a bare gold star. Each is recognisable with the colour removed, which
+  colour alone never was.
 - **Trusted picks** — a moderator can pin sources above the ranking, in an
-  order they choose, with a note saying why. Gold star, reserved colour, and
-  it never looks like a warning.
+  order they choose, with a note saying why.
+- **Quality labels** — a short moderator-set note such as 4K or HQ scans.
+  Free text within twelve characters, because one list holds video and
+  reading sources and no fixed set of values suits both.
+- **Admin bulk actions** — tick rows and delete them in one confirmed step
+  that lists every name first, and add a listing directly without suggesting
+  it to yourself and approving your own suggestion.
 - **Verification actually gates the account** — signing up holds you on the
   code page until the address is confirmed. Browsing, the back button and a
   typed URL all land back there, and there is a way out that is not the code.

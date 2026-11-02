@@ -1,8 +1,10 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowDownWideNarrow, Search } from 'lucide-react';
+import { ArrowDownWideNarrow, Plus, Search } from 'lucide-react';
 import { ALL_CATEGORIES, SOURCE_CATEGORIES, type CategoryFilter } from '@couchlist/shared';
 import { CategoryIcon } from './ui/category-icon';
 
@@ -140,7 +142,22 @@ export function DirectoryControls({
           })}
         </div>
 
-        <label className="ml-auto flex items-center gap-1.5 text-muted">
+        {/*
+          * Suggesting a source used to live only in the footer, below a long
+          * list, which is the one place somebody who has just failed to find
+          * what they wanted will not look. Here it sits where that failure
+          * happens — beside the filters, at the top of the results.
+          */}
+        <Link
+          href="/submit"
+          className="cl-touch cl-pill ml-auto inline-flex items-center gap-1.5 rounded-pill border-2 border-dashed border-line bg-bg px-3 py-1.5 text-[13px] font-semibold text-muted no-underline hover:border-accent hover:bg-accent-soft hover:text-accent"
+        >
+          <Plus aria-hidden="true" className="h-3.5 w-3.5" />
+          <span className="hidden xs:inline">Suggest a source</span>
+          <span className="xs:hidden">Suggest</span>
+        </Link>
+
+        <label className="flex items-center gap-1.5 text-muted">
           <ArrowDownWideNarrow aria-hidden="true" className="h-3.5 w-3.5" />
           <span className="sr-only">Sort sources</span>
           <select

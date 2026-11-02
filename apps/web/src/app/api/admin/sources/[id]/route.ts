@@ -45,6 +45,7 @@ export const PATCH = apiRoute<NextResponse, { id: string }>(async (request, { pa
   if (existing.hasLotsOfAds !== input.hasLotsOfAds) changed.push('ad warning');
   if (existing.shouldAvoid !== input.shouldAvoid) changed.push('avoid warning');
   if ((existing.trustedRank ?? null) !== (input.trustedRank ?? null)) changed.push('trusted pick');
+  if ((existing.qualityLabel ?? null) !== (input.qualityLabel ?? null)) changed.push('quality');
   if ((existing.avoidReason ?? '') !== (input.avoidReason ?? '')) changed.push('avoid reason');
   if (existing.adminRankPenalty !== input.adminRankPenalty) changed.push('rank penalty');
 
@@ -58,6 +59,7 @@ export const PATCH = apiRoute<NextResponse, { id: string }>(async (request, { pa
         description: input.description ?? null,
         hasLotsOfAds: input.hasLotsOfAds,
         shouldAvoid: input.shouldAvoid,
+        qualityLabel: input.qualityLabel ?? null,
         trustedRank: input.trustedRank ?? null,
         // The note and the timestamp only mean something while it is a pick.
         trustedNote: input.trustedRank != null ? (input.trustedNote ?? null) : null,

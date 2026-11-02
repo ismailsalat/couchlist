@@ -92,6 +92,31 @@ Signed out, in a private window:
 - [ ] Sign up again with another address and click "Use a different address".
       You are signed out and can browse normally.
 
+### Telling the marks apart
+
+- [ ] Open Discover with a greyscale filter on. A category, a quality note, a
+      warning and a trusted star are still four different things.
+- [ ] The star has no pill around it and sits before the name.
+- [ ] Hover the star: the reason appears. Tab to it with a screen reader on:
+      the reason is read out, not just the word "trusted".
+
+### Quality labels
+
+- [ ] Set one to `4K` from the admin row. It shows as a square outlined badge,
+      not a pill.
+- [ ] Try one longer than twelve characters. It is refused.
+- [ ] Clear it. The badge goes.
+
+### Admin bulk work
+
+- [ ] Tick three rows. The bar appears and says how many.
+- [ ] "Select all on this page" selects exactly the page, not the whole table.
+- [ ] Open the delete confirmation: every name is listed before you agree.
+- [ ] Delete them. All three go; the accounts that voted on them do not.
+- [ ] Add a source with the form. It appears in Discover immediately with no
+      credit recorded and nothing left in the suggestion queue.
+- [ ] Add the same domain twice. The second is refused.
+
 ### Trusted picks
 
 - [ ] Mark a low-scoring source as trusted with order 10. It jumps to the top

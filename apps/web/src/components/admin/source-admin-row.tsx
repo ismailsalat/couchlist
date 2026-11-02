@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { SOURCE_CATEGORIES, type SourceCategory } from '@couchlist/shared';
 import { AdsWarning, AvoidWarning, TrustedMark } from '../ui/category-pill';
+import { SourceCheckbox } from './source-selection';
 
 /**
  * One editable source in the admin table.
@@ -29,6 +30,7 @@ export function SourceAdminRow({
     avoidReason: string | null;
     trustedRank: number | null;
     trustedNote: string | null;
+    qualityLabel: string | null;
     isEnabled: boolean;
     hiddenReason: string | null;
     adminRankPenalty: number;
@@ -66,6 +68,7 @@ export function SourceAdminRow({
           trustedRank:
             form.get('trusted') === 'on' ? Number(form.get('trustedRank') ?? 100) : null,
           trustedNote: String(form.get('trustedNote') ?? '').trim() || null,
+          qualityLabel: String(form.get('qualityLabel') ?? '').trim() || null,
           avoidReason: String(form.get('avoidReason') ?? '').trim() || null,
           isEnabled: form.get('isEnabled') === 'on',
           adminRankPenalty: Number(form.get('adminRankPenalty') ?? 0),
@@ -116,7 +119,10 @@ export function SourceAdminRow({
   return (
     <div className="border-b border-line p-3.5 last:border-b-0">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
+        {/* Ticking rows is how several get deleted in one action. */}
+        <SourceCheckbox id={source.id} name={source.name} />
+
+        <div className="min-w-0 flex-1">
           <p className="m-0 text-sm font-semibold text-text">
             <Link href={`/sources/${source.id}`} className="text-text no-underline hover:text-accent">
               {source.name}
@@ -321,6 +327,26 @@ export function SourceAdminRow({
               new pick can go between two without renumbering the rest.
             </p>
           </fieldset>
+
+          <label className="text-sm">
+            <span className="mb-1 block text-muted">Quality, if worth noting</span>
+            <input
+              name="qualityLabel"
+              defaultValue={source.qualityLabel ?? ''}
+              maxLength={12}
+              list="row-quality-suggestions"
+              placeholder="4K"
+              className={adminInput}
+            />
+            <datalist id="row-quality-suggestions">
+              <option value="4K" />
+              <option value="1080p" />
+              <option value="HD" />
+              <option value="SD" />
+              <option value="HQ scans" />
+              <option value="Official" />
+            </datalist>
+          </label>
 
           <label className="text-sm">
             <span className="mb-1 block text-muted">Rank penalty (0–100)</span>
