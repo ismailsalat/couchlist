@@ -1,0 +1,12 @@
+.env.example
+V12_4_NAV_ABOUT_SOURCE_SAFETY.md
+V12_4_CHANGED_FILES.txt
+TEST_V12_4_WINDOWS.cmd
+apps/bot/src/commands/about.ts
+apps/web/src/app/globals.css
+apps/web/src/components/global-sources-directory.tsx
+apps/web/src/components/mobile-nav.tsx
+apps/web/src/components/server-sources.tsx
+apps/web/src/components/source-safety-note.tsx
+apps/web/src/components/watch-section.tsx
+packages/shared/src/config/env.ts

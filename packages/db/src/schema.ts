@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  customType,
   doublePrecision,
   index,
   integer,
@@ -78,6 +79,9 @@ export const watchCandidateStatusEnum = pgEnum('watch_candidate_status', [
 ]);
 export const watchReportReasonEnum = pgEnum('watch_report_reason', [
   'BROKEN_LINK',
+  // The directory's three reasons are BROKEN_LINK, LOTS_OF_ADS and OTHER. The
+  // rest predate the rebuild and are kept so historical reports still read.
+  'LOTS_OF_ADS',
   'WRONG_TITLE',
   'WRONG_EPISODE',
   'MISLEADING_QUALITY',
@@ -96,14 +100,63 @@ export const watchQualityEnum = pgEnum('watch_quality', [
 ]);
 export const watchAudioEnum = pgEnum('watch_audio', ['SUB', 'DUB', 'SUB_DUB', 'UNKNOWN']);
 
+// Directory enums.
+/** PostgreSQL bytea, which Drizzle has no first-class column type for. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return 'bytea';
+  },
+});
+
+export const sourceVoteValueEnum = pgEnum('source_vote_value', ['LIKE', 'DISLIKE']);
+/** A contributor's public display choice. Anonymous hides identity, not the record. */
+export const creditModeEnum = pgEnum('credit_mode', ['CREDITED', 'ANONYMOUS']);
+export const contributionKindEnum = pgEnum('contribution_kind', [
+  'NEW_SOURCE',
+  'CORRECTION',
+  'GUIDE',
+  'GUIDE_CORRECTION',
+]);
+export const guideTopicEnum = pgEnum('guide_topic', [
+  'BLOCKING',
+  'WATCHING',
+  'READING',
+  'TRANSLATION',
+  'SUBTITLES',
+  'CASTING',
+  'FIXES',
+]);
+export const guideSuggestionKindEnum = pgEnum('guide_suggestion_kind', [
+  'NEW_GUIDE',
+  'CORRECTION',
+  'BROKEN_LINK',
+]);
+
 export const users = pgTable(
   'users',
   {
     id: text('id').primaryKey().$defaultFn(() => createId('usr')),
-    discordId: text('discord_id').notNull(),
+
+    // Email accounts are the supported way in. Discord columns remain so that
+    // accounts created before the directory rebuild keep working and keep
+    // their contribution credit; they are never merged by name or email.
+    email: text('email'),
+    passwordHash: text('password_hash'),
+    displayName: text('display_name'),
+    emailVerifiedAt: timestamp('email_verified_at', { withTimezone: true }),
+
+    // Server-checked administrator role. Replaces the Discord owner-id list:
+    // authorization is a property of the account, not of an env var.
+    isAdmin: boolean('is_admin').notNull().default(false),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+
+    discordId: text('discord_id'),
     username: text('username').notNull(),
     globalName: text('global_name'),
     avatarUrl: text('avatar_url'),
+    // Set when the account has an uploaded picture. The type lives on the row
+    // so "has a picture" costs neither a join nor the bytes.
+    avatarMime: text('avatar_mime'),
 
     // Privacy defaults to the more private of the two options.
     profileVisibility: profileVisibilityEnum('profile_visibility')
@@ -122,7 +175,58 @@ export const users = pgTable(
   },
   (table) => ({
     discordIdKey: uniqueIndex('users_discord_id_key').on(table.discordId),
+    // Lowercased, so two spellings of one address cannot both register.
+    // Partial, so legacy Discord-only rows do not collide on a null email.
+    emailKey: uniqueIndex('users_email_key')
+      .on(sql`lower(${table.email})`)
+      .where(sql`${table.email} is not null`),
+    adminIdx: index('users_admin_idx').on(table.isAdmin).where(sql`${table.isAdmin}`),
     lastSeenIdx: index('users_last_seen_idx').on(table.lastSeenAt),
+    /*
+     * A live account must be reachable. A deleted one is a tombstone that
+     * exists only to anchor contribution credit, so it is allowed to carry no
+     * identifier at all — clearing both is the point of the deletion.
+     */
+    identityCheck: check(
+      'users_identity_check',
+      sql`${table.deletedAt} is not null or ${table.discordId} is not null or ${table.email} is not null`,
+    ),
+  }),
+);
+
+export const authTokenPurposeEnum = pgEnum('auth_token_purpose', [
+  'EMAIL_VERIFICATION',
+  'PASSWORD_RESET',
+]);
+
+/**
+ * Email verification codes and password-reset tokens.
+ *
+ * One table so that expiry, single use and attempt limiting have exactly one
+ * implementation. Only a hash is stored, so a database dump cannot be replayed
+ * to verify an address or take over an account.
+ */
+export const authTokens = pgTable(
+  'auth_tokens',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('atk')),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    purpose: authTokenPurposeEnum('purpose').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    // A code issued for one address must not verify a different one after an
+    // email change, so the target address is pinned at issue time.
+    sentToEmail: text('sent_to_email').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    hashKey: uniqueIndex('auth_tokens_hash_key').on(table.purpose, table.tokenHash),
+    userIdx: index('auth_tokens_user_idx').on(table.userId, table.purpose, table.createdAt),
+    expiryIdx: index('auth_tokens_expiry_idx').on(table.expiresAt),
   }),
 );
 
@@ -384,9 +488,41 @@ export const watchSources = pgTable(
     sourceType: watchSourceTypeEnum('source_type').notNull(),
     accessType: watchAccessTypeEnum('access_type').notNull().default('UNKNOWN'),
 
+    // A short, useful line about what the source offers. Untrusted text: it is
+    // rendered as text, never as markup.
+    description: text('description'),
+    iconUrl: text('icon_url'),
+    /**
+     * Set when a site icon exists, so a listing knows to render one without
+     * joining the table that holds the image bytes.
+     */
+    iconMime: text('icon_mime'),
+
+    /*
+     * The two moderator-set warnings, in increasing severity. Both are
+     * decided by a person; neither is computed from vote counts.
+     *
+     *  - `hasLotsOfAds` is a caution. The site works; it is unpleasant.
+     *  - `shouldAvoid` says plainly not to go there. The listing stays, so
+     *    people who hear the name elsewhere find the warning rather than
+     *    silence, and `avoidReason` says why in one line.
+     */
+    hasLotsOfAds: boolean('has_lots_of_ads').notNull().default(false),
+    shouldAvoid: boolean('should_avoid').notNull().default(false),
+    avoidReason: text('avoid_reason'),
+
     supportsAnime: boolean('supports_anime').notNull().default(false),
     supportsMovies: boolean('supports_movies').notNull().default(false),
     supportsTv: boolean('supports_tv').notNull().default(false),
+    supportsManga: boolean('supports_manga').notNull().default(false),
+    supportsManhwa: boolean('supports_manhwa').notNull().default(false),
+    supportsComics: boolean('supports_comics').notNull().default(false),
+
+    // Hiding is reversible, so both the moment and the reason are kept.
+    hiddenAt: timestamp('hidden_at', { withTimezone: true }),
+    hiddenReason: text('hidden_reason'),
+    // Set only when a human actually checked this source's link.
+    linksReviewedAt: timestamp('links_reviewed_at', { withTimezone: true }),
 
     // Simple operator controls for the public directory. A penalty lowers
     // ranking without deleting history; a health override is reversible.
@@ -416,6 +552,15 @@ export const watchSources = pgTable(
   (table) => ({
     domainKey: uniqueIndex('watch_sources_domain_key').on(table.domain),
     enabledIdx: index('watch_sources_enabled_idx').on(table.isEnabled, table.sourceType),
+    categoryIdx: index('watch_sources_category_idx').on(
+      table.isEnabled,
+      table.supportsAnime,
+      table.supportsMovies,
+      table.supportsTv,
+      table.supportsManga,
+      table.supportsManhwa,
+      table.supportsComics,
+    ),
     typeIdx: index('watch_sources_type_idx').on(table.sourceType),
     adminRankPenaltyCheck: check(
       'watch_sources_admin_rank_penalty_check',
@@ -506,7 +651,30 @@ export const watchSourceCandidates = pgTable(
     supportsAnime: boolean('supports_anime').notNull().default(false),
     supportsMovies: boolean('supports_movies').notNull().default(false),
     supportsTv: boolean('supports_tv').notNull().default(false),
+    supportsManga: boolean('supports_manga').notNull().default(false),
+    supportsManhwa: boolean('supports_manhwa').notNull().default(false),
+    supportsComics: boolean('supports_comics').notNull().default(false),
+    description: text('description'),
     comment: text('comment'),
+
+    // What this submission is: a new listing or a correction to one.
+    kind: contributionKindEnum('kind').notNull().default('NEW_SOURCE'),
+    // The contributor's public display choice, chosen at submission time.
+    creditMode: creditModeEnum('credit_mode').notNull().default('CREDITED'),
+    // Set for a correction: the source being corrected.
+    targetSourceId: text('target_source_id').references(() => watchSources.id, {
+      onDelete: 'cascade',
+    }),
+
+    // A correction proposes replacements. Null means "leave this field alone".
+    proposedName: text('proposed_name'),
+    proposedUrl: text('proposed_url'),
+    proposedDescription: text('proposed_description'),
+    proposedCategories: jsonb('proposed_categories'),
+    proposedHasLotsOfAds: boolean('proposed_has_lots_of_ads'),
+    proposedShouldAvoid: boolean('proposed_should_avoid'),
+    /** Set when the contributor attached a site icon to this suggestion. */
+    iconMime: text('icon_mime'),
     contentKey: text('content_key'),
     mediaType: mediaTypeEnum('media_type'),
     mediaTitle: text('media_title'),
@@ -528,8 +696,19 @@ export const watchSourceCandidates = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    domainKey: uniqueIndex('watch_candidates_domain_key').on(table.domain),
+    // One *pending* new-source suggestion per domain. The previous
+    // all-time-unique index meant a rejected domain could never be suggested
+    // again and a correction could not reference an already-listed domain.
+    pendingDomainKey: uniqueIndex('watch_candidates_pending_domain_key')
+      .on(table.domain)
+      .where(sql`${table.status} = 'PENDING' and ${table.kind} = 'NEW_SOURCE'`),
     statusIdx: index('watch_candidates_status_idx').on(table.status, table.discoveredAt),
+    kindIdx: index('watch_candidates_kind_idx').on(table.kind, table.status, table.createdAt),
+    submitterIdx: index('watch_candidates_submitter_idx').on(
+      table.submittedByUserId,
+      table.createdAt,
+    ),
+    targetIdx: index('watch_candidates_target_idx').on(table.targetSourceId, table.status),
   }),
 );
 
@@ -685,6 +864,7 @@ export const watchSourceReports = pgTable(
     resolvedByUserId: text('resolved_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    resolutionNote: text('resolution_note'),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -709,6 +889,328 @@ export const watchSourceReports = pgTable(
   }),
 );
 
+/**
+ * Like / dislike feedback on a source.
+ *
+ * One row per verified account per source. The uniqueness guarantee is the
+ * database index, not application code, so two concurrent requests cannot
+ * both insert a vote.
+ */
+export const sourceVotes = pgTable(
+  'source_votes',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('svt')),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    value: sourceVoteValueEnum('value').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userSourceKey: uniqueIndex('source_votes_user_source_key').on(table.sourceId, table.userId),
+    sourceIdx: index('source_votes_source_idx').on(table.sourceId, table.value),
+  }),
+);
+
+/**
+ * A saved source website.
+ *
+ * Saving a source is not the old show watchlist: the row points at a site, and
+ * the note on it is private to its owner.
+ */
+export const sourceBookmarks = pgTable(
+  'source_bookmarks',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('bmk')),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** Owner-only. Never included in a public response shape. */
+    note: text('note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userSourceKey: uniqueIndex('source_bookmarks_user_source_key').on(
+      table.sourceId,
+      table.userId,
+    ),
+    userIdx: index('source_bookmarks_user_idx').on(table.userId, table.createdAt),
+  }),
+);
+
+/**
+ * Credit for an approved contribution.
+ *
+ * `userId` is kept for moderation even when `creditMode` is ANONYMOUS. The
+ * public boundary is enforced where responses are built: an anonymous row must
+ * never expose the account, nor an id that can be joined back to one.
+ */
+export const sourceContributions = pgTable(
+  'source_contributions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('con')),
+    sourceId: text('source_id').references(() => watchSources.id, { onDelete: 'cascade' }),
+    guideId: text('guide_id').references((): typeof guides.id => guides.id, {
+      onDelete: 'cascade',
+    }),
+    // Set null on account deletion: the credit survives, the identity does not.
+    userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: contributionKindEnum('kind').notNull(),
+    creditMode: creditModeEnum('credit_mode').notNull().default('CREDITED'),
+    /**
+     * True for the first approved suggestion of a source: the original
+     * contributor. Later approved corrections get their own rows and never
+     * replace this one.
+     */
+    isOriginal: boolean('is_original').notNull().default(false),
+    summary: text('summary'),
+    candidateId: text('candidate_id').references(() => watchSourceCandidates.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceIdx: index('source_contributions_source_idx').on(table.sourceId, table.createdAt),
+    userIdx: index('source_contributions_user_idx').on(table.userId, table.createdAt),
+    guideIdx: index('source_contributions_guide_idx').on(table.guideId, table.createdAt),
+    originalKey: uniqueIndex('source_contributions_original_key')
+      .on(table.sourceId)
+      .where(sql`${table.isOriginal}`),
+    targetCheck: check(
+      'source_contributions_target_check',
+      sql`(${table.sourceId} is not null)::int + (${table.guideId} is not null)::int = 1`,
+    ),
+  }),
+);
+
+/** History of meaningful approved updates to a source. */
+export const sourceRevisions = pgTable(
+  'source_revisions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('rev')),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+    contributionId: text('contribution_id').references(() => sourceContributions.id, {
+      onDelete: 'set null',
+    }),
+    summary: text('summary').notNull(),
+    changedFields: jsonb('changed_fields'),
+    appliedByUserId: text('applied_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceIdx: index('source_revisions_source_idx').on(table.sourceId, table.createdAt),
+  }),
+);
+
+/**
+ * A guide or tool entry.
+ *
+ * Compatibility, pricing and links are the facts that go stale fastest, so they
+ * are editable columns rather than hard-coded content. `lastReviewedAt` is null
+ * until a human actually checked: the UI shows a reviewed date only when it is
+ * set, so Couchlist never invents one.
+ */
+export const guides = pgTable(
+  'guides',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('gde')),
+    slug: text('slug').notNull(),
+    /** The task, in the reader's words: "Block ads in Firefox". */
+    title: text('title').notNull(),
+    /** The tool and scope: "uBlock Origin - Desktop and Android". */
+    task: text('task').notNull(),
+    topic: guideTopicEnum('topic').notNull(),
+    summary: text('summary').notNull(),
+    /** Ordered plain steps. A guide is instructions, not an article. */
+    steps: jsonb('steps').notNull().default(sql`'[]'::jsonb`),
+    /** [{ label, url }] - official project or store pages only. */
+    links: jsonb('links').notNull().default(sql`'[]'::jsonb`),
+    /** Honest limitations: what the tool does not do. */
+    note: text('note'),
+    costNote: text('cost_note'),
+    browserNotes: text('browser_notes'),
+
+    deviceComputer: boolean('device_computer').notNull().default(false),
+    deviceIphone: boolean('device_iphone').notNull().default(false),
+    deviceAndroid: boolean('device_android').notNull().default(false),
+    deviceTv: boolean('device_tv').notNull().default(false),
+    deviceLabel: text('device_label').notNull().default(''),
+
+    /** Extra search terms, including common misspellings. */
+    keywords: text('keywords').notNull().default(''),
+    isStarter: boolean('is_starter').notNull().default(false),
+    isPublished: boolean('is_published').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(100),
+
+    lastReviewedAt: timestamp('last_reviewed_at', { withTimezone: true }),
+    lastReviewedByUserId: text('last_reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    slugKey: uniqueIndex('guides_slug_key').on(table.slug),
+    topicIdx: index('guides_topic_idx').on(table.topic, table.isPublished, table.sortOrder),
+    starterIdx: index('guides_starter_idx').on(table.isStarter, table.isPublished),
+  }),
+);
+
+/** Community guide submissions, corrections and broken-link reports. */
+export const guideSuggestions = pgTable(
+  'guide_suggestions',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('gsg')),
+    kind: guideSuggestionKindEnum('kind').notNull(),
+    targetGuideId: text('target_guide_id').references(() => guides.id, { onDelete: 'cascade' }),
+    submittedByUserId: text('submitted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    creditMode: creditModeEnum('credit_mode').notNull().default('CREDITED'),
+
+    title: text('title'),
+    topic: guideTopicEnum('topic'),
+    body: text('body').notNull(),
+    links: jsonb('links').notNull().default(sql`'[]'::jsonb`),
+
+    status: watchCandidateStatusEnum('status').notNull().default('PENDING'),
+    reviewedByUserId: text('reviewed_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewNotes: text('review_notes'),
+    promotedGuideId: text('promoted_guide_id').references(() => guides.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    statusIdx: index('guide_suggestions_status_idx').on(table.status, table.createdAt),
+    submitterIdx: index('guide_suggestions_submitter_idx').on(
+      table.submittedByUserId,
+      table.createdAt,
+    ),
+    targetIdx: index('guide_suggestions_target_idx').on(table.targetGuideId, table.status),
+    targetCheck: check(
+      'guide_suggestions_target_check',
+      sql`${table.kind} = 'NEW_GUIDE' or ${table.targetGuideId} is not null`,
+    ),
+  }),
+);
+
+/** A named list of sources. Private unless its owner publishes it. */
+export const sourceCollections = pgTable(
+  'source_collections',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('col')),
+    ownerUserId: text('owner_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    isPublic: boolean('is_public').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    // Per owner, so two people can both have "weekend-movies".
+    ownerSlugKey: uniqueIndex('source_collections_owner_slug_key').on(
+      table.ownerUserId,
+      table.slug,
+    ),
+    publicIdx: index('source_collections_public_idx').on(table.isPublic, table.updatedAt),
+  }),
+);
+
+export const sourceCollectionItems = pgTable(
+  'source_collection_items',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('cli')),
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => sourceCollections.id, { onDelete: 'cascade' }),
+    sourceId: text('source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+    note: text('note'),
+    position: integer('position').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    itemKey: uniqueIndex('source_collection_items_key').on(table.collectionId, table.sourceId),
+    orderIdx: index('source_collection_items_order_idx').on(table.collectionId, table.position),
+  }),
+);
+
+/**
+ * A site icon.
+ *
+ * Kept in its own table so that listing the directory never pulls image bytes
+ * along, and in the database rather than an object store so the feature needs
+ * no storage credential to work.
+ *
+ * The bytes are validated against the file's magic numbers before they get
+ * here, and served back with the stored type plus nosniff. SVG is never
+ * accepted, because it can carry script.
+ */
+export const sourceIcons = pgTable(
+  'source_icons',
+  {
+    id: text('id').primaryKey().$defaultFn(() => createId('ico')),
+    sourceId: text('source_id').references(() => watchSources.id, { onDelete: 'cascade' }),
+    // An account's profile picture. Exactly one of the three target columns
+    // is set; a check constraint enforces it.
+    userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    candidateId: text('candidate_id').references(() => watchSourceCandidates.id, {
+      onDelete: 'cascade',
+    }),
+    mime: text('mime').notNull(),
+    bytes: bytea('bytes').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    uploadedByUserId: text('uploaded_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceKey: uniqueIndex('source_icons_source_key')
+      .on(table.sourceId)
+      .where(sql`${table.sourceId} is not null`),
+    candidateKey: uniqueIndex('source_icons_candidate_key')
+      .on(table.candidateId)
+      .where(sql`${table.candidateId} is not null`),
+    targetCheck: check(
+      'source_icons_target_check',
+      sql`(${table.sourceId} is not null)::int + (${table.candidateId} is not null)::int = 1`,
+    ),
+    mimeCheck: check(
+      'source_icons_mime_check',
+      sql`${table.mime} in ('image/png', 'image/jpeg', 'image/webp')`,
+    ),
+    sizeCheck: check(
+      'source_icons_size_check',
+      sql`${table.byteSize} > 0 and ${table.byteSize} <= 262144`,
+    ),
+  }),
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type DiscordGuildRow = typeof discordGuilds.$inferSelect;
@@ -727,3 +1229,16 @@ export type ServerWatchPostRow = typeof serverWatchPosts.$inferSelect;
 export type WatchSourceRatingRow = typeof watchSourceRatings.$inferSelect;
 export type WatchSourceHealthVoteRow = typeof watchSourceHealthVotes.$inferSelect;
 export type WatchSourceReportRow = typeof watchSourceReports.$inferSelect;
+export type AuthTokenRow = typeof authTokens.$inferSelect;
+export type NewAuthToken = typeof authTokens.$inferInsert;
+export type SourceVoteRow = typeof sourceVotes.$inferSelect;
+export type SourceBookmarkRow = typeof sourceBookmarks.$inferSelect;
+export type SourceContributionRow = typeof sourceContributions.$inferSelect;
+export type NewSourceContribution = typeof sourceContributions.$inferInsert;
+export type SourceRevisionRow = typeof sourceRevisions.$inferSelect;
+export type GuideRow = typeof guides.$inferSelect;
+export type NewGuide = typeof guides.$inferInsert;
+export type GuideSuggestionRow = typeof guideSuggestions.$inferSelect;
+export type SourceCollectionRow = typeof sourceCollections.$inferSelect;
+export type SourceCollectionItemRow = typeof sourceCollectionItems.$inferSelect;
+export type SourceIconRow = typeof sourceIcons.$inferSelect;

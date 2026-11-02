@@ -74,17 +74,151 @@ export function errorResponse(error: unknown, requestId = newRequestId()): NextR
   );
 }
 
-export function apiRoute<T>(
-  handler: (request: Request, context: { requestId: string }) => Promise<T>,
-): (request: Request, routeContext?: unknown) => Promise<NextResponse> {
-  return async (request: Request, routeContext?: unknown) => {
+/**
+ * Route context.
+ *
+ * Next passes dynamic segments as a promise. Awaiting it here once means no
+ * route has to know that, and `params` arrives as a plain object.
+ */
+export interface RouteContext<P extends Record<string, string> = Record<string, never>> {
+  requestId: string;
+  params: P;
+}
+
+type NextRouteContext<P> = { params?: Promise<P> | P } | undefined;
+
+async function resolveParams<P extends Record<string, string>>(
+  routeContext: NextRouteContext<P>,
+): Promise<P> {
+  const params = routeContext?.params;
+  if (!params) return {} as P;
+  return params instanceof Promise ? await params : params;
+}
+
+/** Methods that may not change anything, so they need no origin check. */
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/**
+ * The largest request body any route will read.
+ *
+ * Nothing this app accepts is big. The largest legitimate body is a
+ * suggestion carrying a 256 KB icon, which base64 inflates by about a third,
+ * so 2 MB leaves generous room and still refuses anything absurd.
+ *
+ * This is the general form of a problem that otherwise has to be solved once
+ * per parser: a validator given a hundred-megabyte array will happily walk
+ * it, and the memory is gone before any rule about array length is reached.
+ * Capping the body means the parser is never handed the payload at all.
+ */
+export const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Refuses a body that is too large, before anything parses it.
+ *
+ * `Content-Length` is a claim, not a fact, so it is used only as an early
+ * exit. The stream is counted as it arrives, which is what actually enforces
+ * the cap for a chunked request that declares no length at all.
+ */
+function withBodyLimit(request: Request): Request {
+  if (SAFE_METHODS.has(request.method.toUpperCase())) return request;
+
+  const declared = Number(request.headers.get('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > MAX_REQUEST_BODY_BYTES) {
+    throw AppError.payloadTooLarge(MAX_REQUEST_BODY_BYTES);
+  }
+
+  if (!request.body) return request;
+
+  let seen = 0;
+  const counted = request.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > MAX_REQUEST_BODY_BYTES) {
+          controller.error(AppError.payloadTooLarge(MAX_REQUEST_BODY_BYTES));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: counted,
+    // Required by undici whenever a stream is used as a body.
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
+}
+
+/**
+ * Cross-site request forgery.
+ *
+ * The session is a cookie, so a browser attaches it to any request it makes to
+ * this origin, including one a different site caused. SameSite=Lax already
+ * stops the classic cross-site form post, but it is one flag in one place:
+ * it varies between browsers, it does not separate one subdomain from another,
+ * and a session is not something to protect with a single mechanism.
+ *
+ * So every state-changing request that carries an `Origin` must carry this
+ * origin. Browsers always send `Origin` on POST, PUT, PATCH and DELETE, which
+ * is precisely the case this defends against.
+ *
+ * A request with no `Origin` at all is not from a browser form or script, and
+ * therefore has no ambient cookie to borrow — command-line clients and server
+ * callers land here, and are allowed through on their own credentials.
+ */
+function assertSameOrigin(request: Request): void {
+  if (SAFE_METHODS.has(request.method.toUpperCase())) return;
+
+  const origin = request.headers.get('origin');
+  if (!origin) return;
+
+  const allowed = new Set<string>();
+  try {
+    allowed.add(new URL(config().APP_BASE_URL).origin);
+  } catch {
+    // A misconfigured base URL must not become an open door.
+  }
+  // The host the request actually arrived on, which covers a preview
+  // deployment or a local port without needing to be configured.
+  const forwardedHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  const forwardedProto = request.headers.get('x-forwarded-proto') ?? 'https';
+  if (forwardedHost) {
+    allowed.add(`${forwardedProto}://${forwardedHost}`);
+    allowed.add(`http://${forwardedHost}`);
+  }
+
+  let candidate: string;
+  try {
+    candidate = new URL(origin).origin;
+  } catch {
+    throw AppError.forbidden({ reason: 'bad_origin' });
+  }
+
+  if (!allowed.has(candidate)) {
+    logger.warn('cross_origin_request_rejected', { method: request.method });
+    throw AppError.forbidden({ reason: 'cross_origin' });
+  }
+}
+
+export function apiRoute<T, P extends Record<string, string> = Record<string, never>>(
+  handler: (request: Request, context: RouteContext<P>) => Promise<T>,
+): (request: Request, routeContext?: NextRouteContext<P>) => Promise<NextResponse> {
+  return async (request: Request, routeContext?: NextRouteContext<P>) => {
     const requestId = newRequestId();
     try {
-      const result = await handler(
-        request,
-        { requestId, ...(routeContext as object) } as { requestId: string },
-      );
-      if (result instanceof NextResponse) return result;
+      assertSameOrigin(request);
+      const params = await resolveParams<P>(routeContext);
+      const result = await handler(withBodyLimit(request), { requestId, params });
+      /*
+       * Any Response passes straight through, not just a NextResponse: the
+       * saved-sources export returns a plain Response carrying CSV, and
+       * wrapping that in NextResponse.json would serialise the response
+       * object itself.
+       */
+      if (result instanceof Response) return result as unknown as NextResponse;
       return NextResponse.json(result);
     } catch (error) {
       return errorResponse(error, requestId);

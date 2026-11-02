@@ -45,28 +45,45 @@ loadProjectEnv();
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  /*
+   * Next writes AGENTS.md and CLAUDE.md into the app folder on every start.
+   * Nobody asked for them, they are not part of this project, and they turn
+   * up in a release archive looking like something that belongs there.
+   */
+  agentRules: false,
   // The shared and db packages ship TypeScript sources compiled to ESM.
   transpilePackages: ['@couchlist/shared', '@couchlist/db'],
   // `pg` is a native Node client and must not be bundled for the edge runtime.
   serverExternalPackages: ['pg', 'pg-native'],
-  images: {
-    remotePatterns: [
-      { protocol: 'https', hostname: 's4.anilist.co' },
-      { protocol: 'https', hostname: 'image.tmdb.org' },
-      { protocol: 'https', hostname: 'cdn.discordapp.com' },
-    ],
-  },
+  // No remote image hosts: the directory draws its own icons rather than
+  // requesting one from every listed site, which would tell each of them who
+  // is reading the list.
+  images: { remotePatterns: [] },
   productionBrowserSourceMaps: false,
   poweredByHeader: false,
-  async headers() {
+  /**
+   * Redirects for the pages this rebuild retired.
+   *
+   * The paths people may have bookmarked or linked go somewhere useful instead
+   * of 404ing. Permanent where the replacement is the obvious equivalent,
+   * temporary where the destination may change.
+   */
+  async redirects() {
     return [
-      {
-        source: '/sw.js',
-        headers: [
-          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
-          { key: 'Service-Worker-Allowed', value: '/' },
-        ],
-      },
+      // The old signed-in home and the title catalog both become Discover.
+      { source: '/home', destination: '/', permanent: true },
+      { source: '/search', destination: '/', permanent: true },
+      { source: '/media/:path*', destination: '/', permanent: false },
+      // Discord-era social pages.
+      { source: '/friends', destination: '/', permanent: false },
+      { source: '/watch-together', destination: '/', permanent: false },
+      { source: '/my-server', destination: '/', permanent: false },
+      { source: '/server/:path*', destination: '/', permanent: false },
+      { source: '/compare/:path*', destination: '/', permanent: false },
+      { source: '/private-testing', destination: '/', permanent: false },
+      { source: '/dev/:path*', destination: '/', permanent: false },
+      // The profile page is now account settings.
+      { source: '/profile', destination: '/account', permanent: true },
     ];
   },
 };

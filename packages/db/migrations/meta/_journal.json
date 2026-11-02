@@ -71,6 +71,62 @@
       "when": 1789014400000,
       "tag": "0009_source_directory_controls",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789018000000,
+      "tag": "0010_report_reason_lots_of_ads",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789021600000,
+      "tag": "0011_email_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789025200000,
+      "tag": "0012_source_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789028800000,
+      "tag": "0013_guides",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789032400000,
+      "tag": "0014_collections",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789036000000,
+      "tag": "0015_deleted_account_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789039600000,
+      "tag": "0016_source_icons_and_grouped_suggestions",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789126000000,
+      "tag": "0017_avoid_warning_and_avatars",
+      "breakpoints": true
     }
   ]
 }

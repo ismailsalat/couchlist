@@ -1,37 +1,28 @@
-import { randomBytes } from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { loginSchema } from '@couchlist/shared';
+import { apiRoute } from '@/lib/api/handler';
 import { config } from '@/lib/config';
-import { discordOAuth } from '@/lib/auth/discord';
-import { STATE_COOKIE } from '@/lib/auth/oauth-state';
+import { checkRateLimit } from '@/lib/api/rate-limit';
+import { signIn } from '@/lib/auth/email-auth';
+import { clientKey } from '@/lib/api/client-key';
 
 export const dynamic = 'force-dynamic';
 
 /**
- * Starts Discord OAuth.
+ * Signs in with an email and password.
  *
- * The state value is stored in a short-lived HTTP-only cookie and checked on
- * return, which is what stops a third party from completing a login on
- * someone else's behalf.
+ * Rate limited per client so the password field cannot be used as an oracle,
+ * and the failure message does not distinguish a wrong password from an
+ * address that is not registered.
  */
-export async function GET(): Promise<NextResponse> {
-  const settings = config();
-  const state = randomBytes(24).toString('base64url');
+export const POST = apiRoute(async (request) => {
+  checkRateLimit(`login:${clientKey(request)}`, config().RATE_LIMIT_LOGIN_PER_MINUTE);
 
-  const store = await cookies();
-  store.set(STATE_COOKIE, state, {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: settings.isProduction,
-    path: '/',
-    maxAge: 600,
+  const input = loginSchema.parse(await request.json());
+  const user = await signIn(input);
+
+  return NextResponse.json({
+    ok: true,
+    emailVerified: Boolean(user.emailVerifiedAt),
   });
-
-  const redirectUri = new URL('/api/auth/callback', settings.APP_BASE_URL).toString();
-  const url = discordOAuth(
-    settings.DISCORD_CLIENT_ID,
-    settings.DISCORD_CLIENT_SECRET,
-  ).authorizeUrl(state, redirectUri);
-
-  return NextResponse.redirect(url);
-}
+});

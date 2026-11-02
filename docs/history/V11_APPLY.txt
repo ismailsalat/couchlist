@@ -1,0 +1,31 @@
+Couchlist v11 canonical Anime identity overlay
+
+Merge this couchlist folder into your existing:
+C:\Users\caano\Documents\couchlist
+
+This ZIP intentionally does NOT contain:
+- .env
+- node_modules
+- package-lock.json
+- .git
+- build/dist output
+
+That means your existing secrets, installed Windows packages, Git history, and the
+Vitest 4.1.11 lockfile you already generated stay untouched.
+
+After merging, run:
+
+cd "C:\Users\caano\Documents\couchlist"
+npm run db:deploy
+npm run lint
+npm run typecheck
+npm run build
+npm test
+npm audit
+npm run test:providers-live
+npm run dev:web
+
+Search "One Piece" under All. Expected:
+- One Piece Anime (1999): one row
+- ONE PIECE live action (2023): separate row
+- no duplicate 1999 TMDB TV row

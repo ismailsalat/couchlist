@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bayesianAverage } from '../directory/ranking.js';
 
 /**
  * Watch source vocabulary.
@@ -61,6 +62,11 @@ export type WatchCandidateStatus =
 
 export const WatchReportReason = {
   BROKEN_LINK: 'BROKEN_LINK',
+  /**
+   * The directory offers three reasons: BROKEN_LINK, LOTS_OF_ADS and OTHER.
+   * The remaining values are kept so historical reports still render.
+   */
+  LOTS_OF_ADS: 'LOTS_OF_ADS',
   WRONG_TITLE: 'WRONG_TITLE',
   WRONG_EPISODE: 'WRONG_EPISODE',
   MISLEADING_QUALITY: 'MISLEADING_QUALITY',
@@ -98,10 +104,10 @@ export function watchHealthStatus(brokenRecent: number): WatchHealthStatus {
 
 /** Bayesian score prevents one 5-star vote from outranking a proven source. */
 export function weightedWatchRating(average: number | null, count: number): number {
+  // Unrated stays 0 rather than the prior, so "no opinion yet" is not presented
+  // as a middling score. Callers rely on this.
   if (average === null || count <= 0) return 0;
-  const prior = 3.5;
-  const priorWeight = 5;
-  return (average * count + prior * priorWeight) / (count + priorWeight);
+  return bayesianAverage(average, count, 3.5, 5);
 }
 
 export const QualityLabel = {

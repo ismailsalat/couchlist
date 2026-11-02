@@ -5,19 +5,18 @@ Couchlist is built to last, not to constantly reinvent itself.
 ## 1. Stable core
 The main product should remain familiar for years:
 
-- Home
-- Friends
-- Watch Together
-- Communities
-- Profile
+- Discover (the source directory)
+- Guides
+- Saved
 
-New features should fit around this core instead of forcing people to relearn the app.
+Everything else — submissions, collections, settings, admin — lives behind
+secondary navigation. New features fit around this core instead of forcing
+people to relearn the app, and the header does not grow an item per feature.
 
 ## 2. Boring technology is a feature
 Prefer simple, proven code over clever abstractions:
 
 - one Next.js web app
-- one small Discord bot
 - one PostgreSQL database
 - Drizzle for database access
 - simple HTTP routes
@@ -26,8 +25,10 @@ Prefer simple, proven code over clever abstractions:
 
 A feature that needs constant repair is worse than a smaller feature that works for years.
 
-## 3. Couchlist works without a Discord server
-A user can track media, add friends, compare taste and use Watch Together without connecting a server.
+## 3. Couchlist works without an account
+Browsing, searching, reading guides and opening a source never require signing
+in. An account is for saving, voting and contributing — things that genuinely
+need one.
 
 Connected servers are optional community perks. They add shared taste, community watching and discovery without becoming a requirement for the rest of Couchlist.
 

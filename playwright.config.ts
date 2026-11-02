@@ -3,8 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Browser smoke tests.
  *
- * They sign in through the development login rather than live Discord OAuth,
- * so the suite runs without touching discord.com.
+ * They create a real account and verify it with the code the development mail
+ * transport returns, so the suite needs neither a mailbox nor a live provider.
  */
 export default defineConfig({
   testDir: './tests/e2e',
@@ -29,7 +29,17 @@ export default defineConfig({
         timeout: 60_000,
         env: {
           ENVIRONMENT: 'development',
-          ALLOW_DEV_LOGIN: 'true',
+          // Prints verification codes to the log and returns them in the
+          // response, which is how the suite completes a signup.
+          MAIL_TRANSPORT: 'log',
+          ALLOW_DEV_LOGIN: 'false',
+          // Every request comes from one address, so the production
+          // per-address limits would reject the suite's own signups.
+          RATE_LIMIT_SIGNUP_PER_MINUTE: '10000',
+          RATE_LIMIT_LOGIN_PER_MINUTE: '10000',
+          // One fixed address is promoted on sign-in, so the suite can reach
+          // the moderation pages without a second mechanism for granting it.
+          ADMIN_EMAILS: 'e2e-admin@example.test',
           DATABASE_URL:
             process.env.DATABASE_URL ?? 'postgresql://postgres@127.0.0.1:5432/couchlist',
         },

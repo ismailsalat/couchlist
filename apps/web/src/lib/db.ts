@@ -1,11 +1,12 @@
 import 'server-only';
 import {
+  AccountRepository,
   AuditRepository,
-  AnimeAliasRepository,
-  EntryRepository,
-  FriendRepository,
-  GuildRepository,
-  MediaCacheRepository,
+  CollectionRepository,
+  ContributionRepository,
+  GuideRepository,
+  IconRepository,
+  SourceDirectoryRepository,
   UserRepository,
   WatchSourceRepository,
   closeDatabase,
@@ -46,13 +47,27 @@ function registerShutdown(): void {
 
 export interface Repositories {
   db: Database;
-  users: UserRepository;
-  guilds: GuildRepository;
-  friends: FriendRepository;
-  entries: EntryRepository;
-  cache: MediaCacheRepository;
+
+  /** Email accounts, verification codes and reset tokens. */
+  accounts: AccountRepository;
+  /** The public source directory: listing, ranking, votes and bookmarks. */
+  sources: SourceDirectoryRepository;
+  /** Suggestions, corrections, reports and contributor credit. */
+  contributions: ContributionRepository;
+  guides: GuideRepository;
+  /** Site icons: the bytes, kept out of every listing query. */
+  icons: IconRepository;
+  collections: CollectionRepository;
   audit: AuditRepository;
-  animeAliases: AnimeAliasRepository;
+
+  /**
+   * Legacy repositories.
+   *
+   * `users` still serves accounts created through Discord before the rebuild;
+   * `watchSources` is retained for the source importer. Neither is on a path
+   * that signs anybody in.
+   */
+  users: UserRepository;
   watchSources: WatchSourceRepository;
 }
 
@@ -64,13 +79,14 @@ export function repos(): Repositories {
   registerShutdown();
   repositories = {
     db,
-    users: new UserRepository(db),
-    guilds: new GuildRepository(db),
-    friends: new FriendRepository(db),
-    entries: new EntryRepository(db),
-    cache: new MediaCacheRepository(db),
+    accounts: new AccountRepository(db),
+    sources: new SourceDirectoryRepository(db),
+    contributions: new ContributionRepository(db),
+    guides: new GuideRepository(db),
+    icons: new IconRepository(db),
+    collections: new CollectionRepository(db),
     audit: new AuditRepository(db),
-    animeAliases: new AnimeAliasRepository(db),
+    users: new UserRepository(db),
     watchSources: new WatchSourceRepository(db),
   };
   return repositories;

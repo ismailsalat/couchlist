@@ -1,43 +1,98 @@
 # Couchlist production checklist
 
-Couchlist is ready for a private beta once the live checks below pass. Do not treat a clean build alone as a production launch.
+A clean build is not a launch. Work through this before pointing real people
+at it.
 
-## Must pass before private beta
+## Must pass
 
-- `npm audit` reports 0 vulnerabilities.
-- `npm run lint`, `npm run typecheck`, `npm test`, and `npm run build` pass.
-- After any Search/Browse/media-provider change, run `npm run test:providers-live` from a machine with internet access and confirm AniList **browse** plus TMDB browse pass. This is intentionally separate from deterministic CI tests.
-- Discord OAuth works with a brand-new Discord account that has never authorized Couchlist.
-- Main + two alt accounts can find each other, send/accept Couchlist friend requests, and remain friends even without a connected server.
-- Friends Watching is driven by direct Couchlist friends. If two friends also share a connected server, that server is shown as extra context.
-- `/admin setup` and `/admin status` work; a normal member cannot run admin actions.
-- AniList search works live; TMDB movie and TV search work live.
-- Ratings, progress, friend-circle averages, friend comparison, and Watch Together are correct with two or more direct friends.
-- Connected server hubs correctly show community watching, highest-rated, want-to-watch, and member discovery without changing personal friend relationships.
-- Private profile / hidden rating / hidden progress settings are respected from another account.
-- A user cannot open a server they are not a member of, read a private profile, compare with an unauthorized stranger, or put a non-friend into Watch Together.
-- Logout, disconnect, account deletion, and data export APIs work.
-- Phone-sized layout works when opened from Discord mobile.
+- [ ] `npm run check` (lint, typecheck, unit and integration tests) passes.
+- [ ] `npm run test:e2e` passes on desktop and mobile projects.
+- [ ] `npm run build` succeeds.
+- [ ] `npm audit` is clean, or every finding is understood and recorded.
+- [ ] `docs/DEPLOYMENT.md` has been read, including the backup step.
 
-## Must do before a public launch
+## Configuration
 
-- Rotate every secret that was ever pasted into chat/screenshots: Discord bot token, Discord client secret, AUTH_SECRET, and TMDB key/token.
-- Deploy behind HTTPS and change `APP_BASE_URL` to the production URL.
-- Add the production Discord OAuth callback URL: `https://<domain>/api/auth/callback`.
-- Set `ENVIRONMENT=production`, `NODE_ENV=production`, `ALLOW_DEV_LOGIN=false`, and normally `TEST_MODE=false`.
-- Use Railway/PostgreSQL production credentials, not local credentials.
-- Configure PostgreSQL backups and test restoring one backup before launch.
-- Add TMDB-required attribution/branding in a Credits/About area.
-- Add a short Privacy Policy that explains Discord identity/server data, watch data, retention, export, and deletion.
-- Add normal UI controls for export, disconnect, and delete account; do not require users to open the browser console.
-- Add production error monitoring/alerts in addition to logs and `/api/health`.
+- [ ] `AUTH_SECRET` is at least 32 characters and is not the example value.
+- [ ] `APP_BASE_URL` is the real https:// domain.
+- [ ] `MAIL_TRANSPORT=auto` with a working `RESEND_API_KEY` and `MAIL_FROM`.
+      The service refuses to start otherwise, which is the point.
+- [ ] `ADMIN_EMAILS` contains only addresses that should be administrators.
+      Clear it once the first administrator exists.
+- [ ] `TEST_DATABASE_URL` does **not** point at production.
+- [ ] Retired Discord and TMDB variables removed from the environment.
 
-## Privacy edge case to resolve before broad public use
+## Data
 
-Guild membership is refreshed when a user signs in. If a user leaves a Discord server while their 30-day Couchlist session is still active, the stored membership can remain valid until the next Discord login refresh. Before a broad public launch, add a live or short-lived membership re-verification strategy so leaving a server removes access promptly.
+- [ ] A backup has been taken **and restored into a scratch database**.
+- [ ] Row counts match before and after migration (see `docs/DEPLOYMENT.md`).
+- [ ] The like/dislike backfill count equals the global health-vote count.
+- [ ] Every legacy account came out with a display name.
 
-For a tiny invite-only beta, keep TEST_MODE enabled and only allow trusted tester IDs while this is being validated.
+## Content
 
-## Scaling note
+- [ ] Seeded guides have been reviewed by a human and marked reviewed, or are
+      left unpublished. An unreviewed guide tells readers so, which is honest
+      but not a substitute for checking.
+- [ ] No placeholder or example source is listed publicly.
 
-The current rate limiter is in process memory. It is fine for one small web instance, but if Couchlist is scaled to multiple web instances, move rate-limit state to a shared store such as Redis so limits are consistent across instances and restarts.
+## Live checks
+
+- [ ] A brand-new address can sign up, receive a code, verify, vote and save.
+- [ ] Password reset works end to end.
+- [ ] A normal account cannot reach `/admin` or call any admin endpoint.
+- [ ] `/api/health` reports `database: healthy` and `mail: configured`.
+- [ ] `/robots.txt` and `/sitemap.xml` show the real domain, and private paths
+      are disallowed.
+- [ ] A signed-in page's HTML contains no email address and no password hash.
+      (`tests/integration/http.test.ts` asserts this; confirm it on the real
+      deploy too.)
+
+## Dependencies
+
+Run `npm audit` before each deploy and read what it says rather than running
+`npm audit fix --force`, which will happily downgrade Next.js and break the
+build.
+
+As of this build:
+
+- **Next.js is pinned to 16.4.3.** Do not go back to 16.3.x. Those releases
+  carry unauthenticated remote-code-execution advisories in image
+  optimization and in `use cache`. The upgrade is a patch-level bump and the
+  whole suite passes on it.
+- **Two advisories remain in the production tree**, both without a safe fix
+  today, both mitigated here:
+  - `zod` below 4.6.6 can exhaust memory on an oversized collection. Moving to
+    zod 4 is a breaking change across every schema in the project. Instead
+    every request body is capped at 2 MB before anything parses it
+    (`MAX_REQUEST_BODY_BYTES`), so no validator is ever handed a payload large
+    enough. Revisit when a 3.x patch appears, or budget the v4 migration.
+  - `source-map-js` arrives through Next's own copy of postcss and is used at
+    build time, not in request handling. It is pinned by Next and moves when
+    Next does.
+- The rest of what `npm audit` reports is development tooling (vitest's vite,
+  build-time helpers) and is not shipped.
+
+## Security
+
+Verified in this build, each with a test that fails without it:
+
+- Every state-changing request checks its `Origin` against this site, on top
+  of a `SameSite=Lax` session cookie.
+- `Content-Security-Policy` with `frame-ancestors 'none'`, `form-action
+  'self'`, `base-uri 'none'` and `object-src 'none'`. Scripts still allow
+  `'unsafe-inline'`, which is Next's hydration payload; the comment in
+  `proxy.ts` explains what that does and does not buy.
+- Uploaded images keep their own far stricter sandboxed policy, which the
+  site-wide one does not overwrite.
+- HSTS only over a real HTTPS connection, so local development is unaffected.
+- Addresses from contributors are refused if they point anywhere inside the
+  network, including the decimal, octal and IPv6-mapped spellings of
+  localhost and the cloud metadata address.
+- `next` after sign-in accepts only a plain path on this site.
+
+## Known gaps
+
+Read `docs/REMAINING_WORK.md` and decide which gaps block your launch.
+Notifications and the legacy-account transition are the ones most likely to
+matter.

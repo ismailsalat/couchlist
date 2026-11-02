@@ -1,3 +1,4 @@
+export * from './errors.js';
 export * from './users.js';
 export * from './guilds.js';
 export * from './friends.js';
@@ -6,3 +7,11 @@ export * from './media-cache.js';
 export * from './audit.js';
 export * from './anime-aliases.js';
 export * from './watch-sources.js';
+
+// Community source directory.
+export * from './accounts.js';
+export * from './sources.js';
+export * from './icons.js';
+export * from './contributions.js';
+export * from './guides.js';
+export * from './collections.js';

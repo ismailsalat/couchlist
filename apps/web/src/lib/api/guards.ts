@@ -1,128 +1,61 @@
 import 'server-only';
-import { AppError, ERROR_CODES, isGuildAllowed } from '@couchlist/shared';
+import { AppError, ERROR_CODES } from '@couchlist/shared';
 import type { User } from '@couchlist/db';
-import { config } from '../config';
-import { repos } from '../db';
 import { currentUser } from '../auth/session';
-import { refreshGuildMembershipsIfStale } from '../services/guild-membership';
 
 /**
  * Authorization guards.
  *
- * Every protected route calls one of these. The frontend hiding a button is
- * never the control - a hand-written request has to fail here.
+ * Every protected route calls one of these. A hidden button is never the
+ * control: a hand-written request has to fail here, on the server.
  */
 
 /** The signed-in user, or a 401. */
 export async function requireUser(): Promise<User> {
   const user = await currentUser();
-  if (!user) throw AppError.unauthorized();
+  if (!user || user.deletedAt) throw AppError.unauthorized();
   return user;
 }
 
-export interface GuildAccess {
-  user: User;
-  guildId: string;
-  discordGuildId: string;
-}
-
 /**
- * Confirms the user is an active member of the guild.
+ * A verified account.
  *
- * Accepts either the internal guild id or the Discord snowflake, because URLs
- * use the Discord id. Test mode is enforced here too, so a tester cannot reach
- * a server outside the allowlist by editing a URL.
+ * Browsing, searching and reading are public. Contributing and voting need a
+ * verified email, because that is the only thing standing between the
+ * directory and an endless supply of throwaway accounts.
  */
-export async function requireGuildMember(guildIdOrDiscordId: string): Promise<GuildAccess> {
+export async function requireVerifiedUser(): Promise<User> {
   const user = await requireUser();
-  const { guilds } = repos();
-
-  // URLs use the Discord snowflake; internal code sometimes has our own id.
-  const guild = /^\d{5,25}$/.test(guildIdOrDiscordId)
-    ? await guilds.findByDiscordId(guildIdOrDiscordId)
-    : await guilds.findById(guildIdOrDiscordId);
-
-  if (!guild || !guild.botConnected) throw AppError.forbiddenGuild(guildIdOrDiscordId);
-
-  if (!isGuildAllowed(config(), guild.discordId)) {
-    throw new AppError(ERROR_CODES.CL_NOT_IN_TEST_ALLOWLIST, {
-      context: { guildId: guild.discordId },
+  if (!user.emailVerifiedAt) {
+    throw new AppError(ERROR_CODES.CL_FORBIDDEN, {
+      userMessage: 'Verify your email address first.',
+      context: { reason: 'email_not_verified' },
     });
   }
-
-  await refreshGuildMembershipsIfStale(user);
-  if (!(await guilds.isMember(user.id, guild.id))) {
-    throw AppError.forbiddenGuild(guild.discordId);
-  }
-
-  return { user, guildId: guild.id, discordGuildId: guild.discordId };
+  return user;
 }
 
 /**
- * Confirms the viewer may see the target user's lists.
+ * An administrator.
  *
- * Allows an explicit Couchlist friend or a member from a shared connected
- * server, while respecting the target's privacy setting. A PRIVATE profile is
- * visible only to its owner.
+ * The role is a column on the account, checked here on every request. It
+ * replaces the previous Discord owner-id allowlist: authorization is a
+ * property of the account, not of an environment variable that happens to
+ * contain a snowflake.
  */
-export async function requireProfileAccess(targetUserId: string): Promise<{
-  viewer: User;
-  target: User;
-  isSelf: boolean;
-}> {
-  const viewer = await requireUser();
-  const { users, guilds, friends } = repos();
-
-  const target = await users.findById(targetUserId);
-  if (!target) throw AppError.notFound('user');
-
-  if (target.id === viewer.id) return { viewer, target, isSelf: true };
-
-  if (target.profileVisibility === 'PRIVATE') {
-    throw AppError.forbidden({ reason: 'private_profile' });
-  }
-
-  const [directFriend, shared] = await Promise.all([
-    friends.areFriends(viewer.id, target.id),
-    guilds.sharedGuildIds(viewer.id, target.id),
-  ]);
-  if (!directFriend && shared.length === 0) {
-    throw AppError.forbidden({ reason: 'not_friend_or_shared_server' });
-  }
-
-  return { viewer, target, isSelf: false };
-}
-
-/**
- * User ids the viewer is allowed to see data for, inside one guild.
- * Members with a PRIVATE profile are excluded from everyone else's view.
- */
-export async function visibleMemberIds(
-  viewerId: string,
-  guildId: string,
-): Promise<string[]> {
-  const members = await repos().guilds.membersOf(guildId);
-  return members
-    .filter((member) => member.id === viewerId || member.profileVisibility !== 'PRIVATE')
-    .map((member) => member.id);
-}
-
-/**
- * The operator allowlist for developer tools.
- *
- * Reuse the existing bot-owner list rather than turning every private tester
- * into an administrator or inventing another role system.
- */
-export function isTrustedOperator(discordUserId: string): boolean {
-  const ids = config().BOT_OWNER_IDS;
-  return ids.length > 0 && ids.includes(discordUserId);
-}
-
-/** The signed-in user, if they are on the operator allowlist. Otherwise 403. */
-export async function requireTrustedOperator(): Promise<User> {
+export async function requireAdmin(): Promise<User> {
   const user = await requireUser();
-  if (!isTrustedOperator(user.discordId)) {
-    throw AppError.forbidden({ reason: 'not_trusted_operator' });
+  if (!user.isAdmin) {
+    throw new AppError(ERROR_CODES.CL_FORBIDDEN, {
+      userMessage: 'That area is for administrators.',
+      context: { reason: 'not_admin' },
+    });
   }
   return user;
+}
+
+/** The signed-in user, or null. For pages that render either way. */
+export async function optionalUser(): Promise<User | null> {
+  const user = await currentUser();
+  return user && !user.deletedAt ? user : null;
 }

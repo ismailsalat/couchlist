@@ -14,6 +14,7 @@ export const ERROR_CODES = {
   CL_VALIDATION_FAILED: 'CL_VALIDATION_FAILED',
   CL_DUPLICATE_LIST_ENTRY: 'CL_DUPLICATE_LIST_ENTRY',
   CL_RATE_LIMITED: 'CL_RATE_LIMITED',
+  CL_PAYLOAD_TOO_LARGE: 'CL_PAYLOAD_TOO_LARGE',
   CL_MEDIA_PROVIDER_TIMEOUT: 'CL_MEDIA_PROVIDER_TIMEOUT',
   CL_MEDIA_PROVIDER_ERROR: 'CL_MEDIA_PROVIDER_ERROR',
   CL_DATABASE_UNAVAILABLE: 'CL_DATABASE_UNAVAILABLE',
@@ -25,19 +26,20 @@ export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
 
 /** Safe, human wording for each code. Never contains internal detail. */
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
-  CL_UNAUTHORIZED: 'You need to sign in with Discord to do that.',
+  CL_UNAUTHORIZED: 'Sign in to do that.',
   CL_FORBIDDEN: "You don't have access to this.",
-  CL_FORBIDDEN_GUILD: "You're not a member of that server on Couchlist.",
+  CL_FORBIDDEN_GUILD: "You don't have access to this.",
   CL_NOT_IN_TEST_ALLOWLIST: 'Couchlist is currently in private testing.',
   CL_NOT_FOUND: "We couldn't find that.",
   CL_VALIDATION_FAILED: "That didn't look right. Check the details and try again.",
-  CL_DUPLICATE_LIST_ENTRY: 'That title is already on your list.',
+  CL_DUPLICATE_LIST_ENTRY: 'That is already there.',
   CL_RATE_LIMITED: "You're doing that a bit too quickly. Try again in a moment.",
+  CL_PAYLOAD_TOO_LARGE: 'That was too large to accept.',
   CL_MEDIA_PROVIDER_TIMEOUT: "We couldn't load this title right now. Try again shortly.",
   CL_MEDIA_PROVIDER_ERROR: "We couldn't load this title right now. Try again shortly.",
   CL_DATABASE_UNAVAILABLE:
     'Something went wrong while saving. Your previous data is safe. Try again.',
-  CL_NOT_ENOUGH_DATA: 'Watch a few more titles before we can calculate your taste match.',
+  CL_NOT_ENOUGH_DATA: 'There is not enough information yet.',
   CL_INTERNAL: 'Something went wrong. Your previous data is safe. Try again.',
 };
 
@@ -51,6 +53,7 @@ export const ERROR_STATUS: Record<ErrorCode, number> = {
   CL_VALIDATION_FAILED: 400,
   CL_DUPLICATE_LIST_ENTRY: 409,
   CL_RATE_LIMITED: 429,
+  CL_PAYLOAD_TOO_LARGE: 413,
   CL_MEDIA_PROVIDER_TIMEOUT: 504,
   CL_MEDIA_PROVIDER_ERROR: 502,
   CL_DATABASE_UNAVAILABLE: 503,

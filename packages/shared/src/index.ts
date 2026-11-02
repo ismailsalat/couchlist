@@ -8,3 +8,8 @@ export * from './providers/index.js';
 export * from './scoring/index.js';
 export * from './schemas/index.js';
 export * from './watch/index.js';
+export * from './directory/index.js';
+export * from './guides/index.js';
+export * from './auth/index.js';
+export * from './images/index.js';
+export * from './export/saved.js';

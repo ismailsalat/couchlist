@@ -59,6 +59,14 @@ export class AppError extends Error {
     });
   }
 
+  /** The request body was larger than anything this app accepts. */
+  static payloadTooLarge(limitBytes: number): AppError {
+    return new AppError(ERROR_CODES.CL_PAYLOAD_TOO_LARGE, {
+      userMessage: `That was too large. The limit is ${Math.floor(limitBytes / 1024)} KB.`,
+      context: { limitBytes },
+    });
+  }
+
   static rateLimited(retryAfterSeconds: number): AppError {
     return new AppError(ERROR_CODES.CL_RATE_LIMITED, { context: { retryAfterSeconds } });
   }

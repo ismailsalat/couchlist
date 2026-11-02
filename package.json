@@ -2,7 +2,7 @@
   "name": "couchlist",
   "private": true,
   "version": "1.0.0",
-  "description": "Track what your friends watch.",
+  "description": "A community directory of good places to watch and read.",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -13,10 +13,8 @@
   "scripts": {
     "dev": "npm run dev --workspace @couchlist/web",
     "dev:web": "npm run dev --workspace @couchlist/web",
-    "dev:bot": "npm run dev --workspace @couchlist/bot",
-    "build": "npm run build --workspace @couchlist/shared && npm run build --workspace @couchlist/db && npm run build --workspace @couchlist/web && npm run build --workspace @couchlist/bot",
+    "build": "npm run build --workspace @couchlist/shared && npm run build --workspace @couchlist/db && npm run build --workspace @couchlist/web",
     "start": "npm run start --workspace @couchlist/web",
-    "start:bot": "npm run start --workspace @couchlist/bot",
     "lint": "npm run lint --workspace @couchlist/web",
     "typecheck": "tsc --build --force && npm run typecheck --workspace @couchlist/web",
     "test": "vitest run",
@@ -28,18 +26,17 @@
     "db:deploy": "npm run build --workspace @couchlist/shared && npm run deploy --workspace @couchlist/db",
     "db:seed": "npm run build --workspace @couchlist/shared && npm run seed --workspace @couchlist/db",
     "db:reset": "npm run build --workspace @couchlist/shared && npm run reset --workspace @couchlist/db",
-    "bot:register": "npm run build --workspace @couchlist/shared && npm run build --workspace @couchlist/db && npm run build --workspace @couchlist/bot && node apps/bot/dist/register.js",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "test:providers-live": "node scripts/provider-smoke.mjs",
     "watch:sources:import": "npm run build --workspace @couchlist/shared && npm run import:watch-sources --workspace @couchlist/db --",
-    "watch:availability:import": "npm run build --workspace @couchlist/shared && npm run import:watch-availability --workspace @couchlist/db --",
-    "repair:windows-deps": "npm ci --include=optional"
+    "repair:windows-deps": "npm ci --include=optional",
+    "db:seed:guides": "npm run build --workspace @couchlist/shared && npm run seed:guides --workspace @couchlist/db",
+    "admin:grant": "npm run build --workspace @couchlist/shared && npm run admin:grant --workspace @couchlist/db --"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.4.3",
     "prettier": "^3.4.2",
     "typescript": "^5.7.2",
     "vitest": "^4.1.11"

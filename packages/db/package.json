@@ -19,7 +19,9 @@
     "seed": "npm run build --silent && node dist/scripts/seed.js",
     "reset": "npm run build --silent && node dist/scripts/reset.js",
     "import:watch-sources": "npm run build --silent && node dist/scripts/import-watch-sources.js",
-    "import:watch-availability": "npm run build --silent && node dist/scripts/import-watch-availability.js"
+    "import:watch-availability": "npm run build --silent && node dist/scripts/import-watch-availability.js",
+    "seed:guides": "npm run build --silent && node dist/scripts/seed-guides.js",
+    "admin:grant": "npm run build --silent && node dist/scripts/grant-admin.js"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

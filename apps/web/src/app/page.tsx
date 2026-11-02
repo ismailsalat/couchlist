@@ -1,52 +1,119 @@
-import { redirect } from 'next/navigation';
-import { Logo } from '@/components/logo';
-import { currentUser } from '@/lib/auth/session';
+import type { Metadata } from 'next';
+import { SiteHeader } from '@/components/site-header';
+import { DirectoryControls } from '@/components/directory-controls';
+import { SourceRow } from '@/components/source-row';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Pagination } from '@/components/ui/pagination';
+import { optionalUser } from '@/lib/api/guards';
+import { PAGE_SIZE, loadDirectoryView, savedCountFor } from '@/lib/directory/page-data';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
-/** Landing page. One message, one button. */
-export default async function LandingPage({
+export const metadata: Metadata = {
+  title: 'Find a good place to watch or read',
+  description:
+    'A community directory of websites for anime, movies, TV, manga, manhwa and comics, with honest feedback and no login needed to browse.',
+  alternates: { canonical: '/' },
+};
+
+/**
+ * Discover: the default entry page.
+ *
+ * Public. Browsing, searching, filtering and opening a source all work signed
+ * out; this is a server-rendered list so it is indexable and arrives complete
+ * rather than as an empty shell waiting on a client fetch.
+ */
+export default async function DiscoverPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<Record<string, string | undefined>>;
 }) {
-  const user = await currentUser();
-  if (user) redirect('/home');
+  const params = await searchParams;
+  const user = await optionalUser();
+  const [view, savedCount] = await Promise.all([
+    loadDirectoryView(params, user),
+    savedCountFor(user),
+  ]);
 
-  const { error } = await searchParams;
+  const canInteract = Boolean(user?.emailVerifiedAt);
+  const filtered = Boolean(view.search) || view.category !== 'All';
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col px-5">
-      <header className="flex items-center justify-between py-5">
-        <Logo />
-        <a href="/sources" className="text-sm font-bold text-text-secondary hover:text-text-primary">Global Sources</a>
-      </header>
+    <>
+      <SiteHeader user={user} savedCount={savedCount} active="discover" />
 
-      <div className="flex flex-1 flex-col items-center justify-center pb-24 text-center">
-        <h1 className="font-display max-w-2xl text-5xl font-bold leading-[1.02] sm:text-6xl">
-          Track what
-          <br />
-          <span className="text-primary">your friends watch.</span>
-        </h1>
+      <main id="main" className="mx-auto max-w-[980px] px-3.5 pb-4 pt-6 sm:px-6">
+        <div className="mb-4 sm:flex sm:items-baseline sm:gap-3.5">
+          <h1 className="m-0 text-xl font-bold tracking-tight sm:text-2xl">
+            Your next good find.
+          </h1>
+          <p className="m-0 mt-1 text-sm text-muted sm:mt-0">A little help from the community.</p>
+        </div>
 
-        <p className="muted mt-5 text-lg font-medium">Anime. Movies. TV Shows. Together.</p>
+        <DirectoryControls
+          category={view.category}
+          sort={view.sort}
+          search={view.search}
+          resultLabel={view.resultLabel}
+        />
 
-        {error === 'auth' ? (
-          <p className="mt-6 rounded-lg border border-border bg-card px-4 py-2 text-sm text-text-secondary">
-            That sign-in didn&apos;t complete. Please try again.
-          </p>
-        ) : null}
+        <div className="rounded-card border-2 border-line bg-surface px-1.5 shadow-pop sm:px-[7px]">
+          {view.page.sources.length > 0 ? (
+            view.page.sources.map((source, index) => (
+              <SourceRow
+                key={source.id}
+                source={source}
+                position={(view.pageNumber - 1) * PAGE_SIZE + index + 1}
+                userVote={view.votes.get(source.id) ?? null}
+                saved={view.savedIds.has(source.id)}
+                canInteract={canInteract}
+              />
+            ))
+          ) : filtered ? (
+            <EmptyState
+              title="No sources match those filters."
+              hint="Try a different search or category."
+              action={
+                <Link href="/" className="rounded-pill bg-accent-soft px-3.5 py-2 text-sm text-accent no-underline">
+                  Clear filters
+                </Link>
+              }
+            />
+          ) : (
+            <EmptyState
+              title="No sources listed yet."
+              hint="The directory is community-built. Suggest the first one."
+              action={
+                <Link
+                  href="/submit"
+                  className="rounded-pill bg-selected px-3.5 py-2 text-sm font-semibold text-selected-fg no-underline"
+                >
+                  Suggest a source
+                </Link>
+              }
+            />
+          )}
+        </div>
 
-        <a href="/api/auth/login" className="btn-primary mt-8 px-7 py-3.5 text-base">
-          Continue with Discord
-        </a>
-        <a href="/sources" className="mt-3 text-sm font-bold text-primary hover:text-primary-hover">Browse Global Sources without signing in →</a>
+        <Pagination
+          total={view.page.total}
+          limit={view.page.limit}
+          offset={view.page.offset}
+          searchParams={params}
+        />
 
-        <p className="muted mt-8 max-w-md leading-relaxed">
-          Add your Couchlist friends and see what they&apos;re watching. Discord servers are optional
-          community hubs with extra shared-taste perks.
-        </p>
-      </div>
-    </main>
+        <footer className="flex flex-wrap justify-between gap-3.5 px-0 pb-1 pt-3.5 text-xs text-muted">
+          <span>
+            Couchlist lists websites and guides. It does not host or proxy any video, comics or
+            translated pages.{' '}
+            <Link href="/submit" className="text-accent">
+              Suggest a source
+            </Link>
+          </span>
+          <span>{view.resultLabel}</span>
+        </footer>
+      </main>
+    </>
   );
 }

@@ -1,0 +1,25 @@
+Couchlist v12.2 changed/new files relative to v12.1
+
+MODIFIED  apps/web/src/app/api/dev/watch-sources/manage/route.ts
+MODIFIED  apps/web/src/app/api/watch/feedback/route.ts
+MODIFIED  apps/web/src/app/api/watch/report/route.ts
+MODIFIED  apps/web/src/app/api/watch/suggest/route.ts
+MODIFIED  apps/web/src/app/globals.css
+MODIFIED  apps/web/src/app/server/[guildId]/page.tsx
+MODIFIED  apps/web/src/app/sources/page.tsx
+MODIFIED  apps/web/src/components/global-sources-directory.tsx
+MODIFIED  apps/web/src/components/public-nav.tsx
+MODIFIED  apps/web/src/components/watch-section.tsx
+MODIFIED  apps/web/src/components/watch-source-admin.tsx
+MODIFIED  apps/web/src/lib/services/watch.ts
+MODIFIED  packages/db/migrations/meta/_journal.json
+MODIFIED  packages/db/src/repositories/watch-sources.ts
+MODIFIED  packages/db/src/schema.ts
+MODIFIED  packages/shared/src/watch/presentation.ts
+MODIFIED  tests/integration/http.test.ts
+MODIFIED  tests/integration/watch-sources.test.ts
+NEW       apps/web/src/components/source-site-icon.tsx
+NEW       packages/db/migrations/0009_source_directory_controls.sql
+NEW       TEST_V12_2_WINDOWS.cmd
+NEW       V12_2_CHANGED_FILES.txt
+NEW       V12_2_SIMPLE_SOURCE_DIRECTORY.md

@@ -63,6 +63,32 @@ export const environmentSchema = z.object({
 
   AUTH_SECRET: z.string().default(''),
 
+  /*
+   * Email delivery.
+   *
+   * MAIL_TRANSPORT=log prints messages to the server log instead of sending
+   * them, which is the supported local-development flow. It is rejected in
+   * production below, so a deploy cannot quietly stop emailing people.
+   */
+  MAIL_TRANSPORT: z.enum(['auto', 'log']).default('auto'),
+  RESEND_API_KEY: z.string().default(''),
+  MAIL_FROM: z.string().default(''),
+
+  /**
+   * Email addresses that receive the administrator role on their next sign-in.
+   * Bootstrapping only: the role itself lives on the account row, and
+   * authorization is always a server-side check against that column.
+   */
+  ADMIN_EMAILS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => part.includes('@')),
+    ),
+
   ANILIST_API_URL: z.string().default('https://graphql.anilist.co'),
   JIKAN_API_BASE_URL: z.string().default('https://api.jikan.moe/v4'),
   KITSU_API_BASE_URL: z.string().default('https://kitsu.io/api/edge'),
@@ -81,6 +107,17 @@ export const environmentSchema = z.object({
   RATE_LIMIT_SEARCH_PER_MINUTE: intWithDefault(30),
   RATE_LIMIT_MUTATIONS_PER_MINUTE: intWithDefault(30),
   RATE_LIMIT_BOT_COMMANDS_PER_MINUTE: intWithDefault(20),
+
+  /*
+   * Unauthenticated endpoints, limited per client address.
+   *
+   * Configurable rather than hard-coded because the right number depends on
+   * the deployment: a site behind a NAT or a corporate proxy sees many real
+   * people share one address, and a test suite drives hundreds of signups
+   * from a single one.
+   */
+  RATE_LIMIT_SIGNUP_PER_MINUTE: intWithDefault(5),
+  RATE_LIMIT_LOGIN_PER_MINUTE: intWithDefault(10),
 
   MEDIA_CACHE_TTL_HOURS: intWithDefault(24),
   PROVIDER_TIMEOUT_MS: intWithDefault(8000),
@@ -133,17 +170,31 @@ export function validateConfig(config: CouchlistConfig, service: ServiceName): s
   }
 
   if (service === 'web') {
-    if (!config.DISCORD_CLIENT_ID.trim()) problems.push('DISCORD_CLIENT_ID is not set.');
-    if (!config.DISCORD_CLIENT_SECRET.trim()) problems.push('DISCORD_CLIENT_SECRET is not set.');
+    // Discord is no longer an authentication method, so its credentials are
+    // optional. Couchlist signs people in with an email and a password.
     if (!config.AUTH_SECRET.trim()) {
       problems.push('AUTH_SECRET is not set. Generate one with: openssl rand -base64 32');
     } else if (config.isProduction && config.AUTH_SECRET.length < 32) {
       problems.push('AUTH_SECRET must be at least 32 characters in production.');
     }
-  }
 
-  if (service === 'bot' && !config.DISCORD_BOT_TOKEN.trim()) {
-    problems.push('DISCORD_BOT_TOKEN is not set.');
+    // Verification codes and password resets are useless without delivery.
+    if (config.MAIL_TRANSPORT === 'log' && (config.isProduction || config.ENVIRONMENT === 'staging')) {
+      problems.push(
+        'MAIL_TRANSPORT=log only prints emails. It is not permitted when ENVIRONMENT is production or staging.',
+      );
+    }
+    if (config.MAIL_TRANSPORT === 'auto' && config.isProduction) {
+      if (!config.RESEND_API_KEY.trim()) {
+        problems.push('RESEND_API_KEY is not set, so verification emails cannot be sent.');
+      }
+      if (!config.MAIL_FROM.trim()) {
+        problems.push('MAIL_FROM is not set, so verification emails cannot be sent.');
+      }
+    }
+    if (config.MAIL_FROM.trim() && !config.MAIL_FROM.includes('@')) {
+      problems.push(`MAIL_FROM is not an email address: ${config.MAIL_FROM}`);
+    }
   }
 
   for (const [name, value] of [
@@ -161,19 +212,6 @@ export function validateConfig(config: CouchlistConfig, service: ServiceName): s
     problems.push(
       'ALLOW_DEV_LOGIN=true is not permitted when ENVIRONMENT is production or staging.',
     );
-  }
-
-  if (config.TEST_MODE) {
-    if (config.TEST_USER_IDS.length === 0) {
-      problems.push('TEST_MODE=true but TEST_USER_IDS is empty. Nobody could sign in.');
-    }
-    if (service === 'bot' && config.TEST_GUILD_IDS.length === 0) {
-      problems.push('TEST_MODE=true but TEST_GUILD_IDS is empty. The bot would ignore every server.');
-    }
-  }
-
-  if (!config.TMDB_API_KEY.trim()) {
-    problems.push('TMDB_API_KEY is not set. Movie and TV search will not work.');
   }
 
   return problems;
@@ -213,8 +251,8 @@ export function safeConfigSummary(config: CouchlistConfig): Record<string, unkno
     nodeEnv: config.NODE_ENV,
     appBaseUrl: config.APP_BASE_URL,
     testMode: config.TEST_MODE,
-    testGuilds: config.TEST_GUILD_IDS.length,
-    testUsers: config.TEST_USER_IDS.length,
+    mailTransport: config.MAIL_TRANSPORT === 'log' ? 'log (not delivered)' : 'provider',
+    mailConfigured: Boolean(config.RESEND_API_KEY.trim() && config.MAIL_FROM.trim()),
     devLogin: config.ALLOW_DEV_LOGIN,
     logLevel: config.LOG_LEVEL,
     database: config.DATABASE_URL ? redactDatabaseUrl(config.DATABASE_URL) : 'not set',

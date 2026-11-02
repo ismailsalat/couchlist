@@ -112,34 +112,63 @@ describe('startup validation', () => {
     expect(problems.some((problem) => problem.includes('https'))).toBe(true);
   });
 
-  it('requires OAuth credentials for the web service only', () => {
-    const stripped = config({ DISCORD_CLIENT_SECRET: '' });
-    expect(validateConfig(stripped, 'web').some((p) => p.includes('DISCORD_CLIENT_SECRET'))).toBe(true);
-    expect(validateConfig(stripped, 'bot').some((p) => p.includes('DISCORD_CLIENT_SECRET'))).toBe(false);
-  });
-
-  it('requires a bot token for the bot service only', () => {
-    const stripped = config({ DISCORD_BOT_TOKEN: '' });
-    expect(validateConfig(stripped, 'bot').some((p) => p.includes('DISCORD_BOT_TOKEN'))).toBe(true);
-    expect(validateConfig(stripped, 'web').some((p) => p.includes('DISCORD_BOT_TOKEN'))).toBe(false);
+  /*
+   * Discord is no longer an authentication method, so its credentials are
+   * optional. These assertions replace the old ones that required them.
+   */
+  it('no longer requires Discord credentials to start the web service', () => {
+    const stripped = config({ DISCORD_CLIENT_ID: '', DISCORD_CLIENT_SECRET: '' });
+    const problems = validateConfig(stripped, 'web');
+    expect(problems.some((p) => p.includes('DISCORD_CLIENT_SECRET'))).toBe(false);
+    expect(problems.some((p) => p.includes('DISCORD_CLIENT_ID'))).toBe(false);
   });
 
   it('rejects invalid configured about-card urls', () => {
-    const problems = validateConfig(config({ COUCHLIST_ABOUT_SERVER_URL: 'not-a-url' }), 'bot');
+    const problems = validateConfig(config({ COUCHLIST_ABOUT_SERVER_URL: 'not-a-url' }), 'web');
     expect(problems.some((problem) => problem.includes('COUCHLIST_ABOUT_SERVER_URL'))).toBe(true);
   });
 
-  it('refuses TEST_MODE with no testers', () => {
-    const problems = validateConfig(config({ TEST_MODE: 'true' }), 'web');
-    expect(problems.some((problem) => problem.includes('TEST_USER_IDS'))).toBe(true);
+  /*
+   * Email delivery is what signup depends on now, so a production deploy that
+   * cannot send a verification code must refuse to start rather than silently
+   * stranding every new account.
+   */
+  it('refuses the log mail transport in production', () => {
+    const problems = validateConfig(
+      config({
+        ENVIRONMENT: 'production',
+        APP_BASE_URL: 'https://x.com',
+        DATABASE_URL: 'postgresql://u:p@h:5432/d',
+        AUTH_SECRET: 'a'.repeat(40),
+        MAIL_TRANSPORT: 'log',
+      }),
+      'web',
+    );
+    expect(problems.some((problem) => problem.includes('MAIL_TRANSPORT=log'))).toBe(true);
   });
 
-  it('refuses TEST_MODE with no guilds for the bot', () => {
+  it('requires a mail provider in production', () => {
     const problems = validateConfig(
-      config({ TEST_MODE: 'true', TEST_USER_IDS: '123456789012345678' }),
-      'bot',
+      config({
+        ENVIRONMENT: 'production',
+        APP_BASE_URL: 'https://x.com',
+        DATABASE_URL: 'postgresql://u:p@h:5432/d',
+        AUTH_SECRET: 'a'.repeat(40),
+      }),
+      'web',
     );
-    expect(problems.some((problem) => problem.includes('TEST_GUILD_IDS'))).toBe(true);
+    expect(problems.some((problem) => problem.includes('RESEND_API_KEY'))).toBe(true);
+    expect(problems.some((problem) => problem.includes('MAIL_FROM'))).toBe(true);
+  });
+
+  it('allows the log transport in development', () => {
+    const problems = validateConfig(config({ MAIL_TRANSPORT: 'log' }), 'web');
+    expect(problems.some((problem) => problem.includes('MAIL_TRANSPORT'))).toBe(false);
+  });
+
+  it('rejects a MAIL_FROM that is not an address', () => {
+    const problems = validateConfig(config({ MAIL_FROM: 'not-an-email' }), 'web');
+    expect(problems.some((problem) => problem.includes('MAIL_FROM'))).toBe(true);
   });
 
   it('requires a strong auth secret in production', () => {

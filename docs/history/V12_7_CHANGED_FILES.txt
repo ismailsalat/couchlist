@@ -1,0 +1,8 @@
+.env.example
+TEST_V12_7_WINDOWS.cmd
+V12_7_CHANGED_FILES.txt
+V12_7_DIRECTORY_BACKGROUND_HOME.md
+apps/web/public/patterns/popcorn-directory.svg
+apps/web/src/app/globals.css
+apps/web/src/app/home/page.tsx
+packages/shared/src/config/env.ts
