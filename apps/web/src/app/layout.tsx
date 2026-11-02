@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import './globals.css';
+import { SiteFooter } from '@/components/site-footer';
 import { TestModeBanner } from '@/components/test-mode-banner';
 import { publicConfig } from '@/lib/config';
 
@@ -53,7 +54,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           * behind the status bar on any phone with a notch or an island.
           */}
         <div className="cl-shell mx-auto max-w-[1040px]">
-          <div className="overflow-hidden rounded-[20px] border border-line bg-bg">{children}</div>
+          <div className="overflow-hidden rounded-[20px] border border-line bg-bg">
+            {children}
+            <SiteFooter />
+          </div>
         </div>
       </body>
     </html>

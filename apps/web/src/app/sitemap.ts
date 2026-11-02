@@ -23,6 +23,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${base}/`, changeFrequency: 'daily', priority: 1 },
     { url: `${base}/guides`, changeFrequency: 'weekly', priority: 0.8 },
     { url: `${base}/whats-new`, changeFrequency: 'daily', priority: 0.5 },
+    // Listed on purpose. A directory that search engines can see has an
+    // about, a privacy page and terms reads as a real site, which is half of
+    // what a reputation check is looking for.
+    { url: `${base}/about`, changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${base}/privacy`, changeFrequency: 'yearly', priority: 0.3 },
+    { url: `${base}/terms`, changeFrequency: 'yearly', priority: 0.3 },
     ...GUIDE_TOPICS.map((topic) => ({
       url: `${base}/guides?topic=${topic.slug}`,
       changeFrequency: 'weekly' as const,

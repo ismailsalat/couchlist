@@ -54,6 +54,13 @@ or mirror video, comics or translated pages.
 - **Admin bulk actions** — tick rows and delete them in one confirmed step
   that lists every name first, and add a listing directly without suggesting
   it to yourself and approving your own suggestion.
+- **It says who runs it** — an about page, a privacy page that lists exactly
+  what is stored (and that there are no analytics, no ad network and no
+  third-party scripts anywhere), terms with an address for removal requests,
+  a contact address in the footer of every page, and a `security.txt` whose
+  expiry never goes stale. These are the pages a phishing site never has, and
+  a new domain that collects an email and a password is judged on whether it
+  has them.
 - **Links are checked, people are not surprised** — a weekly job sends one
   `HEAD` request per source and records what came back. Three consecutive
   failures, a redirect somewhere else, or three different people reporting the
@@ -85,6 +92,7 @@ Open `.env` and set two things:
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/couchlist
 AUTH_SECRET=<32+ random characters>      # openssl rand -base64 32
 ADMIN_EMAILS=you@example.com             # the address you will sign up with
+CONTACT_EMAIL=you@example.com            # shown on /about, /privacy, /terms
 ```
 
 Leave `MAIL_TRANSPORT=log` as it is — that is what makes local signup work

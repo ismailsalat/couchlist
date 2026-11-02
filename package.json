@@ -3,9 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "description": "A community directory of good places to watch and read.",
+  "_comment_workspaces": "Named one by one on purpose. A glob picks up whatever happens to be sitting in apps/, including a folder left behind by an older version of this project, and then `npm ci` fails because the lock file knows nothing about it. Naming them means a stray folder is ignored rather than fatal.",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/web",
+    "packages/shared",
+    "packages/db"
   ],
   "engines": {
     "node": ">=20.9.0"

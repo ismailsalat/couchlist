@@ -43,6 +43,16 @@ export const environmentSchema = z.object({
   ENVIRONMENT: z.enum(['development', 'test', 'staging', 'production']).default('development'),
 
   APP_BASE_URL: z.string().default('http://localhost:3000'),
+  /**
+   * The address on the About, Privacy and Terms pages, and in security.txt.
+   *
+   * Left empty it is derived from APP_BASE_URL, so a deployment gets a
+   * sensible address without configuring anything. Set it when the mailbox
+   * you actually read is somewhere else.
+   */
+  CONTACT_EMAIL: z.string().default(''),
+  /** Who the site says runs it. A name or a handle; shown on /about. */
+  SITE_OPERATOR: z.string().default('Couchlist'),
   DATABASE_URL: z.string().default(''),
 
   DISCORD_CLIENT_ID: z.string().default(''),

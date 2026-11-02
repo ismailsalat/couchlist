@@ -25,6 +25,12 @@ representative legacy data, which is not the same as your data.
      because an unverifiable signup is a broken signup.
    - `ADMIN_EMAILS` — the address you will sign up with, so you get the
      administrator role. You can clear it afterwards.
+   - `CONTACT_EMAIL` — the address shown on /about, /privacy, /terms and in
+     security.txt. Optional: left unset it becomes `hello@` on your own
+     domain. Whatever it resolves to must actually receive mail, because it is
+     where removal requests and security reports arrive, and an address that
+     bounces is worse than none.
+   - `SITE_OPERATOR` — the name /about says runs the site.
    - Discord and TMDB variables are no longer read and can be removed.
 3. **Run the migrations** (`npm run db:deploy`). They are forward-only and
    additive; see below.
@@ -123,6 +129,14 @@ deploy cannot wipe production data by accident.
 5. Spot-check `/robots.txt` and `/sitemap.xml` against your real domain.
 6. Add the weekly link check (below) and run it once by hand, so
    `/admin/attention` starts from a known state.
+7. Open `/about`, `/privacy`, `/terms` and `/.well-known/security.txt` on the
+   real domain and read them. They state facts about this deployment — that
+   there are no analytics, that nothing is hosted here, who runs it — and if
+   any of that stops being true for your deployment, the pages are now wrong
+   and need editing. Check the contact address receives mail.
+8. Verify the domain in Google Search Console and open **Security & Manual
+   Actions → Security Issues**. It should say no issues detected. This is how
+   you find out the day that changes, rather than from a user.
 
 ## The weekly link check
 
@@ -168,6 +182,33 @@ Two things it deliberately does not do: it never follows a redirect into a
 private address (the hop is re-validated each time and recorded as `REFUSED`),
 and it never changes what a reader sees. Hiding a listing stays a human
 decision.
+
+## If a blocker flags the site
+
+A new domain that collects an email and a password, and links out to a few
+dozen third-party sites, is the shape heuristic blocklists treat as suspect.
+Expect the occasional flag from a browser extension, and deal with it in this
+order:
+
+1. **Check whether it is just that one.** Google Safe Browsing (Chrome,
+   Firefox, Safari) is the one that reaches nearly everyone:
+   `https://transparencyreport.google.com/safe-browsing/search?url=<domain>`.
+   VirusTotal shows about ninety engines at once; one or two obscure ones
+   calling a site suspicious is normal background noise.
+2. **If Google has flagged it**, request a review in Search Console under
+   Security Issues. That is the fast route for site owners, and phishing
+   reviews take roughly a day. Submit once and wait.
+3. **If it is one extension**, use its own report form. Most block pages have
+   one behind their "learn more" link.
+4. **Do not work around it.** Never put a redirect or interstitial on this
+   domain that bounces visitors to a listed site: passing traffic through
+   your own domain to a flagged one is the surest way to inherit its
+   reputation. The direct `rel="noopener noreferrer nofollow"` links the
+   source rows use are deliberate.
+
+The things that make this rarer over time are dull: domain age, a contact
+address that answers, the information pages above, working SPF/DKIM/DMARC on
+the sending domain, and no behaviour that resembles phishing.
 
 ## Retiring the bot service
 

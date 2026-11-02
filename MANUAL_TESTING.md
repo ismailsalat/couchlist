@@ -237,6 +237,20 @@ them fails. That is the fastest way to see this working.
       check.
 - [ ] Confirm `/admin/attention` 404s or redirects for a non-admin account.
 
+## 4c. The pages that say who runs this
+
+- [ ] Open `/about`, `/privacy` and `/terms`. Read them. Every factual claim
+      should be true of *your* deployment — no analytics, nothing hosted, who
+      runs it, how data is handled.
+- [ ] Send a mail to the contact address shown in the footer. It must arrive
+      somewhere you read. This is where removal and security reports go.
+- [ ] Open `/.well-known/security.txt`. The `Expires` date is in the future.
+- [ ] From a source page, use the footer to reach Privacy and Terms.
+- [ ] Sign up, and on the verification page open Privacy in a new tab. It
+      opens rather than bouncing you back to the code page.
+- [ ] Confirm the footer is on the sign-in page. That is the page that looks
+      most like phishing without it.
+
 ## 5. On a real phone
 
 The one thing an emulator cannot show you is the status bar. Check these on
@@ -260,6 +274,8 @@ An emulator is not a phone. Check on actual hardware:
       button and does not crowd it.
 - [ ] "Link looks dead" is an easy thumb target and does not sit flush against
       "Suggest a correction".
+- [ ] The footer links wrap onto two lines rather than scrolling sideways, and
+      each one is big enough to tap.
 
 ## 6. Accessibility
 

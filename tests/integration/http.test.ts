@@ -1937,3 +1937,98 @@ describe('link health, reporting and the attention queue', () => {
     expect(html).not.toContain('Single Report');
   });
 });
+
+describe('the pages that say who runs this', () => {
+  /*
+   * A directory with no about page, no privacy page, no terms and no contact
+   * address is shaped exactly like a throwaway, and automated reputation
+   * systems treat it as one. These tests are here so those pages cannot
+   * quietly disappear in a refactor.
+   */
+  it('serves about, privacy and terms to a stranger', async () => {
+    for (const path of ['/about', '/privacy', '/terms']) {
+      const response = await fetch(`${BASE_URL}${path}`);
+      expect(response.status, path).toBe(200);
+      const html = await response.text();
+      // Each one names the contact address, so there is always a way to write.
+      expect(html, path).toContain('mailto:');
+    }
+  });
+
+  it('says plainly on the about page that it hosts nothing', async () => {
+    const html = await fetch(`${BASE_URL}/about`).then((r) => r.text());
+    expect(html).toContain('It hosts nothing');
+    expect(html).toContain('never ask you for money');
+  });
+
+  it('tells the truth about trackers on the privacy page', async () => {
+    const html = await fetch(`${BASE_URL}/privacy`).then((r) => r.text());
+    expect(html).toContain('No analytics');
+    expect(html).toContain('strictly necessary');
+  });
+
+  it('gives a rights holder somewhere to write', async () => {
+    const html = await fetch(`${BASE_URL}/terms`).then((r) => r.text());
+    expect(html).toContain('Getting something removed');
+  });
+
+  it('serves a security.txt that has not expired', async () => {
+    const response = await fetch(`${BASE_URL}/.well-known/security.txt`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/plain');
+
+    const body = await response.text();
+    expect(body).toContain('Contact: mailto:');
+    expect(body).toContain('Canonical:');
+
+    const expires = body.match(/^Expires: (.+)$/mu)?.[1];
+    expect(expires).toBeTruthy();
+    const at = new Date(expires!).getTime();
+    expect(at).toBeGreaterThan(Date.now());
+    // RFC 9116 asks for less than a year out.
+    expect(at).toBeLessThan(Date.now() + 366 * 86_400_000);
+  });
+
+  it('lets somebody mid-signup go and read what is done with their address', async () => {
+    const account = await createAccount({ verify: false });
+    // The browser gets both cookies at signup; the helper keeps only the
+    // session one, so the marker that triggers the hold is added back here.
+    const held = { cookie: `${account.cookie}; couchlist_unverified=1` };
+
+    for (const path of ['/privacy', '/terms', '/about', '/.well-known/security.txt']) {
+      const response = await fetch(`${BASE_URL}${path}`, {
+        headers: held,
+        redirect: 'manual',
+      });
+      expect(response.status, path).toBe(200);
+    }
+
+    // And the hold itself is still real: the directory is not reachable.
+    const directory = await fetch(`${BASE_URL}/`, { headers: held, redirect: 'manual' });
+    expect([302, 307, 308]).toContain(directory.status);
+    expect(directory.headers.get('location')).toContain('/verify-email');
+  });
+
+  it('carries the information links on every page, not just the home page', async () => {
+    const id = await seedSource('Footer Check', 'footercheck.test');
+
+    for (const path of ['/', `/sources/${id}`, '/guides', '/login']) {
+      const html = await fetch(`${BASE_URL}${path}`).then((r) => r.text());
+      expect(html, path).toContain('href="/privacy"');
+      expect(html, path).toContain('href="/terms"');
+      expect(html, path).toContain('does not host, stream or proxy');
+    }
+  });
+
+  it('lists the information pages in the sitemap and allows them in robots', async () => {
+    const [sitemap, robots] = await Promise.all([
+      fetch(`${BASE_URL}/sitemap.xml`).then((r) => r.text()),
+      fetch(`${BASE_URL}/robots.txt`).then((r) => r.text()),
+    ]);
+
+    for (const path of ['/about', '/privacy', '/terms']) {
+      expect(sitemap, path).toContain(path);
+      expect(robots, path).not.toContain(`Disallow: ${path}`);
+    }
+  });
+});

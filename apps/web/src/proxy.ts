@@ -68,6 +68,14 @@ const UNVERIFIED_MAY_VISIT = [
   '/reset-password',
   '/api/auth',
   '/api/health',
+  // Somebody halfway through signing up who wants to know what is being done
+  // with their email address should be able to go and read it. Bouncing them
+  // back to the code page is exactly the behaviour that makes a site feel
+  // like it is hiding something.
+  '/about',
+  '/privacy',
+  '/terms',
+  '/.well-known',
 ];
 
 function allowedWhileUnverified(path: string): boolean {

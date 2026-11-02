@@ -42,9 +42,12 @@ test.describe('public browsing', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Your next good find');
     await expect(page.getByRole('link', { name: 'Sign in' })).toBeVisible();
     // The three primary destinations, and nothing else.
-    await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Discover' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Guides' })).toBeVisible();
+    // Scoped to the header: the site-information footer links to Guides too,
+    // which is fine for a reader and ambiguous for an unscoped locator.
+    const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+    await expect(mainNav).toBeVisible();
+    await expect(mainNav.getByRole('link', { name: 'Discover' })).toBeVisible();
+    await expect(mainNav.getByRole('link', { name: 'Guides' })).toBeVisible();
   });
 
   test('category filters change the list and the URL', async ({ page }) => {
@@ -609,5 +612,42 @@ test.describe('the attention queue', () => {
     const empty = page.getByText('Nothing needs a decision.');
     const listed = page.getByText('Nothing has been hidden or changed');
     await expect(empty.or(listed).first()).toBeVisible();
+  });
+});
+
+test.describe('showing who runs this', () => {
+  /*
+   * The information links are what tells a person — and a reputation
+   * scanner — that this is a real site with somebody behind it. They have to
+   * survive on the page people actually land on from a search result, and on
+   * the sign-in page, which is the one that looks most like phishing without
+   * them.
+   */
+  test('reaches about, privacy and terms from the footer of a listing', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('article').first().getByRole('link').first().click();
+    await expect(page).toHaveURL(/\/sources\//);
+
+    const footer = page.getByRole('navigation', { name: 'Site information' });
+    await expect(footer).toBeVisible();
+
+    await footer.getByRole('link', { name: 'Privacy' }).click();
+    await expect(page).toHaveURL(/\/privacy/);
+    await expect(page.getByRole('heading', { name: 'Privacy', level: 1 })).toBeVisible();
+
+    await page.getByRole('navigation', { name: 'Site information' })
+      .getByRole('link', { name: 'Terms' })
+      .click();
+    await expect(page).toHaveURL(/\/terms/);
+    await expect(page.getByRole('heading', { name: 'Terms of use', level: 1 })).toBeVisible();
+  });
+
+  test('says who runs it and how to write to them, on the sign-in page', async ({ page }) => {
+    await page.goto('/login');
+
+    const footer = page.getByRole('navigation', { name: 'Site information' });
+    await expect(footer.getByRole('link', { name: 'About' })).toBeVisible();
+    await expect(footer.getByRole('link', { name: /@/ })).toBeVisible();
+    await expect(page.getByText(/does not host, stream or proxy/)).toBeVisible();
   });
 });

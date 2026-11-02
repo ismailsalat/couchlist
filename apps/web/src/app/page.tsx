@@ -103,16 +103,11 @@ export default async function DiscoverPage({
           searchParams={params}
         />
 
-        <footer className="flex flex-wrap justify-between gap-3.5 px-0 pb-1 pt-3.5 text-xs text-muted">
-          <span>
-            Couchlist lists websites and guides. It does not host or proxy any video, comics or
-            translated pages.{' '}
-            <Link href="/submit" className="text-accent">
-              Suggest a source
-            </Link>
-          </span>
-          <span>{view.resultLabel}</span>
-        </footer>
+        {/* The "we host nothing" line and the information links moved to the
+            site footer, which every page carries. What is left here is the
+            one thing that belongs to this list: how much of it you are
+            looking at. */}
+        <p className="m-0 px-0 pb-1 pt-3.5 text-right text-xs text-muted">{view.resultLabel}</p>
       </main>
     </>
   );
