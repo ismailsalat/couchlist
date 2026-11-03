@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
-import { AppError, PREVIEW_MAX_BYTES, checkIconUpload, fetchSitePreview } from '@couchlist/shared';
+import {
+  AppError,
+  PREVIEW_MAX_BYTES,
+  checkIconUpload,
+  fetchSitePreview,
+  iconResponseHeaders,
+} from '@couchlist/shared';
 import { apiRoute } from '@/lib/api/handler';
 import { requireAdmin } from '@/lib/api/guards';
 import { repos } from '@/lib/db';
@@ -57,4 +63,22 @@ export const DELETE = apiRoute<NextResponse, { id: string }>(async (_request, { 
 
   await repos().icons.removeSourcePreview(params.id);
   return NextResponse.json({ ok: true });
+});
+
+/**
+ * The preview bytes, approved or not.
+ *
+ * The public route refuses anything a moderator has not accepted, which is
+ * exactly right for readers and useless for the person who has to decide. The
+ * admin route serves it either way.
+ */
+export const GET = apiRoute<Response, { id: string }>(async (_request, { params }) => {
+  await requireAdmin();
+
+  const preview = await repos().icons.previewForReview(params.id);
+  if (!preview) throw AppError.notFound('preview');
+
+  return new Response(new Uint8Array(preview.bytes), {
+    headers: iconResponseHeaders(preview.mime, false),
+  });
 });

@@ -23,16 +23,23 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdminPage();
-  const { contributions, guides, sources } = repos();
+  const { contributions, guides, sources, icons } = repos();
 
-  const [savedCount, pendingSuggestions, openReports, pendingGuides, needsAttention] =
-    await Promise.all([
-      savedCountFor(user),
-      contributions.pendingCandidateCount(),
-      contributions.openReportCount(),
-      guides.pendingSuggestionCount(),
-      sources.needingAttention().then((rows) => rows.length),
-    ]);
+  const [
+    savedCount,
+    pendingSuggestions,
+    openReports,
+    pendingGuides,
+    needsAttention,
+    pendingPreviews,
+  ] = await Promise.all([
+    savedCountFor(user),
+    contributions.pendingCandidateCount(),
+    contributions.openReportCount(),
+    guides.pendingSuggestionCount(),
+    sources.needingAttention().then((rows) => rows.length),
+    icons.pendingPreviewCount(),
+  ]);
 
   return (
     <>
@@ -44,12 +51,28 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           Signed in as {user.displayName?.trim() || user.username}.
         </p>
 
-        <nav aria-label="Admin sections" className="my-5 flex flex-wrap gap-1.5">
+        {/*
+          * Two groups, not eight equal things.
+          *
+          * The first group is work waiting to be done and fills up on its own;
+          * the second is tools you go to on purpose. Separating them means a
+          * glance at this row answers "is there anything to do" without
+          * reading every label.
+          */}
+        <nav aria-label="Admin sections" className="my-5 flex flex-wrap items-center gap-1.5">
           <AdminTab href="/admin/attention" label="Needs attention" count={needsAttention} />
-          <AdminTab href="/admin/sources" label="Sources" />
           <AdminTab href="/admin/suggestions" label="Suggestions" count={pendingSuggestions} />
           <AdminTab href="/admin/reports" label="Reports" count={openReports} />
           <AdminTab href="/admin/guides" label="Guides" count={pendingGuides} />
+          {/* Only here when there is something to decide: a tab that is always
+              empty is clutter on every other page. */}
+          {pendingPreviews > 0 ? (
+            <AdminTab href="/admin/previews" label="Screenshots" count={pendingPreviews} />
+          ) : null}
+
+          <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line sm:block" />
+
+          <AdminTab href="/admin/sources" label="Sources" />
           <AdminTab href="/admin/import" label="Import" />
           <AdminTab href="/admin/deleted" label="Deleted" />
         </nav>

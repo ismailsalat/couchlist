@@ -6,7 +6,7 @@ import {
   parseExternalUrl,
   type HealthFetch,
 } from '@couchlist/shared';
-import { getDatabase } from '../client.js';
+import { closeDatabase, getDatabase } from '../client.js';
 import { watchSources } from '../schema.js';
 import { MirrorRepository } from '../repositories/mirrors.js';
 import { SourceDirectoryRepository } from '../repositories/sources.js';
@@ -201,9 +201,18 @@ async function main(): Promise<void> {
   logger.info('finished', { checked: due.length, ok, failed, flagged });
 }
 
+/*
+ * Close the pool, then exit. A scheduled job that leaves a connection open
+ * never terminates, and a host that sees the previous run still going skips
+ * the next one — so it runs once and then looks forgotten.
+ */
 main()
-  .then(() => process.exit(0))
-  .catch((error: unknown) => {
+  .then(async () => {
+    await closeDatabase();
+    process.exit(0);
+  })
+  .catch(async (error: unknown) => {
     logger.error('check_failed', { message: (error as Error)?.message });
+    await closeDatabase().catch(() => undefined);
     process.exit(1);
   });

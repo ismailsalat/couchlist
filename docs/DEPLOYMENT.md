@@ -55,6 +55,7 @@ removed, and no row is deleted.
 | `0020_link_health` | Adds `health_status`, `health_status_code`, `health_failures` and `health_detail` to `watch_sources`, plus two partial indexes: one that finds the sources due for a check, one that finds the sources currently failing. Nothing is backfilled, so every source starts as never-checked and the page says nothing about it until the checker has run. |
 | `0021_mirrors_stats_and_profiles` | Adds `watch_source_domains` (the addresses a listing answers on) and backfills one row per existing listing; soft-delete columns on `watch_sources` with an index; an aggregate `visit_count`; `survey_responses`; and a bio on `users`. Nothing a reader sees changes: every new column starts at a value meaning "nothing has happened yet". |
 | `0022_site_previews` | Adds `kind` and `source_note` to `source_icons` so a listing may hold one icon and one preview through the same validated pipeline, replaces the one-image-per-source index with one per source per kind, and adds `preview_mime` to `watch_sources`. |
+| `0023_preview_review` | Adds `approved` and `captured_from` to `source_icons`, with a partial index for the review queue. Everything that exists already was put there by a person, so it is approved; only a bot's screenshot arrives unapproved. |
 
 Two changes are worth reading closely before you run them.
 
@@ -188,6 +189,52 @@ Two things it deliberately does not do: it never follows a redirect into a
 private address (the hop is re-validated each time and recorded as `REFUSED`),
 and it never changes what a reader sees. Hiding a listing stays a human
 decision.
+
+## Screenshots of the listed sites
+
+Off by default, and in two senses: nothing captures anything unless you
+schedule it, and the image it captures is not shown to anybody until you
+approve it.
+
+```
+npm run capture:previews              # a few listings that have no picture yet
+npm run capture:previews -- --limit 5
+```
+
+Each capture opens the site's homepage in a headless browser, photographs the
+top of the page at 1280×800, and stores it **unapproved**. It appears on
+`/admin/previews`, where the only two options are Use it or Discard. Until you
+press Use it, `/api/sources/<id>/preview` returns 404 and the listing shows no
+picture at all.
+
+That queue is not ceremony. A bot pointed at somebody else's homepage will
+eventually photograph an advert, an age gate, or a site that changed hands
+overnight, and the person who should see that first is you.
+
+### Turning it on
+
+1. **A browser has to exist.** `nixpacks.toml` in the repository root adds
+   `chromium` to the build for exactly this. It costs about 300 MB in the
+   image and is used by nothing else. Delete the `nixPkgs` line to opt out —
+   the job then reports that it has no browser and exits quietly, with no
+   error and nothing broken.
+2. **Set `CHROMIUM_PATH`** only if the browser is somewhere unusual. The job
+   looks in the usual places and then on `PATH`, which is where Nix puts it.
+3. **Add a second cron schedule**, separate from the link check, because a
+   browser is hundreds of megabytes of memory and should not share a run with
+   anything you care about finishing:
+
+| Setting | Value |
+| --- | --- |
+| Schedule | `0 5 * * 1` (Mondays, an hour after the link check) |
+| Command | `node packages/db/dist/scripts/capture-previews.js --limit 10` |
+
+Keep the limit small. Ten sites a week fills a new directory in a couple of
+months and keeps each run short, and a run that is killed halfway leaves the
+listings it reached captured and the rest for next time.
+
+Never run this inside the web service. A browser in a request path is how a
+site falls over under its first bit of real traffic.
 
 ## If a blocker flags the site
 

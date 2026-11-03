@@ -1247,6 +1247,14 @@ export const sourceIcons = pgTable(
     kind: text('kind').notNull().default('ICON'),
     /** Where a preview came from, so the listing can say so. */
     sourceNote: text('source_note'),
+    /**
+     * False only for a screenshot a bot took, which waits for a moderator.
+     * Anything a person uploaded or fetched deliberately is approved as it
+     * arrives.
+     */
+    approved: boolean('approved').notNull().default(true),
+    /** The address a screenshot was taken from. */
+    capturedFrom: text('captured_from'),
     mime: text('mime').notNull(),
     bytes: bytea('bytes').notNull(),
     byteSize: integer('byte_size').notNull(),

@@ -2410,3 +2410,119 @@ describe('the survey', () => {
     expect([401, 403]).toContain(response.status);
   });
 });
+
+describe('screenshots, and the review they wait for', () => {
+  /** A real one-pixel JPEG, so the stored bytes pass the type check. */
+  const JPEG = Buffer.from(
+    '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==',
+    'base64',
+  );
+
+  async function storePending(sourceId: string, approved: boolean) {
+    await db.execute(sql`
+      delete from source_icons where source_id = ${sourceId} and kind = 'PREVIEW'
+    `);
+    await db.execute(sql`
+      insert into source_icons (id, source_id, kind, approved, captured_from, source_note, mime, bytes, byte_size)
+      values (${`ico_${Math.random().toString(36).slice(2, 12)}`}, ${sourceId}, 'PREVIEW', ${approved},
+              ${'https://example.test/'}, 'Screenshot of the site, taken automatically',
+              'image/jpeg', ${JPEG}, ${JPEG.length})
+    `);
+    await db.execute(sql`
+      update watch_sources set preview_mime = ${approved ? 'image/jpeg' : null} where id = ${sourceId}
+    `);
+  }
+
+  it('never shows a reader a screenshot nobody has approved', async () => {
+    const id = await seedSource('Unreviewed Shot', 'unreviewedshot.test');
+    await storePending(id, false);
+
+    // Not served, and not even hinted at on the page.
+    const image = await fetch(`${BASE_URL}/api/sources/${id}/preview`);
+    expect(image.status).toBe(404);
+
+    const page = await fetch(`${BASE_URL}/sources/${id}`).then((r) => r.text());
+    expect(page).not.toContain(`/api/sources/${id}/preview`);
+  });
+
+  it('shows it to a reader once a moderator says so', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Approved Shot', 'approvedshot.test');
+    await storePending(id, false);
+
+    const approved = await post('/api/admin/previews', adminUser, { id, action: 'approve' });
+    expect(approved.status).toBe(200);
+
+    const image = await fetch(`${BASE_URL}/api/sources/${id}/preview`);
+    expect(image.status).toBe(200);
+    expect(image.headers.get('content-type')).toContain('image/jpeg');
+
+    const page = await fetch(`${BASE_URL}/sources/${id}`).then((r) => r.text());
+    expect(page).toContain(`/api/sources/${id}/preview`);
+    // And it says where the picture came from rather than passing it off.
+    expect(page).toContain('taken automatically');
+  });
+
+  it('throws a screenshot away when it is discarded', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Discarded Shot', 'discardedshot.test');
+    await storePending(id, false);
+
+    const discarded = await post('/api/admin/previews', adminUser, { id, action: 'discard' });
+    expect(discarded.status).toBe(200);
+
+    const { rows } = await db.execute(sql`
+      select (select count(*)::int from source_icons
+               where source_id = ${id} and kind = 'PREVIEW') as images,
+             (select preview_mime from watch_sources where id = ${id}) as mime
+    `);
+    const row = rows[0] as { images: number; mime: string | null };
+    expect(row.images).toBe(0);
+    expect(row.mime).toBeNull();
+  });
+
+  it('lets an admin look at a waiting screenshot, and nobody else', async () => {
+    const adminUser = await admin();
+    const outsider = await createAccount();
+    const id = await seedSource('Guarded Shot', 'guardedshot.test');
+    await storePending(id, false);
+
+    const mine = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`, authed(adminUser));
+    expect(mine.status).toBe(200);
+
+    const theirs = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`, authed(outsider));
+    expect([401, 403, 404]).toContain(theirs.status);
+
+    const nobody = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`);
+    expect([401, 403, 404]).toContain(nobody.status);
+  });
+
+  it('refuses a review decision from anyone who is not an admin', async () => {
+    const account = await createAccount();
+    const id = await seedSource('Sneaky Approve', 'sneakyapprove.test');
+    await storePending(id, false);
+
+    const response = await post('/api/admin/previews', account, { id, action: 'approve' });
+    expect([401, 403, 404]).toContain(response.status);
+
+    const stillHidden = await fetch(`${BASE_URL}/api/sources/${id}/preview`);
+    expect(stillHidden.status).toBe(404);
+  });
+
+  it('keeps an uploaded picture and a captured one apart', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Uploaded Shot', 'uploadedshot.test');
+
+    // A moderator's own upload is live at once: they already looked at it.
+    const uploaded = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({ image: `data:image/jpeg;base64,${JPEG.toString('base64')}` }),
+    });
+    expect(uploaded.status).toBe(200);
+    expect((await fetch(`${BASE_URL}/api/sources/${id}/preview`)).status).toBe(200);
+
+    const page = await fetch(`${BASE_URL}/sources/${id}`).then((r) => r.text());
+    expect(page).toContain('Added by a moderator');
+  });
+});

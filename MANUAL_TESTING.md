@@ -296,6 +296,22 @@ them fails. That is the fastest way to see this working.
 - [ ] Dismiss it with the X on another account. Also never comes back, and
       nothing was stored.
 
+## 4g. Screenshots
+
+- [ ] Run `npm run capture:previews -- --limit 2` with no Chromium installed.
+      It says screenshots are off and exits **without an error**.
+- [ ] Install Chromium and run it again. It reports what it captured.
+- [ ] Open the listing it captured, signed out. There is **no picture**: the
+      capture has not been approved.
+- [ ] Open `/admin/previews`. The screenshot is there, large, with the address
+      it was taken from. The Screenshots tab shows a count.
+- [ ] Press **Discard** on one. It disappears, and the listing still shows no
+      picture.
+- [ ] Press **Use it** on another. Reload the listing signed out: the picture
+      is there, with a caption saying it was taken automatically.
+- [ ] With nothing waiting, the Screenshots tab is gone from the admin row.
+- [ ] Try `/api/admin/sources/<id>/preview` signed out. It refuses.
+
 ## 5. On a real phone
 
 The one thing an emulator cannot show you is the status bar. Check these on

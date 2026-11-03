@@ -1,0 +1,17 @@
+# Build settings for Railway.
+#
+# This file exists for one reason: the screenshot job needs a browser, and the
+# default image has none. Everything else about the build is unchanged.
+#
+# Chromium is about 300 MB in the image and is used by nothing in the web
+# service — only by `npm run capture:previews`, which runs on a schedule. If
+# you never want screenshots, delete the `nixPkgs` line below and the feature
+# simply stays off: the job says it has no browser and exits quietly.
+
+[phases.setup]
+nixPkgs = ['nodejs_24', 'npm-9_x', 'openssl', 'chromium']
+
+[variables]
+# Playwright must not download its own browser: the one above is the one to
+# use, and a second copy would be another 150 MB for nothing.
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = '1'

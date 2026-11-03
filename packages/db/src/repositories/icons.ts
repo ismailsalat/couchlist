@@ -86,7 +86,10 @@ export class IconRepository {
     image: { mime: string; bytes: Buffer; byteSize: number },
     uploadedByUserId: string | null,
     sourceNote: string | null,
+    options: { approved?: boolean; capturedFrom?: string | null } = {},
   ): Promise<void> {
+    const approved = options.approved ?? true;
+
     await this.db.transaction(async (tx) => {
       await tx
         .delete(sourceIcons)
@@ -95,16 +98,145 @@ export class IconRepository {
         sourceId,
         kind: 'PREVIEW',
         sourceNote,
+        approved,
+        capturedFrom: options.capturedFrom ?? null,
         mime: image.mime,
         bytes: image.bytes,
         byteSize: image.byteSize,
         uploadedByUserId,
       });
+
+      // `previewMime` means "a reader can see a preview". An unapproved
+      // capture must not set it, or the queue would be decorative.
       await tx
         .update(watchSources)
-        .set({ previewMime: image.mime, updatedAt: new Date() })
+        .set({ previewMime: approved ? image.mime : null, updatedAt: new Date() })
         .where(eq(watchSources.id, sourceId));
     });
+  }
+
+  /**
+   * The preview bytes whatever their state, for the person deciding.
+   *
+   * Separate from `previewForSource` rather than a flag on it: a flag is one
+   * forgotten argument away from serving an unreviewed screenshot to every
+   * reader, and this is not the place to be clever.
+   */
+  async previewForReview(
+    sourceId: string,
+  ): Promise<{ mime: string; bytes: Buffer; approved: boolean } | undefined> {
+    const rows = await this.db
+      .select({
+        mime: sourceIcons.mime,
+        bytes: sourceIcons.bytes,
+        approved: sourceIcons.approved,
+      })
+      .from(sourceIcons)
+      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')))
+      .limit(1);
+    return rows[0];
+  }
+
+  /** Counts what is waiting, for the tab that only appears when it should. */
+  async pendingPreviewCount(): Promise<number> {
+    const rows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sourceIcons)
+      .innerJoin(watchSources, eq(watchSources.id, sourceIcons.sourceId))
+      .where(
+        and(
+          eq(sourceIcons.kind, 'PREVIEW'),
+          eq(sourceIcons.approved, false),
+          isNull(watchSources.deletedAt),
+        ),
+      );
+    return rows[0]?.count ?? 0;
+  }
+
+  /** Accepts a captured screenshot, which is what publishes it. */
+  async approvePreview(sourceId: string): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(sourceIcons)
+        .set({ approved: true })
+        .where(
+          and(
+            eq(sourceIcons.sourceId, sourceId),
+            eq(sourceIcons.kind, 'PREVIEW'),
+            eq(sourceIcons.approved, false),
+          ),
+        )
+        .returning({ mime: sourceIcons.mime });
+
+      const row = rows[0];
+      if (!row) return false;
+
+      await tx
+        .update(watchSources)
+        .set({ previewMime: row.mime, updatedAt: new Date() })
+        .where(eq(watchSources.id, sourceId));
+      return true;
+    });
+  }
+
+  /** Screenshots waiting for a decision, oldest first. */
+  async pendingPreviews(limit = 50): Promise<
+    Array<{ sourceId: string; sourceName: string; domain: string; capturedFrom: string | null; createdAt: Date }>
+  > {
+    const rows = await this.db
+      .select({
+        sourceId: sourceIcons.sourceId,
+        sourceName: watchSources.name,
+        domain: watchSources.domain,
+        capturedFrom: sourceIcons.capturedFrom,
+        createdAt: sourceIcons.createdAt,
+      })
+      .from(sourceIcons)
+      .innerJoin(watchSources, eq(watchSources.id, sourceIcons.sourceId))
+      .where(
+        and(
+          eq(sourceIcons.kind, 'PREVIEW'),
+          eq(sourceIcons.approved, false),
+          isNull(watchSources.deletedAt),
+        ),
+      )
+      .orderBy(sourceIcons.createdAt)
+      .limit(limit);
+
+    return rows.map((row) => ({
+      sourceId: String(row.sourceId),
+      sourceName: row.sourceName,
+      domain: row.domain,
+      capturedFrom: row.capturedFrom,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /** Listings a screenshot would help: no preview, and none waiting. */
+  async sourcesWithoutPreview(limit: number): Promise<
+    Array<{ id: string; domain: string; homepageUrl: string }>
+  > {
+    const rows = await this.db
+      .select({
+        id: watchSources.id,
+        domain: watchSources.domain,
+        homepageUrl: watchSources.homepageUrl,
+      })
+      .from(watchSources)
+      .where(
+        and(
+          eq(watchSources.isEnabled, true),
+          isNull(watchSources.deletedAt),
+          isNull(watchSources.previewMime),
+          sql`not exists (
+            select 1 from ${sourceIcons} i
+            where i.source_id = ${watchSources.id} and i.kind = 'PREVIEW'
+          )`,
+        ),
+      )
+      .limit(limit);
+
+    return rows;
   }
 
   async removeSourcePreview(sourceId: string): Promise<void> {
@@ -146,7 +278,14 @@ export class IconRepository {
         sourceNote: sourceIcons.sourceNote,
       })
       .from(sourceIcons)
-      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')))
+      .where(
+        and(
+          eq(sourceIcons.sourceId, sourceId),
+          eq(sourceIcons.kind, 'PREVIEW'),
+          // A capture nobody has looked at is never served to a reader.
+          eq(sourceIcons.approved, true),
+        ),
+      )
       .limit(1);
     return rows[0];
   }

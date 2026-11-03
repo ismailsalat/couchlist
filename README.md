@@ -68,10 +68,14 @@ or mirror video, comics or translated pages.
 - **A thirty-day undo** — deleting marks rather than destroys. The listing
   leaves the directory at once; the votes and credit wait in a recently-deleted
   view in case it was a mistake, and the weekly job empties the bin.
-- **Icons and previews a moderator controls** — upload one, remove one, or
-  fetch the site's own: its favicon for the icon, and for the preview the share
-  image it publishes in its own HTML for other people's pages to display.
-  Never an automated screenshot of somebody's page.
+- **A picture of each site, and a queue in front of it** — the listing can
+  show what a site looks like, from three places: a moderator's upload, the
+  share image the site publishes in its own HTML, or a screenshot taken by a
+  scheduled job. The screenshot is the one with the queue: it lands
+  unapproved, appears on an admin page with Use it and Discard, and no reader
+  sees it until somebody says so. A bot photographing other people's homepages
+  will eventually photograph something nobody wants published, and the person
+  who finds that out should not be a reader.
 - **Statistics, in public** — how big the directory is, what it covers, how the
   links are holding up and which sites get opened, drawn as charts that are
   readable with the colour removed. Every number is a count of rows that
@@ -178,6 +182,16 @@ npm run check:links -- --limit 20  # a handful, for a quick look
 
 The same job empties the deleted bin: anything deleted more than thirty days
 ago is removed for good.
+
+### Taking screenshots
+
+```bash
+npm run capture:previews -- --limit 5
+```
+
+Needs a Chromium on the machine; without one it says so and exits without an
+error. Everything it captures waits on `/admin/previews` for a decision.
+`docs/DEPLOYMENT.md` has the Railway settings.
 
 One `HEAD` request per source, four at a time, ten-second timeout, with an
 honest user agent. Three consecutive failures put a source on
