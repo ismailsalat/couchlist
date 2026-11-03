@@ -47,7 +47,7 @@ test.describe('public browsing', () => {
     const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
     await expect(mainNav).toBeVisible();
     await expect(mainNav.getByRole('link', { name: 'Discover' })).toBeVisible();
-    await expect(mainNav.getByRole('link', { name: 'Guides' })).toBeVisible();
+    await expect(mainNav.getByRole('link', { name: 'Tools & Guides' })).toBeVisible();
   });
 
   test('category filters change the list and the URL', async ({ page }) => {
@@ -74,7 +74,7 @@ test.describe('public browsing', () => {
 
   test('guides filter by topic and device', async ({ page }) => {
     await page.goto('/guides');
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('A little help');
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Tools & Guides');
 
     await page.getByRole('button', { name: 'Ad blocking' }).click();
     await expect(page).toHaveURL(/topic=ad-blocking/);

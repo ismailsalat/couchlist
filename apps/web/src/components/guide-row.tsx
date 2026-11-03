@@ -16,25 +16,29 @@ export function GuideRowItem({ guide }: { guide: GuideRowType }) {
   const topic = guideTopicMeta(guide.topic);
 
   return (
-    <details className="border-b border-line last:border-b-0">
+    <details data-palette={topic.palette} className="border-b border-line last:border-b-0">
       <summary className="flex min-h-[76px] cursor-pointer list-none items-center gap-2.5 rounded-xl p-3.5 hover:bg-hover [&::-webkit-details-marker]:hidden">
         <span
           aria-hidden="true"
-          className="flex h-[34px] w-[30px] shrink-0 items-center justify-center rounded-[10px] bg-bg text-muted"
+          className="flex h-[34px] w-[30px] shrink-0 items-center justify-center rounded-[10px] border border-pal-line bg-pal-bg text-pal-text"
         >
           <TopicIcon icon={topic.icon} />
         </span>
 
         <span className="min-w-0 flex-1">
-          <strong className="block text-[13px] font-semibold text-text">{guide.title}</strong>
-          <small className="mt-[3px] block text-xs leading-normal text-muted">{guide.task}</small>
-        </span>
-
-        {guide.deviceLabel ? (
-          <span className="hidden max-w-26 shrink-0 rounded-pill bg-bg px-[7px] py-[3px] text-center text-xs leading-snug text-muted sm:block">
-            {guide.deviceLabel}
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <strong className="text-[13px] font-semibold text-text">{guide.title}</strong>
+            {/* The topic tag: before this, a row gave no clue which part of
+                the site it came from once the rail scrolled out of view. */}
+            <span className="rounded-pill border border-pal-line bg-pal-bg px-2 py-[2px] text-[11px] font-semibold leading-tight text-pal-text">
+              {topic.title}
+            </span>
           </span>
-        ) : null}
+          <small className="mt-[3px] block text-xs leading-normal text-muted">
+            {guide.task}
+            {guide.deviceLabel ? <span className="text-muted/75"> &middot; {guide.deviceLabel}</span> : null}
+          </small>
+        </span>
 
         <ChevronDown aria-hidden="true" className="h-3.5 w-3.5 text-muted" />
       </summary>

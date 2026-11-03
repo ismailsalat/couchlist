@@ -582,6 +582,19 @@ export const watchSources = pgTable(
     healthFailures: integer('health_failures').notNull().default(0),
     healthDetail: text('health_detail'),
 
+    /*
+     * A moderator's answer to an external reputation flag.
+     *
+     * `reputationReviewedSources` records which providers were flagging the
+     * domain at the time, so the review covers that evidence and not future
+     * evidence. A new provider flagging it later is something nobody has
+     * looked at yet, and the warning returns.
+     */
+    reputationReviewedAt: timestamp('reputation_reviewed_at', { withTimezone: true }),
+    reputationReviewedByUserId: text('reputation_reviewed_by_user_id'),
+    reputationReviewNote: text('reputation_review_note'),
+    reputationReviewedSources: jsonb('reputation_reviewed_sources').$type<string[]>(),
+
     /** Set when a preview picture exists, so the row knows without the bytes. */
     previewMime: text('preview_mime'),
 
@@ -1379,5 +1392,82 @@ export const surveyResponses = pgTable(
   (table) => ({
     userKey: uniqueIndex('survey_responses_user_key').on(table.userId),
     easeCheck: check('survey_responses_ease_check', sql`${table.ease} between 1 and 5`),
+  }),
+);
+
+/**
+ * A local copy of public domain blocklists.
+ *
+ * Synced from the lists' GitHub mirrors, which need no API key and no
+ * account. This is what makes the safety tool answer at all when the keyed
+ * providers are unconfigured, rate-limited or down: a local table is never
+ * slow and never refuses.
+ *
+ * Keyed by (domain, list) rather than domain alone, because knowing that two
+ * independent lists both name a domain is stronger evidence than one, and the
+ * answer shows each by name instead of blending them into a score.
+ */
+export const blockedDomains = pgTable(
+  'blocked_domains',
+  {
+    domain: text('domain').notNull(),
+    list: text('list').notNull(),
+    category: text('category').notNull(),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    pk: uniqueIndex('blocked_domains_pk').on(table.domain, table.list),
+    domainIdx: index('blocked_domains_domain_idx').on(table.domain),
+    categoryCheck: check(
+      'blocked_domains_category_check',
+      sql`${table.category} in ('PHISHING', 'MALWARE', 'ADS')`,
+    ),
+  }),
+);
+
+/**
+ * Cached answers from the providers that need a key.
+ *
+ * `expiresAt` comes from the provider, not from us. Safe Browsing's terms
+ * allow a warning to be shown only while its own cache duration is still
+ * valid, so the expiry has to be stored rather than assumed.
+ */
+export const domainReputation = pgTable(
+  'domain_reputation',
+  {
+    domain: text('domain').notNull(),
+    provider: text('provider').notNull(),
+    status: text('status').notNull(),
+    detail: text('detail'),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (table) => ({
+    pk: uniqueIndex('domain_reputation_pk').on(table.domain, table.provider),
+    expiryIdx: index('domain_reputation_expiry_idx').on(table.expiresAt),
+    statusCheck: check(
+      'domain_reputation_status_check',
+      sql`${table.status} in ('clean', 'flagged', 'unknown', 'unavailable')`,
+    ),
+  }),
+);
+
+/** One row per list per sync run, so freshness can be stated rather than implied. */
+export const blocklistSyncs = pgTable(
+  'blocklist_syncs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('bls')),
+    list: text('list').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    entryCount: integer('entry_count').notNull().default(0),
+    ok: boolean('ok').notNull().default(false),
+    detail: text('detail'),
+  },
+  (table) => ({
+    listIdx: index('blocklist_syncs_list_idx').on(table.list, table.startedAt),
   }),
 );

@@ -51,10 +51,27 @@ const config: Config = {
         'category-bg': 'var(--category-bg)',
         'category-text': 'var(--category-text)',
         'category-line': 'var(--category-line)',
+
+        // Driven by the [data-palette] attribute; see globals.css.
+        'pal-bg': 'var(--pal-bg)',
+        'pal-text': 'var(--pal-text)',
+        'pal-line': 'var(--pal-line)',
       },
       fontFamily: {
         sans: ['ui-rounded', 'SF Pro Rounded', 'Segoe UI', 'Helvetica Neue', 'sans-serif'],
       },
+      /*
+       * One breakpoint below Tailwind's smallest.
+       *
+       * `xs:` was already in use in directory-controls.tsx without this
+       * block, which meant those two spans silently did nothing: the long
+       * and short labels both rendered at every width. 420px is where a
+       * phone stops being narrow enough to need the short form.
+       */
+      screens: {
+        xs: '420px',
+      },
+
       fontSize: {
         // The reference's scale: body 14, secondary 12, nothing smaller than 11.
         xs: ['11px', '1.45'],

@@ -248,10 +248,53 @@ describe('public browsing needs no account', () => {
     expect(html).toContain('Visit website');
   });
 
-  it('serves the guides hub and a guide page', async () => {
+  it('serves the tools and guides hub, with the tools first', async () => {
     const hub = await fetch(`${BASE_URL}/guides`);
     expect(hub.status).toBe(200);
-    expect(await hub.text()).toContain('MAKE YOURSELF COMFORTABLE');
+
+    const html = await hub.text();
+    expect(html).toContain('Tools &amp; Guides');
+    expect(html).toContain('Is this site safe?');
+
+    // Server-rendered order, not just presence: the tools section has to come
+    // before the guides one, which is the whole point of the page.
+    expect(html.indexOf('id="tools-heading"')).toBeGreaterThan(-1);
+    expect(html.indexOf('id="tools-heading"')).toBeLessThan(html.indexOf('id="guides-heading"'));
+  });
+
+  it('serves each ready tool, and a coming-soon screen for the rest', async () => {
+    const ready = await fetch(`${BASE_URL}/tools/download-check`);
+    expect(ready.status).toBe(200);
+    expect(await ready.text()).toContain('Download safety check');
+
+    const soon = await fetch(`${BASE_URL}/tools/subtitles`);
+    expect(soon.status).toBe(200);
+    expect(await soon.text()).toContain('Coming soon');
+
+    const missing = await fetch(`${BASE_URL}/tools/not-a-tool`);
+    expect(missing.status).toBe(404);
+  });
+
+  it('answers the safety checker without an account, and never says safe', async () => {
+    const response = await fetch(`${BASE_URL}/api/tools/site-check`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'nothing-is-listed-here.example' }),
+    });
+    expect(response.status).toBe(200);
+
+    const body = await response.json();
+    expect(body.level).toBe('UNKNOWN');
+    expect(body.body).toContain('not the same as it being safe');
+  });
+
+  it('refuses to look up an address on a private network', async () => {
+    const response = await fetch(`${BASE_URL}/api/tools/site-check`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: 'http://169.254.169.254/latest/meta-data/' }),
+    });
+    expect(response.status).toBe(400);
   });
 
   it('searches, filters and sorts without a session', async () => {

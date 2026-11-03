@@ -109,3 +109,10 @@ to do is match on display name or on an unverified email address.
   production database, and no email has been delivered through a real provider.
   The Resend integration is written against their documented API and has never
   been exercised with a live key.
+
+## Ideas not yet scheduled
+
+`docs/IDEAS.md` holds the ones worth keeping: a small set of tools above the
+guides, a capped favourites shelf on profiles, and a Discord bot. Each entry
+records the trap the obvious version falls into, which is the part that gets
+forgotten when somebody picks the idea up again.

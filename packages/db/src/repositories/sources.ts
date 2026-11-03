@@ -585,6 +585,94 @@ export class SourceDirectoryRepository {
   }
 
   /**
+   * Record that a moderator looked at an external flag and kept the listing.
+   *
+   * `sources` is the set of providers flagging it right now, captured so the
+   * review cannot silently cover evidence that arrives later.
+   */
+  async setReputationReview(input: {
+    sourceId: string;
+    userId: string;
+    note: string | null;
+    sources: string[];
+  }): Promise<boolean> {
+    const result = await this.db
+      .update(watchSources)
+      .set({
+        reputationReviewedAt: new Date(),
+        reputationReviewedByUserId: input.userId,
+        reputationReviewNote: input.note,
+        reputationReviewedSources: input.sources,
+      })
+      .where(eq(watchSources.id, input.sourceId))
+      .returning({ id: watchSources.id });
+    return result.length > 0;
+  }
+
+  /** Withdraw a review, so the warnings apply again in full. */
+  async clearReputationReview(sourceId: string): Promise<boolean> {
+    const result = await this.db
+      .update(watchSources)
+      .set({
+        reputationReviewedAt: null,
+        reputationReviewedByUserId: null,
+        reputationReviewNote: null,
+        reputationReviewedSources: null,
+      })
+      .where(eq(watchSources.id, sourceId))
+      .returning({ id: watchSources.id });
+    return result.length > 0;
+  }
+
+  /**
+   * Health of every published source, for the public status page.
+   *
+   * A projection rather than a full row: the status page needs six columns
+   * and the listing row carries icons, descriptions and vote counts it would
+   * only throw away.
+   */
+  async healthSnapshot(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      domain: string | null;
+      healthStatus: string | null;
+      healthFailures: number;
+      lastHealthCheckAt: Date | null;
+    }>
+  > {
+    return this.db
+      .select({
+        id: watchSources.id,
+        name: watchSources.name,
+        domain: watchSources.domain,
+        healthStatus: watchSources.healthStatus,
+        healthFailures: watchSources.healthFailures,
+        lastHealthCheckAt: watchSources.lastHealthCheckAt,
+      })
+      .from(watchSources)
+      .where(and(isNull(watchSources.deletedAt), isNull(watchSources.hiddenAt)));
+  }
+
+  /**
+   * Every listed domain, for lookalike comparison.
+   *
+   * Small on purpose: the directory is in the dozens, so this is a handful of
+   * rows the caller can hold in memory for a few minutes. It includes hidden
+   * and soft-deleted rows deliberately — a source we removed for serving
+   * malware is exactly the name an impostor would copy, so it must stay in
+   * the comparison set after it leaves the directory.
+   */
+  async allDomainsForLookalike(): Promise<Array<{ id: string; name: string; domain: string }>> {
+    const rows = await this.db
+      .select({ id: watchSources.id, name: watchSources.name, domain: watchSources.domain })
+      .from(watchSources);
+    return rows.filter((row): row is { id: string; name: string; domain: string } =>
+      typeof row.domain === 'string' && row.domain.length > 0,
+    );
+  }
+
+  /**
    * Sources that share a category with this one.
    *
    * Similarity is "shares a content category", which is a real attribute of

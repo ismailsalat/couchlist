@@ -398,3 +398,31 @@ h3 {
     padding-left: max(1.5rem, env(safe-area-inset-left));
   }
 }
+
+/* Tool and topic palettes.
+   The same six colours the source categories use, exposed under a neutral
+   name so a concept keeps its colour wherever it appears: subtitles are the
+   same pink on a tool tile and on a guide row. Colour is never the only
+   signal — every pill carries a word as well. */
+[data-palette='blue']   { --pal-bg: #283e51; --pal-text: #b4dcff; --pal-line: #426480; }
+[data-palette='purple'] { --pal-bg: #3a3356; --pal-text: #d2c4fb; --pal-line: #584c80; }
+[data-palette='green']  { --pal-bg: #2b4037; --pal-text: #b9e1c6; --pal-line: #466c54; }
+[data-palette='pink']   { --pal-bg: #45303b; --pal-text: #f1bfd4; --pal-line: #704958; }
+[data-palette='olive']  { --pal-bg: #394130; --pal-text: #d3e6ae; --pal-line: #5a6c43; }
+[data-palette='teal']   { --pal-bg: #26433f; --pal-text: #a9e0d6; --pal-line: #406c62; }
+[data-palette='slate']  { --pal-bg: #2f3a4a; --pal-text: #c3d6ee; --pal-line: #4d6180; }
+
+/* The roadworks cone rocks, gently, and only for people who want motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .cl-cone { animation: cl-cone-tilt 3.2s ease-in-out infinite; transform-origin: 50% 88%; }
+  @keyframes cl-cone-tilt {
+    0%, 100% { transform: rotate(-4deg); }
+    50% { transform: rotate(4deg); }
+  }
+}
+
+/* Hazard bar above a coming-soon or maintenance screen. */
+.cl-hazard {
+  background-color: #2b2c33;
+  background-image: repeating-linear-gradient(135deg, #f0963f 0 12px, transparent 12px 24px);
+}

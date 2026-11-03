@@ -1,6 +1,17 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // The web app's own path alias, so a test can exercise a server module
+      // directly instead of only through HTTP.
+      '@': fileURLToPath(new URL('./apps/web/src', import.meta.url)),
+      // Next's marker package throws outside a server bundle. The modules it
+      // guards are the ones these tests are for, so it is stubbed away.
+      'server-only': fileURLToPath(new URL('./tests/helpers/server-only-stub.ts', import.meta.url)),
+    },
+  },
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],

@@ -35,9 +35,12 @@
     "admin:grant": "npm run build --workspace @couchlist/shared && npm run admin:grant --workspace @couchlist/db --",
     "check:links": "npm run build --workspace @couchlist/shared && npm run check:links --workspace @couchlist/db --",
     "capture:previews": "npm run build --workspace @couchlist/shared && npm run capture:previews --workspace @couchlist/db --",
-    "maintenance": "npm run build --workspace @couchlist/shared && npm run maintenance --workspace @couchlist/db --"
+    "maintenance": "npm run build --workspace @couchlist/shared && npm run maintenance --workspace @couchlist/db --",
+    "db:sync:blocklists": "npm run build --workspace @couchlist/shared && npm run sync:blocklists --workspace @couchlist/db",
+    "clean": "npm run clean --workspace @couchlist/shared && npm run clean --workspace @couchlist/db",
+    "rebuild": "npm run clean && npm run build"
   },
-  "_comment_overrides": "Pins a transitive dependency that npm audit flags and npm audit fix cannot reach. source-map-js is pulled in by postcss, which only ever parses this project's own CSS at build time, so the advisory does not describe anything a visitor can reach — but a clean audit is worth more than an argument about which warnings to ignore.",
+  "_comment_overrides": "Pins a transitive dependency that npm audit flags and npm audit fix cannot reach. source-map-js is pulled in by postcss, which only ever parses this project's own CSS at build time, so the advisory does not describe anything a visitor can reach \u2014 but a clean audit is worth more than an argument about which warnings to ignore.",
   "overrides": {
     "source-map-js": "^1.2.2"
   },

@@ -105,6 +105,19 @@ export const environmentSchema = z.object({
   TMDB_API_KEY: z.string().default(''),
   TMDB_API_BASE_URL: z.string().default('https://api.themoviedb.org/3'),
 
+  /*
+   * Safety-tool providers. Both are optional and both default to empty: the
+   * tool answers from our own directory and the synced blocklists when
+   * neither is configured, and simply reports that provider as unavailable.
+   *
+   * Safe Browsing is free but non-commercial only, with a default quota near
+   * 10,000 lookups a day. URLhaus has required an Auth-Key header since
+   * abuse.ch's "Community First" change of 30 June 2025; the key is free from
+   * auth.abuse.ch.
+   */
+  GOOGLE_SAFE_BROWSING_API_KEY: z.string().default(''),
+  URLHAUS_AUTH_KEY: z.string().default(''),
+
   TEST_MODE: boolish(false),
   TEST_GUILD_IDS: csvIds,
   TEST_USER_IDS: csvIds,

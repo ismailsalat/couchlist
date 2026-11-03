@@ -34,7 +34,15 @@ export function SiteHeader({
         className="order-2 mt-0.5 flex w-full gap-1.5 sm:order-1 sm:mt-0 sm:w-auto"
       >
         <NavLink href="/" label="Discover" current={active === 'discover'} />
-        <NavLink href="/guides" label="Guides" current={active === 'guides'} />
+        {/* The hub holds tools as well as guides, and the tools come first on
+            it. The label says so, shortening to "Tools" where the bar is
+            tight rather than truncating mid-word. */}
+        <NavLink
+          href="/guides"
+          label="Tools"
+          labelWide="Tools & Guides"
+          current={active === 'guides'}
+        />
         <NavLink
           href="/saved"
           label="Saved"
@@ -67,9 +75,11 @@ function viewerSummary(user: User | null): ViewerSummary | null {
 function NavLink({
   href,
   label,
+  labelWide,
   current,
   badge,
 }: {
+  labelWide?: string;
   href: string;
   label: string;
   current: boolean;
@@ -79,13 +89,26 @@ function NavLink({
     <Link
       href={href}
       aria-current={current ? 'page' : undefined}
+      /*
+       * The visible label shortens on a narrow screen, but the accessible
+       * name must not: a screen-reader user would otherwise hear a different
+       * name for the same link depending on the window width.
+       */
+      aria-label={labelWide ?? undefined}
       className={`cl-touch cl-pill flex flex-1 items-center justify-center gap-1 rounded-pill px-4 py-2.5 text-[13px] font-bold no-underline sm:flex-initial ${
         current
           ? 'bg-selected text-selected-fg shadow-pop-red hover:bg-selected-hover'
           : 'text-muted hover:bg-hover hover:text-text'
       }`}
     >
-      {label}
+      {labelWide ? (
+        <>
+          <span className="md:hidden">{label}</span>
+          <span className="hidden md:inline">{labelWide}</span>
+        </>
+      ) : (
+        label
+      )}
       {badge !== undefined ? (
         <span className="ml-[3px] rounded-pill bg-active px-[5px] py-px text-xs text-text">
           {badge}

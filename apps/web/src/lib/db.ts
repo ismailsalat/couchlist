@@ -15,6 +15,7 @@ import {
   closeDatabase,
   getDatabase,
   type Database,
+  ToolsRepository,
 } from '@couchlist/db';
 import { config } from './config';
 
@@ -68,6 +69,8 @@ export interface Repositories {
   icons: IconRepository;
   collections: CollectionRepository;
   audit: AuditRepository;
+  /** Blocklists, cached reputation and sync history, for the tools. */
+  tools: ToolsRepository;
 
   /**
    * Legacy repositories.
@@ -100,6 +103,7 @@ export function repos(): Repositories {
     audit: new AuditRepository(db),
     users: new UserRepository(db),
     watchSources: new WatchSourceRepository(db),
+    tools: new ToolsRepository(db),
   };
   return repositories;
 }

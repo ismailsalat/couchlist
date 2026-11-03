@@ -101,6 +101,11 @@ export default async function AdminSourcesPage({
                   hasIcon: source.hasIcon,
                   hasPreview: source.hasPreview,
                   mirrors: mirrorsBySource.get(source.id) ?? [],
+                  reputationReviewedAt: row.reputationReviewedAt
+                    ? row.reputationReviewedAt.toISOString()
+                    : null,
+                  reputationReviewedSources: row.reputationReviewedSources ?? null,
+                  reputationReviewNote: row.reputationReviewNote,
                   isEnabled: row.isEnabled,
                   hiddenReason: row.hiddenReason,
                   adminRankPenalty: source.adminRankPenalty,

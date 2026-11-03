@@ -8,6 +8,7 @@ import { SOURCE_CATEGORIES, type SourceCategory } from '@couchlist/shared';
 import { AdsWarning, AvoidWarning, TrustedMark } from '../ui/category-pill';
 import { SourceCheckbox } from './source-selection';
 import { MirrorControl } from './mirror-control';
+import { ReputationReview } from './reputation-review';
 import { SourceIconControl } from './source-icon-control';
 
 /**
@@ -44,6 +45,9 @@ export function SourceAdminRow({
       isConfirmed: boolean;
       note: string | null;
     }>;
+    reputationReviewedAt: string | null;
+    reputationReviewedSources: string[] | null;
+    reputationReviewNote: string | null;
     isEnabled: boolean;
     hiddenReason: string | null;
     adminRankPenalty: number;
@@ -388,6 +392,13 @@ export function SourceAdminRow({
           <SourceIconControl sourceId={source.id} hasIcon={source.hasPreview} kind="preview" />
 
           <MirrorControl sourceId={source.id} mirrors={source.mirrors} />
+
+          <ReputationReview
+            sourceId={source.id}
+            reviewedAt={source.reputationReviewedAt}
+            reviewedSources={source.reputationReviewedSources}
+            note={source.reputationReviewNote}
+          />
 
           <label className="text-sm">
             <span className="mb-1 block text-muted">Quality, if worth noting</span>

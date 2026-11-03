@@ -3,6 +3,7 @@ import { closeDatabase } from '../client.js';
 import { loadProjectEnv } from '../load-env.js';
 import { runLinkCheck } from './check-links.js';
 import { runPreviewCapture } from './capture-previews.js';
+import { runBlocklistSync } from './sync-blocklists.js';
 
 /**
  * Everything Couchlist does on a schedule, in one run.
@@ -16,6 +17,7 @@ import { runPreviewCapture } from './capture-previews.js';
  *   1. Check the links, and flag what has stopped answering.
  *   2. Empty the deleted bin of anything past its thirty days.
  *   3. Photograph listings that have no picture yet, for review.
+ *   4. Refresh the public blocklists the safety tool answers from.
  *
  * They run one after another, so the browser's memory is only held during the
  * part that needs it. Any step that fails is logged and the rest still run: a
@@ -37,6 +39,13 @@ async function main(): Promise<void> {
     await runPreviewCapture({ limit: 10 });
   } catch (error) {
     logger.error('capture_failed', { message: (error as Error)?.message });
+  }
+
+  try {
+    const total = await runBlocklistSync();
+    logger.info('blocklists_synced', { domains: total });
+  } catch (error) {
+    logger.error('blocklist_sync_failed', { message: (error as Error)?.message });
   }
 
   logger.info('finished');

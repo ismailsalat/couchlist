@@ -17,6 +17,8 @@ import {
   createDatabase,
   runMigrations,
   type Database,
+  MirrorRepository,
+  ToolsRepository,
 } from '@couchlist/db';
 
 /**
@@ -41,7 +43,7 @@ export async function setupTestDatabase(): Promise<Database> {
 /** Wipes every table between tests. Order does not matter with CASCADE. */
 export async function resetTables(db: Database): Promise<void> {
   await db.execute(
-    sql`truncate table source_icons, source_collection_items, source_collections, guide_suggestions, source_revisions, source_contributions, guides, source_bookmarks, source_votes, auth_tokens, watch_source_reports, watch_source_health_votes, watch_source_ratings, server_watch_posts, media_watch_sources, watch_source_candidates, watch_sources, audit_logs, media_cache, anime_aliases, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
+    sql`truncate table blocked_domains, domain_reputation, blocklist_syncs, watch_source_domains, survey_responses, source_icons, source_collection_items, source_collections, guide_suggestions, source_revisions, source_contributions, guides, source_bookmarks, source_votes, auth_tokens, watch_source_reports, watch_source_health_votes, watch_source_ratings, server_watch_posts, media_watch_sources, watch_source_candidates, watch_sources, audit_logs, media_cache, anime_aliases, media_entries, friendships, guild_memberships, guild_settings, discord_guilds, sessions, users restart identity cascade`,
   );
 }
 
@@ -61,6 +63,8 @@ export function repositories(db: Database) {
     audit: new AuditRepository(db),
     animeAliases: new AnimeAliasRepository(db),
     watchSources: new WatchSourceRepository(db),
+    mirrors: new MirrorRepository(db),
+    tools: new ToolsRepository(db),
   };
 }
 

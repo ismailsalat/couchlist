@@ -169,6 +169,20 @@
       "when": 1793010000000,
       "tag": "0023_preview_review",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793100000000,
+      "tag": "0024_tools",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793110000000,
+      "tag": "0025_reputation_review",
+      "breakpoints": true
     }
   ]
 }

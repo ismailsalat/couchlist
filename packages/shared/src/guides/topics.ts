@@ -27,12 +27,22 @@ export interface GuideTopicMeta {
   description: string;
   /** Lucide icon name, matching the approved reference. */
   icon: string;
+  /**
+   * The pill colour for this topic.
+   *
+   * Drawn from the same seven the tools and the source categories use, and
+   * matched by concept rather than by position: subtitles are pink in the
+   * tools grid, so they are pink here too. Colour is never the only signal —
+   * every pill carries its name as well.
+   */
+  palette: 'blue' | 'purple' | 'green' | 'pink' | 'olive' | 'teal' | 'slate';
 }
 
 export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.BLOCKING,
     slug: 'ad-blocking',
+    palette: 'green',
     title: 'Ad blocking',
     description: 'Choose a setup that fits your browser and device.',
     icon: 'shield-check',
@@ -40,6 +50,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.WATCHING,
     slug: 'watching-apps',
+    palette: 'purple',
     title: 'Watching apps',
     description: 'Find a title, stream a catalog, or play your own files.',
     icon: 'circle-play',
@@ -47,6 +58,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.READING,
     slug: 'reading-apps',
+    palette: 'teal',
     title: 'Reading apps',
     description: 'Manga, manhwa, and comics—with a reader that suits you.',
     icon: 'book-open',
@@ -54,6 +66,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.TRANSLATION,
     slug: 'translation',
+    palette: 'blue',
     title: 'Translation',
     description: 'Understand a panel, a speech bubble, or a source in another language.',
     icon: 'languages',
@@ -61,6 +74,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.SUBTITLES,
     slug: 'subtitles-and-audio',
+    palette: 'pink',
     title: 'Subtitles & audio',
     description: 'Get the right language, readable captions, and better timing.',
     icon: 'captions',
@@ -68,6 +82,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.CASTING,
     slug: 'tv-and-casting',
+    palette: 'olive',
     title: 'TV & casting',
     description: 'Move from a small screen to your favorite seat.',
     icon: 'cast',
@@ -75,6 +90,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
   {
     topic: GuideTopic.FIXES,
     slug: 'common-fixes',
+    palette: 'slate',
     title: 'Common fixes',
     description: 'Small checks for the things that interrupt a good watch or read.',
     icon: 'wrench',
@@ -83,6 +99,7 @@ export const GUIDE_TOPICS: readonly GuideTopicMeta[] = [
 
 export const START_HERE_META = {
   slug: START_HERE,
+  palette: 'slate',
   title: 'Start here',
   description: 'A few good starting points for your next couch session.',
   icon: 'compass',

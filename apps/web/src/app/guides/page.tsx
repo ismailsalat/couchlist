@@ -9,7 +9,10 @@ import {
   parseGuideDevice,
   parseGuideTopicFilter,
 } from '@couchlist/shared';
+import { READY_TOOLS, UPCOMING_TOOLS } from '@couchlist/shared';
 import { SiteHeader } from '@/components/site-header';
+import { SiteChecker } from '@/components/tools/site-checker';
+import { ToolTile } from '@/components/tools/tool-tile';
 import { GuideControls } from '@/components/guide-controls';
 import { GuideTopicRail } from '@/components/guide-topic-rail';
 import { GuideRowItem } from '@/components/guide-row';
@@ -21,7 +24,7 @@ import { repos } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Guides for watching and reading',
+  title: 'Tools and guides for watching and reading',
   description:
     'Pick an ad blocker, play a video file, read manga and manhwa, translate a panel, add subtitles, cast to a TV, and fix the usual problems.',
   alternates: { canonical: '/guides' },
@@ -76,18 +79,51 @@ export default async function GuidesPage({
       <SiteHeader user={user} savedCount={savedCount} active="guides" />
 
       <main id="main" className="mx-auto max-w-[980px] px-3.5 pb-4 pt-6 sm:px-6">
-        <div className="mb-4 sm:mb-5">
-          <span className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wider text-accent">
-            <Armchair aria-hidden="true" className="h-4 w-4" />
-            MAKE YOURSELF COMFORTABLE
-          </span>
-          <h1 className="m-0 text-xl font-semibold tracking-tight sm:text-2xl">
-            A little help goes a long way.
+        <div className="mb-5">
+          <h1 className="m-0 flex items-center gap-2.5 text-xl font-semibold tracking-tight sm:text-2xl">
+            <Armchair aria-hidden="true" className="h-5 w-5 text-accent" />
+            Tools &amp; Guides
           </h1>
           <p className="m-0 mt-1.5 text-[13px] text-muted">
-            Apps, tools, and how-tos for whatever you&apos;re watching or reading.
+            Small things that do a job, and how-tos for the rest.
           </p>
         </div>
+
+        {/*
+          Tools first, above the search box.
+
+          The search and the device filter belong to the guides and only
+          filter the guides, so they sit inside that section rather than
+          between the two, where they read as applying to everything.
+        */}
+        <section aria-labelledby="tools-heading" className="mb-8">
+          <div className="mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <h2 id="tools-heading" className="m-0 text-[17px] font-bold tracking-tight">
+              Tools
+            </h2>
+            <span className="text-xs text-muted sm:ml-auto">
+              Free &middot; no account &middot; nothing you drop in is uploaded
+            </span>
+          </div>
+
+          <SiteChecker />
+
+          <div className="mt-2.5 grid grid-cols-1 gap-2.5 xs:grid-cols-2 lg:grid-cols-3">
+            {READY_TOOLS.filter((tool) => tool.slug !== 'site-safety').map((tool) => (
+              <ToolTile key={tool.slug} tool={tool} />
+            ))}
+            {UPCOMING_TOOLS.map((tool) => (
+              <ToolTile key={tool.slug} tool={tool} />
+            ))}
+          </div>
+        </section>
+
+        <section aria-labelledby="guides-heading">
+          <div className="mb-3.5 flex flex-wrap items-center gap-x-3">
+            <h2 id="guides-heading" className="m-0 text-[17px] font-bold tracking-tight">
+              Guides
+            </h2>
+          </div>
 
         <GuideControls search={search} device={device} />
 
@@ -131,6 +167,7 @@ export default async function GuidesPage({
             </p>
           </div>
         </div>
+        </section>
       </main>
     </>
   );
