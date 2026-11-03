@@ -64,12 +64,21 @@ const realFetch: HealthFetch = (url, init) =>
     headers: { 'user-agent': USER_AGENT, accept: '*/*' },
   });
 
-async function main(): Promise<void> {
+/**
+ * One pass of the link check, callable.
+ *
+ * Exported so the combined maintenance run reuses this rather than keeping a
+ * second copy of the rules, which is how two jobs quietly start disagreeing
+ * about what counts as a failure.
+ */
+export async function runLinkCheck(
+  options: { limit?: number; all?: boolean } = {},
+): Promise<void> {
   const db = getDatabase();
   const mirrors = new MirrorRepository(db);
   const sources = new SourceDirectoryRepository(db);
-  const limit = Number.parseInt(argValue('limit') ?? '', 10) || DEFAULT_LIMIT;
-  const all = process.argv.includes('--all');
+  const limit = options.limit ?? DEFAULT_LIMIT;
+  const all = options.all ?? false;
 
   const due = await db
     .select({
@@ -206,7 +215,22 @@ async function main(): Promise<void> {
  * never terminates, and a host that sees the previous run still going skips
  * the next one — so it runs once and then looks forgotten.
  */
-main()
+/** The command-line entry point. */
+async function main(): Promise<void> {
+  await runLinkCheck({
+    limit: Number.parseInt(argValue('limit') ?? '', 10) || undefined,
+    all: process.argv.includes('--all'),
+  });
+}
+
+/*
+ * Run only when this file is the program.
+ *
+ * Imported by the maintenance job, it must define its work and do nothing;
+ * run directly, it is the job.
+ */
+if (process.argv[1]?.includes('check-links')) {
+  main()
   .then(async () => {
     await closeDatabase();
     process.exit(0);
@@ -216,3 +240,4 @@ main()
     await closeDatabase().catch(() => undefined);
     process.exit(1);
   });
+}

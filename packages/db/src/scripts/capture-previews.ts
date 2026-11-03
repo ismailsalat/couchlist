@@ -143,14 +143,19 @@ async function capture(
   }
 }
 
-async function main(): Promise<void> {
-  loadProjectEnv();
+/**
+ * One pass of the capture job, callable.
+ *
+ * Exported so the combined maintenance run reuses it rather than keeping a
+ * second copy of the rules about what gets photographed and what happens to
+ * the result.
+ */
+export async function runPreviewCapture(
+  options: { limit?: number; only?: string } = {},
+): Promise<void> {
   const logger = createLogger({ service: 'previews' });
-
-  const args = process.argv.slice(2);
-  const only = args.includes('--source') ? args[args.indexOf('--source') + 1] : undefined;
-  const limitArg = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1]) : undefined;
-  const limit = Number.isFinite(limitArg) && limitArg! > 0 ? Number(limitArg) : DEFAULT_LIMIT;
+  const { only } = options;
+  const limit = options.limit ?? DEFAULT_LIMIT;
 
   const executablePath = findBrowser();
   if (!executablePath) {
@@ -235,13 +240,29 @@ async function main(): Promise<void> {
  * that leaves a database connection open runs exactly once and then appears
  * to have been forgotten about.
  */
-main()
-  .then(async () => {
-    await closeDatabase();
-    process.exit(0);
-  })
-  .catch(async (error: unknown) => {
-    process.stderr.write(`\nPreview capture failed: ${(error as Error).message}\n\n`);
-    await closeDatabase().catch(() => undefined);
-    process.exit(1);
+/** The command-line entry point. */
+async function main(): Promise<void> {
+  loadProjectEnv();
+  const args = process.argv.slice(2);
+  const limitArg = args.includes('--limit') ? Number(args[args.indexOf('--limit') + 1]) : undefined;
+
+  await runPreviewCapture({
+    only: args.includes('--source') ? args[args.indexOf('--source') + 1] : undefined,
+    limit: Number.isFinite(limitArg) && limitArg! > 0 ? Number(limitArg) : undefined,
   });
+}
+
+// Run only when this file is the program, not when the maintenance job
+// imports it for the function above.
+if (process.argv[1]?.includes('capture-previews')) {
+  main()
+    .then(async () => {
+      await closeDatabase();
+      process.exit(0);
+    })
+    .catch(async (error: unknown) => {
+      process.stderr.write(`\nPreview capture failed: ${(error as Error).message}\n\n`);
+      await closeDatabase().catch(() => undefined);
+      process.exit(1);
+    });
+}

@@ -34,7 +34,8 @@
     "db:seed:guides": "npm run build --workspace @couchlist/shared && npm run seed:guides --workspace @couchlist/db",
     "admin:grant": "npm run build --workspace @couchlist/shared && npm run admin:grant --workspace @couchlist/db --",
     "check:links": "npm run build --workspace @couchlist/shared && npm run check:links --workspace @couchlist/db --",
-    "capture:previews": "npm run build --workspace @couchlist/shared && npm run capture:previews --workspace @couchlist/db --"
+    "capture:previews": "npm run build --workspace @couchlist/shared && npm run capture:previews --workspace @couchlist/db --",
+    "maintenance": "npm run build --workspace @couchlist/shared && npm run maintenance --workspace @couchlist/db --"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",

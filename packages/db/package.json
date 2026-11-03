@@ -23,7 +23,8 @@
     "seed:guides": "npm run build --silent && node dist/scripts/seed-guides.js",
     "admin:grant": "npm run build --silent && node dist/scripts/grant-admin.js",
     "check:links": "npm run build --silent && node dist/scripts/check-links.js",
-    "capture:previews": "npm run build --silent && node dist/scripts/capture-previews.js"
+    "capture:previews": "npm run build --silent && node dist/scripts/capture-previews.js",
+    "maintenance": "npm run build --silent && node dist/scripts/maintenance.js"
   },
   "dependencies": {
     "@couchlist/shared": "*",

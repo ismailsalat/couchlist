@@ -141,100 +141,66 @@ deploy cannot wipe production data by accident.
    Actions → Security Issues**. It should say no issues detected. This is how
    you find out the day that changes, rather than from a user.
 
-## The weekly link check
+## The weekly job
 
-Nothing checks links unless you schedule it. The command is:
+**One scheduled job, set up once.** It does three things in order, and none of
+them changes what a reader sees without a person deciding:
 
-```
-npm run check:links
-```
-
-It takes the sources whose last check is older than six days, sends one `HEAD`
-request each (four at a time, ten-second timeout), and records what came back.
-A source that fails is counted, not hidden: three consecutive failures put it
-on `/admin/attention` for a person to decide about. Any success resets the
-count to zero, because one bad afternoon on somebody else's server is not
-evidence of anything.
-
-On Railway, add it as a **cron schedule** on a service that shares this
-project's `DATABASE_URL`:
-
-| Setting | Value |
-| --- | --- |
-| Schedule | `0 4 * * 1` (Mondays, 04:00 UTC) |
-| Command | `node packages/db/dist/scripts/check-links.js` |
-
-The command runs the file the deploy build already produced, rather than
-`npm run check:links`, which compiles first and so needs the dev
-dependencies. A production image may not have them, and a cron job is a bad
-place to discover that. Locally, where the dev dependencies are there,
-`npm run check:links` is the same thing and does the compile for you.
-
-Weekly is deliberate. The sites in the directory did not ask to be monitored,
-and one request a week per source is a courtesy that still catches a dead
-domain long before a reader does. Do not shorten it to hourly: it adds nothing
-and starts to look like traffic.
-
-The same run also empties the deleted bin: a listing deleted more than thirty
-days ago is removed for good. An undo window that nothing ever closes is just
-hoarding with extra steps.
-
-The run is safe to repeat and safe to interrupt. It writes one row at a time,
-so a cancelled run leaves the sources it reached updated and the rest due next
-time. `npm run check:links -- --limit 20` checks a handful by hand;
-`-- --all` ignores the six-day window and checks everything, which is useful
-once, immediately after deploying, and rarely after that.
-
-Two things it deliberately does not do: it never follows a redirect into a
-private address (the hop is re-validated each time and recorded as `REFUSED`),
-and it never changes what a reader sees. Hiding a listing stays a human
-decision.
-
-## Screenshots of the listed sites
-
-Off by default, and in two senses: nothing captures anything unless you
-schedule it, and the image it captures is not shown to anybody until you
-approve it.
+1. Checks every listed link, and flags what has stopped answering.
+2. Empties the deleted bin of anything past its thirty days.
+3. Photographs up to ten listings that have no picture, for review.
 
 ```
-npm run capture:previews              # a few listings that have no picture yet
-npm run capture:previews -- --limit 5
+npm run maintenance          # all three, which is what the schedule runs
+npm run check:links          # just the link check
+npm run capture:previews     # just the screenshots
 ```
 
-Each capture opens the site's homepage in a headless browser, photographs the
-top of the page at 1280×800, and stores it **unapproved**. It appears on
-`/admin/previews`, where the only two options are Use it or Discard. Until you
-press Use it, `/api/sources/<id>/preview` returns 404 and the listing shows no
-picture at all.
+Any step that fails is logged and the rest still run: a site that cannot be
+photographed is no reason to skip the link check. The whole thing exits as
+soon as it is done, which matters — a scheduled job that leaves a database
+connection open never terminates, and a host that sees the previous run still
+going will skip the next one.
 
-That queue is not ceremony. A bot pointed at somebody else's homepage will
-eventually photograph an advert, an age gate, or a site that changed hands
-overnight, and the person who should see that first is you.
+### Setting it up on Railway
 
-### Turning it on
+A Railway cron job is a **whole service** that starts on a schedule, runs its
+start command, and shuts down. So this is a second service in the same
+project, pointing at the same repository as the web app:
 
-1. **A browser has to exist.** `nixpacks.toml` in the repository root adds
-   `chromium` to the build for exactly this. It costs about 300 MB in the
-   image and is used by nothing else. Delete the `nixPkgs` line to opt out —
-   the job then reports that it has no browser and exits quietly, with no
-   error and nothing broken.
-2. **Set `CHROMIUM_PATH`** only if the browser is somewhere unusual. The job
-   looks in the usual places and then on `PATH`, which is where Nix puts it.
-3. **Add a second cron schedule**, separate from the link check, because a
-   browser is hundreds of megabytes of memory and should not share a run with
-   anything you care about finishing:
+1. **New** → **GitHub Repo** → the same repository. Name it something like
+   `couchlist-weekly`.
+2. **Variables** → add `DATABASE_URL`, referencing the same database service
+   the web app uses. Nothing else is needed.
+3. **Settings** → **Custom Start Command**:
+   ```
+   npm run db:deploy && node packages/db/dist/scripts/maintenance.js
+   ```
+   (`db:deploy` is a no-op when the migrations are already applied, and makes
+   this service safe to run before the web app on a fresh database.)
+4. **Settings** → **Cron Schedule**: `0 4 * * 1`
+5. **Settings** → turn off any healthcheck. This service is meant to exit;
+   a healthcheck would mark it failed for doing exactly that.
 
-| Setting | Value |
-| --- | --- |
-| Schedule | `0 5 * * 1` (Mondays, an hour after the link check) |
-| Command | `node packages/db/dist/scripts/capture-previews.js --limit 10` |
+Five fields, in order: minute, hour, day of month, month, day of week. So
+`0 4 * * 1` is 04:00 on Mondays. Railway runs these on **UTC**, so adjust for
+where you are.
 
-Keep the limit small. Ten sites a week fills a new directory in a couple of
-months and keeps each run short, and a run that is killed halfway leaves the
-listings it reached captured and the rest for next time.
+The site is perfectly fine without this. Nothing breaks if you never add it:
+links simply never get checked automatically, and the only pictures on
+listings are the ones you add yourself.
 
-Never run this inside the web service. A browser in a request path is how a
-site falls over under its first bit of real traffic.
+### About the browser
+
+Screenshots need Chromium, which `nixpacks.toml` adds to the build for this
+reason. It costs about 300 MB in the image. With no browser the job logs one
+line saying screenshots are off and carries on with the rest — so deleting
+the `nixPkgs` line is a complete and safe way to opt out.
+
+Two things the capture job deliberately does not do: publish anything (every
+screenshot waits on `/admin/previews` for a person), and run inside the web
+service (a browser in a request path is how a site falls over under its first
+real traffic).
 
 ## If a blocker flags the site
 

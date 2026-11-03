@@ -234,6 +234,10 @@ export class IconRepository {
           )`,
         ),
       )
+      // Oldest first, so a capped run works through the backlog instead of
+      // picking rows at the database's convenience and missing the same
+      // listings every week.
+      .orderBy(watchSources.createdAt)
       .limit(limit);
 
     return rows;

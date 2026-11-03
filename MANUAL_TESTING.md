@@ -298,8 +298,11 @@ them fails. That is the fastest way to see this working.
 
 ## 4g. Screenshots
 
-- [ ] Run `npm run capture:previews -- --limit 2` with no Chromium installed.
-      It says screenshots are off and exits **without an error**.
+- [ ] Run `npm run maintenance`. It checks links, empties the bin and then
+      captures, and it **exits** rather than hanging — a scheduled job that
+      does not terminate gets its next run skipped.
+- [ ] Run it with no Chromium installed. It says screenshots are off and
+      carries on with the rest, without an error.
 - [ ] Install Chromium and run it again. It reports what it captured.
 - [ ] Open the listing it captured, signed out. There is **no picture**: the
       capture has not been approved.

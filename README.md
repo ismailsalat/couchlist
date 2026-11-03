@@ -172,25 +172,18 @@ The guides are real content, but every one says **"not yet reviewed"** until a
 moderator checks its links in `/admin/guides`. That is deliberate: they came
 from the design reference and have not been verified.
 
-### Checking the links
+### The weekly job
 
 ```bash
-npm run check:links                # everything due (last checked 6+ days ago)
-npm run check:links -- --all       # everything, ignoring the window
-npm run check:links -- --limit 20  # a handful, for a quick look
-```
-
-The same job empties the deleted bin: anything deleted more than thirty days
-ago is removed for good.
-
-### Taking screenshots
-
-```bash
+npm run maintenance                # link check, bin clean-out, screenshots
+npm run check:links -- --all       # just the links, ignoring the six-day window
 npm run capture:previews -- --limit 5
 ```
 
-Needs a Chromium on the machine; without one it says so and exits without an
-error. Everything it captures waits on `/admin/previews` for a decision.
+One scheduled job does all three, so there is one thing to set up and one
+thing to notice has stopped. Screenshots need a Chromium on the machine;
+without one that step logs a line and the rest still run. Nothing it captures
+is published until somebody approves it on `/admin/previews`.
 `docs/DEPLOYMENT.md` has the Railway settings.
 
 One `HEAD` request per source, four at a time, ten-second timeout, with an
