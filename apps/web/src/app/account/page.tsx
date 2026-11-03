@@ -37,6 +37,7 @@ export default async function AccountPage() {
           hasAvatar={Boolean(user.avatarMime)}
           email={user.email ?? ''}
           displayName={user.displayName?.trim() || user.username}
+          bio={user.bio ?? ''}
           emailVerified={Boolean(user.emailVerifiedAt)}
           isAdmin={user.isAdmin}
           publicContributionCount={contributionCount}

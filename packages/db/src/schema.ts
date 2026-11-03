@@ -1,9 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   check,
   customType,
+  date,
   doublePrecision,
   index,
   integer,
@@ -164,6 +166,11 @@ export const users = pgTable(
       .default('MUTUAL_SERVERS'),
     showRatings: boolean('show_ratings').notNull().default(true),
     showProgress: boolean('show_progress').notNull().default(true),
+
+    /** A line people may write about themselves. Capped in the database. */
+    bio: text('bio'),
+    /** Answered or dismissed; either way the survey never asks again. */
+    surveyClosedAt: timestamp('survey_closed_at', { withTimezone: true }),
 
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -574,6 +581,30 @@ export const watchSources = pgTable(
     healthStatusCode: integer('health_status_code'),
     healthFailures: integer('health_failures').notNull().default(0),
     healthDetail: text('health_detail'),
+
+    /** Set when a preview picture exists, so the row knows without the bytes. */
+    previewMime: text('preview_mime'),
+
+    /**
+     * Deleting, reversibly.
+     *
+     * Set rather than destroyed, so a bulk delete that took forty listings
+     * and their votes with it can be undone. A purge removes rows whose
+     * window has passed.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedByUserId: text('deleted_by_user_id'),
+    deletedReason: text('deleted_reason'),
+
+    /**
+     * How many times somebody pressed Visit. A total and nothing else: no
+     * account, no address, no session, no timestamp finer than the day the
+     * total last moved. It can say which sites people open and cannot say
+     * who opened them.
+     */
+    visitCount: bigint('visit_count', { mode: 'number' }).notNull().default(0),
+    visitCountedOn: date('visit_counted_on'),
+
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1209,6 +1240,13 @@ export const sourceIcons = pgTable(
     candidateId: text('candidate_id').references(() => watchSourceCandidates.id, {
       onDelete: 'cascade',
     }),
+    /**
+     * What this image is for: the small site icon, or the larger preview of
+     * what the site looks like. One of each per listing.
+     */
+    kind: text('kind').notNull().default('ICON'),
+    /** Where a preview came from, so the listing can say so. */
+    sourceNote: text('source_note'),
     mime: text('mime').notNull(),
     bytes: bytea('bytes').notNull(),
     byteSize: integer('byte_size').notNull(),
@@ -1218,8 +1256,8 @@ export const sourceIcons = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    sourceKey: uniqueIndex('source_icons_source_key')
-      .on(table.sourceId)
+    sourceKindKey: uniqueIndex('source_icons_source_kind_key')
+      .on(table.sourceId, table.kind)
       .where(sql`${table.sourceId} is not null`),
     candidateKey: uniqueIndex('source_icons_candidate_key')
       .on(table.candidateId)
@@ -1270,3 +1308,68 @@ export type GuideSuggestionRow = typeof guideSuggestions.$inferSelect;
 export type SourceCollectionRow = typeof sourceCollections.$inferSelect;
 export type SourceCollectionItemRow = typeof sourceCollectionItems.$inferSelect;
 export type SourceIconRow = typeof sourceIcons.$inferSelect;
+
+/**
+ * The addresses a listing answers on.
+ *
+ * Sites in this directory change domain often, and the old shape made a
+ * listing and an address the same thing: when the address died, the votes,
+ * the credit and the description died with it and somebody re-added the same
+ * site as a stranger. A listing is a site; a row here is one of the places
+ * that site currently lives.
+ */
+export const watchSourceDomains = pgTable(
+  'watch_source_domains',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('wsd')),
+    watchSourceId: text('watch_source_id')
+      .notNull()
+      .references(() => watchSources.id, { onDelete: 'cascade' }),
+    domain: text('domain').notNull(),
+    homepageUrl: text('homepage_url').notNull(),
+    /** The address shown on the listing and checked by the weekly job. */
+    isPrimary: boolean('is_primary').notNull().default(false),
+    /**
+     * False for a mirror the link checker proposed from a redirect and no
+     * person has accepted yet. Proposed mirrors are never shown publicly:
+     * the site being checked chooses where the redirect points, so accepting
+     * one automatically would let it add its own addresses to our directory.
+     */
+    isConfirmed: boolean('is_confirmed').notNull().default(true),
+    note: text('note'),
+    addedByUserId: text('added_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    domainKey: uniqueIndex('watch_source_domains_domain_key').on(table.domain),
+    sourceIdx: index('watch_source_domains_source_idx').on(table.watchSourceId),
+  }),
+);
+
+/**
+ * Survey answers.
+ *
+ * One row per person, replaced if they answer again, so this cannot be read
+ * as a record of somebody changing their mind over time. It holds a number
+ * between one and five and an optional yes or no, and nothing else.
+ */
+export const surveyResponses = pgTable(
+  'survey_responses',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('svr')),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    ease: integer('ease').notNull(),
+    usesAdBlocker: boolean('uses_ad_blocker'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    userKey: uniqueIndex('survey_responses_user_key').on(table.userId),
+    easeCheck: check('survey_responses_ease_check', sql`${table.ease} between 1 and 5`),
+  }),
+);

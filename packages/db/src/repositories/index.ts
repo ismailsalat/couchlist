@@ -15,3 +15,6 @@ export * from './icons.js';
 export * from './contributions.js';
 export * from './guides.js';
 export * from './collections.js';
+export * from './statistics.js';
+export * from './survey.js';
+export * from './mirrors.js';

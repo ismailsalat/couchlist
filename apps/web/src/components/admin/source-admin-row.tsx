@@ -2,10 +2,13 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { EyeOff } from 'lucide-react';
 import { SOURCE_CATEGORIES, type SourceCategory } from '@couchlist/shared';
 import { AdsWarning, AvoidWarning, TrustedMark } from '../ui/category-pill';
 import { SourceCheckbox } from './source-selection';
+import { MirrorControl } from './mirror-control';
+import { SourceIconControl } from './source-icon-control';
 
 /**
  * One editable source in the admin table.
@@ -31,6 +34,16 @@ export function SourceAdminRow({
     trustedRank: number | null;
     trustedNote: string | null;
     qualityLabel: string | null;
+    hasIcon: boolean;
+    hasPreview: boolean;
+    mirrors: Array<{
+      id: string;
+      domain: string;
+      homepageUrl: string;
+      isPrimary: boolean;
+      isConfirmed: boolean;
+      note: string | null;
+    }>;
     isEnabled: boolean;
     hiddenReason: string | null;
     adminRankPenalty: number;
@@ -40,10 +53,17 @@ export function SourceAdminRow({
   openReports: number;
 }) {
   const router = useRouter();
+  const rowRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+
+  // Opening a row halfway down a long list should put that row at the top,
+  // not leave the form to open below the fold.
+  useEffect(() => {
+    if (open) rowRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }, [open]);
 
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,7 +137,21 @@ export function SourceAdminRow({
   }
 
   return (
-    <div className="border-b border-line p-3.5 last:border-b-0">
+    /*
+     * The row being edited has to be obvious.
+     *
+     * The form is long enough to scroll past its own heading, and every row
+     * is the same colour on the same backdrop, so it was genuinely easy to
+     * save a change onto the listing below the one you meant. Open, a row
+     * takes an accent edge and a tint, and the sticky bar below keeps the
+     * name on screen the whole way down the form.
+     */
+    <div
+      ref={rowRef}
+      className={`border-b border-line p-3.5 last:border-b-0 ${
+        open ? 'border-l-4 border-l-accent bg-accent-soft' : ''
+      }`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         {/* Ticking rows is how several get deleted in one action. */}
         <SourceCheckbox id={source.id} name={source.name} />
@@ -127,8 +161,14 @@ export function SourceAdminRow({
             <Link href={`/sources/${source.id}`} className="text-text no-underline hover:text-accent">
               {source.name}
             </Link>
+            {/*
+              * Not grey. A hidden listing used to be marked in the same muted
+              * tone as the backdrop, which is unreadable on a screen full of
+              * freshly imported rows that are all hidden by default.
+              */}
             {!source.isEnabled ? (
-              <span className="ml-2 rounded-pill border border-line bg-active px-2 py-px text-xs text-muted">
+              <span className="ml-2 inline-flex items-center gap-1 rounded-pill border border-danger-line bg-danger-bg px-2 py-px text-xs font-semibold text-danger-text">
+                <EyeOff aria-hidden="true" className="h-3 w-3" />
                 Hidden
               </span>
             ) : null}
@@ -181,6 +221,21 @@ export function SourceAdminRow({
 
       {open ? (
         <form onSubmit={save} className="mt-3 grid gap-3 sm:grid-cols-2" noValidate>
+          {/* Sticks to the top of the viewport while the form scrolls, so the
+              name of what you are editing is never off screen. */}
+          <div className="sticky top-0 z-10 -mx-3.5 -mt-3 mb-1 flex items-center justify-between gap-3 border-b border-accent bg-accent-soft px-3.5 py-2 backdrop-blur sm:col-span-2">
+            <p className="m-0 min-w-0 truncate text-sm font-bold text-accent">
+              Editing {source.name}
+              <span className="ml-2 font-normal text-muted">{source.domain}</span>
+            </p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="cl-touch shrink-0 rounded-pill border border-line bg-surface px-3 py-1.5 text-xs text-text hover:bg-hover"
+            >
+              Close
+            </button>
+          </div>
           <label className="text-sm">
             <span className="mb-1 block text-muted">Name</span>
             <input name="name" defaultValue={source.name} maxLength={80} required className={adminInput} />
@@ -327,6 +382,12 @@ export function SourceAdminRow({
               new pick can go between two without renumbering the rest.
             </p>
           </fieldset>
+
+          <SourceIconControl sourceId={source.id} hasIcon={source.hasIcon} />
+
+          <SourceIconControl sourceId={source.id} hasIcon={source.hasPreview} kind="preview" />
+
+          <MirrorControl sourceId={source.id} mirrors={source.mirrors} />
 
           <label className="text-sm">
             <span className="mb-1 block text-muted">Quality, if worth noting</span>

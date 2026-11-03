@@ -1,5 +1,6 @@
 'use client';
 
+import { BIO_MAX } from '@couchlist/shared';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AvatarPicker } from './avatar-picker';
@@ -15,6 +16,7 @@ import { Field, inputClass } from './ui/field';
 export function AccountSettings({
   email,
   displayName,
+  bio,
   emailVerified,
   isAdmin,
   publicContributionCount,
@@ -23,6 +25,7 @@ export function AccountSettings({
 }: {
   email: string;
   displayName: string;
+  bio: string;
   emailVerified: boolean;
   isAdmin: boolean;
   publicContributionCount: number;
@@ -65,15 +68,28 @@ export function AccountSettings({
         <AvatarPicker userId={userId} displayName={displayName} hasAvatar={hasAvatar} />
       </section>
 
-      <DisplayNameForm initial={displayName} onSaved={() => router.refresh()} />
+      <DisplayNameForm
+        initial={displayName}
+        initialBio={bio}
+        onSaved={() => router.refresh()}
+      />
       <PasswordForm />
       <DeleteAccountForm />
     </div>
   );
 }
 
-function DisplayNameForm({ initial, onSaved }: { initial: string; onSaved: () => void }) {
+function DisplayNameForm({
+  initial,
+  initialBio,
+  onSaved,
+}: {
+  initial: string;
+  initialBio: string;
+  onSaved: () => void;
+}) {
   const [value, setValue] = useState(initial);
+  const [bio, setBio] = useState(initialBio);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +105,7 @@ function DisplayNameForm({ initial, onSaved }: { initial: string; onSaved: () =>
       const response = await fetch('/api/account/profile', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ displayName: value }),
+        body: JSON.stringify({ displayName: value, bio }),
       });
       const body = await response.json();
       if (!response.ok) {
@@ -107,7 +123,7 @@ function DisplayNameForm({ initial, onSaved }: { initial: string; onSaved: () =>
 
   return (
     <form onSubmit={onSubmit} className="rounded-card border border-line bg-surface p-4" noValidate>
-      <h2 className="m-0 mb-3 text-lg font-semibold">Display name</h2>
+      <h2 className="m-0 mb-3 text-lg font-semibold">How you appear</h2>
       <Field label="Display name" htmlFor="displayName" error={error ?? undefined}>
         <input
           id="displayName"
@@ -119,9 +135,27 @@ function DisplayNameForm({ initial, onSaved }: { initial: string; onSaved: () =>
           className={inputClass}
         />
       </Field>
+      <div className="mt-3">
+        <Field label="A line about you, if you want one" htmlFor="bio">
+          <textarea
+            id="bio"
+            value={bio}
+            onChange={(event) => setBio(event.target.value)}
+            maxLength={BIO_MAX}
+            rows={2}
+            placeholder="Mostly here for the manga sites."
+            className={inputClass}
+          />
+        </Field>
+        <p className="m-0 mt-1 text-xs text-muted">
+          Shown on your public profile, with your contributions. {BIO_MAX - bio.length} characters
+          left.
+        </p>
+      </div>
+
       <div className="mt-3 flex items-center gap-3">
         <button type="submit" disabled={busy} className={secondaryButton}>
-          {busy ? 'Saving…' : 'Save name'}
+          {busy ? 'Saving…' : 'Save'}
         </button>
         {status ? (
           <span role="status" className="text-sm text-muted">

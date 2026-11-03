@@ -101,7 +101,7 @@ function CreditName({ credit }: { credit: PublicCredit }) {
   if (credit.anonymous) {
     return (
       <span className="inline-flex items-center gap-1.5 align-middle">
-        <Avatar userId={null} displayName={null} hasAvatar={false} size="sm" />
+        <Avatar userId={null} displayName={null} hasAvatar={false} size="md" />
         <span className="font-semibold text-text">Anonymous</span>
       </span>
     );
@@ -115,7 +115,7 @@ function CreditName({ credit }: { credit: PublicCredit }) {
         userId={credit.userId}
         displayName={credit.displayName}
         hasAvatar={credit.hasAvatar}
-        size="sm"
+        size="md"
       />
       {credit.displayName}
     </Link>

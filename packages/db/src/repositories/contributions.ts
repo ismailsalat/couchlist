@@ -16,6 +16,7 @@ import {
   users,
   watchSourceCandidates,
   watchSourceReports,
+  watchSourceDomains,
   watchSources,
   type SourceContributionRow,
   type WatchSourceCandidateRow,
@@ -358,6 +359,19 @@ export class ContributionRepository {
       const source = sourceRows[0];
       if (!source) throw new Error('Could not create the source.');
 
+      // Its address, recorded where the mirrors live, so a site that later
+      // moves can keep this listing rather than needing a new one.
+      await tx
+        .insert(watchSourceDomains)
+        .values({
+          watchSourceId: source.id,
+          domain: source.domain,
+          homepageUrl: source.homepageUrl,
+          isPrimary: true,
+          isConfirmed: true,
+        })
+        .onConflictDoNothing({ target: watchSourceDomains.domain });
+
       /*
        * The icon comes from whichever submission the moderator picked. If that
        * one has none, the earliest submission that does is used instead, so a
@@ -630,6 +644,63 @@ export class ContributionRepository {
    * Approved and credited only, so the number neither counts spam nor reveals
    * that an anonymous history exists.
    */
+  /**
+   * What somebody's account actually amounts to.
+   *
+   * The number that matters is the last one. "You found four sources" is a
+   * fact about them; "nine hundred people saved something you found" is the
+   * thing that makes having an account feel like it was worth something, and
+   * it is true without being flattery.
+   *
+   * Only credited contributions count. Anything submitted anonymously stays
+   * out, or a profile page would quietly identify the person who asked not to
+   * be identified.
+   */
+  async profileTotals(userId: string): Promise<{
+    sourcesFound: number;
+    correctionsAccepted: number;
+    guidesWritten: number;
+    savesOfTheirFinds: number;
+    votesOnTheirFinds: number;
+    hasTrustedFind: boolean;
+    firstContributionAt: Date | null;
+  }> {
+    const { rows } = await this.db.execute(sql`
+      with mine as (
+        select distinct source_id, kind, created_at
+        from source_contributions
+        where user_id = ${userId} and credit_mode = 'CREDITED'
+      ),
+      found as (select distinct source_id from mine where kind = 'NEW_SOURCE')
+      select
+        (select count(*)::int from mine where kind = 'NEW_SOURCE') as sources_found,
+        (select count(*)::int from mine where kind = 'CORRECTION') as corrections,
+        (select count(*)::int from mine where kind in ('GUIDE', 'GUIDE_CORRECTION')) as guides,
+        (select count(*)::int from source_bookmarks b
+           join found f on f.source_id = b.source_id) as saves,
+        (select count(*)::int from source_votes v
+           join found f on f.source_id = v.source_id
+          where v.value = 'LIKE') as likes,
+        (select exists(
+           select 1 from watch_sources s
+            join found f on f.source_id = s.id
+           where s.trusted_rank is not null and s.deleted_at is null
+         )) as has_trusted,
+        (select min(created_at) from mine) as first_at
+    `);
+
+    const row = (rows[0] ?? {}) as Record<string, unknown>;
+    return {
+      sourcesFound: Number(row.sources_found ?? 0),
+      correctionsAccepted: Number(row.corrections ?? 0),
+      guidesWritten: Number(row.guides ?? 0),
+      savesOfTheirFinds: Number(row.saves ?? 0),
+      votesOnTheirFinds: Number(row.likes ?? 0),
+      hasTrustedFind: row.has_trusted === true,
+      firstContributionAt: row.first_at ? new Date(String(row.first_at)) : null,
+    };
+  }
+
   async publicContributionCount(userId: string): Promise<number> {
     const rows = await this.db
       .select({ count: sql<number>`count(*)::int` })

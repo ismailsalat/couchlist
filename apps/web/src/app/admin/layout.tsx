@@ -13,7 +13,8 @@ export const dynamic = 'force-dynamic';
  * all. It is not the only check: every admin API route calls `requireAdmin`
  * independently, so hiding a link is never what keeps someone out.
  *
- * Five sections: Needs attention, Sources, Suggestions, Reports and Guides.
+ * Six sections: Needs attention, Sources, Suggestions, Reports, Guides and
+ * Import.
  *
  * "Needs attention" leads because it is the only one that fills up on its
  * own. The others wait for somebody to do something; this one grows while
@@ -49,6 +50,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <AdminTab href="/admin/suggestions" label="Suggestions" count={pendingSuggestions} />
           <AdminTab href="/admin/reports" label="Reports" count={openReports} />
           <AdminTab href="/admin/guides" label="Guides" count={pendingGuides} />
+          <AdminTab href="/admin/import" label="Import" />
+          <AdminTab href="/admin/deleted" label="Deleted" />
         </nav>
 
         {children}

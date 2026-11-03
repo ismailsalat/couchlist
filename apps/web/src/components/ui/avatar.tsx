@@ -16,6 +16,8 @@ const SIZES = {
   sm: 'h-5 w-5 text-[10px]',
   md: 'h-7 w-7 text-xs',
   lg: 'h-11 w-11 text-base',
+  /** The profile page. Big enough to actually look like a person's picture. */
+  xl: 'h-24 w-24 text-3xl',
 } as const;
 
 export function Avatar({

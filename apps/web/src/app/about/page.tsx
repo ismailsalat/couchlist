@@ -64,8 +64,9 @@ export default async function AboutPage() {
               somebody who hears the name elsewhere is better served by a warning than by silence.
             </>,
             <>
-              <strong>It does not follow you.</strong> No analytics, no advertising network, no
-              third-party scripts, no tracking pixels. See the{' '}
+              <strong>It does not follow you.</strong> No third-party analytics, no advertising
+              network, no third-party scripts, no tracking pixels, and nothing that probes your
+              browser. Listings carry a plain visit total; people do not. See the{' '}
               <Link href="/privacy" className="text-accent">
                 privacy page
               </Link>{' '}

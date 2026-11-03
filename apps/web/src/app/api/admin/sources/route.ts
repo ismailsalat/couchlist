@@ -8,7 +8,6 @@ import {
   normalizeDomain,
 } from '@couchlist/shared';
 import { watchSources } from '@couchlist/db';
-import { inArray } from 'drizzle-orm';
 import { apiRoute } from '@/lib/api/handler';
 import { requireAdmin } from '@/lib/api/guards';
 import { repos } from '@/lib/db';
@@ -61,6 +60,10 @@ export const POST = apiRoute(async (request) => {
     .returning();
 
   const created = rows[0]!;
+  // Its address, recorded with the mirrors, so this listing survives the site
+  // moving domain later.
+  await repos().mirrors.ensurePrimary(created.id, created.domain, created.homepageUrl);
+
   await repos().audit.record({
     actorId: admin.id,
     action: 'source_created_by_admin',
@@ -105,14 +108,17 @@ export const DELETE = apiRoute(async (request) => {
     },
   });
 
-  await repos()
-    .db.delete(watchSources)
-    .where(
-      inArray(
-        watchSources.id,
-        found.map((row) => row.id),
-      ),
-    );
+  // Marked, not destroyed. Twenty listings and everything attached to them
+  // is exactly the deletion worth being able to undo.
+  const deleted = await repos().sources.softDelete(
+    found.map((row) => row.id),
+    admin.id,
+    input.reason ?? null,
+  );
 
-  return NextResponse.json({ ok: true, deleted: found.length });
+  return NextResponse.json({
+    ok: true,
+    deleted,
+    restorableUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+  });
 });

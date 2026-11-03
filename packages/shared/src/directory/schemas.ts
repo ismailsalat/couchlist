@@ -119,7 +119,17 @@ export const changePasswordSchema = z
 
 export const updateProfileSchema = z.object({
   displayName: displayNameSchema.optional(),
+  /**
+   * One line somebody may write about themselves.
+   *
+   * Short on purpose: a profile here is a record of what someone has
+   * contributed, not a page to fill. Empty clears it.
+   */
+  bio: z.string().max(160, 'Keep it to 160 characters.').optional(),
 });
+
+/** The longest bio, so the form and the database agree on one number. */
+export const BIO_MAX = 160;
 
 /** Deleting an account is irreversible, so it is confirmed by password. */
 export const deleteAccountSchema = z.object({

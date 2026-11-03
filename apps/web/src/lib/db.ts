@@ -6,7 +6,10 @@ import {
   ContributionRepository,
   GuideRepository,
   IconRepository,
+  MirrorRepository,
   SourceDirectoryRepository,
+  StatisticsRepository,
+  SurveyRepository,
   UserRepository,
   WatchSourceRepository,
   closeDatabase,
@@ -55,6 +58,12 @@ export interface Repositories {
   /** Suggestions, corrections, reports and contributor credit. */
   contributions: ContributionRepository;
   guides: GuideRepository;
+  /** Counts for the public statistics page. */
+  statistics: StatisticsRepository;
+  /** The one-question survey. */
+  survey: SurveyRepository;
+  /** The addresses a listing answers on. */
+  mirrors: MirrorRepository;
   /** Site icons: the bytes, kept out of every listing query. */
   icons: IconRepository;
   collections: CollectionRepository;
@@ -83,6 +92,9 @@ export function repos(): Repositories {
     sources: new SourceDirectoryRepository(db),
     contributions: new ContributionRepository(db),
     guides: new GuideRepository(db),
+    statistics: new StatisticsRepository(db),
+    survey: new SurveyRepository(db),
+    mirrors: new MirrorRepository(db),
     icons: new IconRepository(db),
     collections: new CollectionRepository(db),
     audit: new AuditRepository(db),

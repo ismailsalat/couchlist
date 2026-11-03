@@ -17,6 +17,12 @@
  */
 
 export const ICON_MAX_BYTES = 262_144; // 256 KiB
+/**
+ * Previews are a picture of a whole page rather than a 48px square, so they
+ * get more room. Still bounded: this is served to every reader who opens a
+ * listing, and a megabyte is already generous for a share image.
+ */
+export const PREVIEW_MAX_BYTES = 1_048_576; // 1 MiB
 export const ICON_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as const;
 export type IconMime = (typeof ICON_MIME_TYPES)[number];
 
@@ -37,8 +43,12 @@ const REJECTION_MESSAGES: Record<IconRejection, string> = {
   malformed: 'That file does not look like a PNG, JPEG or WebP image.',
 };
 
-function reject(reason: IconRejection): IconCheck {
-  return { ok: false, reason, message: REJECTION_MESSAGES[reason] };
+function reject(reason: IconRejection, maxBytes = ICON_MAX_BYTES): IconCheck {
+  const message =
+    reason === 'too_large'
+      ? `Images must be ${Math.floor(maxBytes / 1024)} KB or smaller.`
+      : REJECTION_MESSAGES[reason];
+  return { ok: false, reason, message };
 }
 
 /** Reads the real format from the leading bytes. Null when unrecognised. */
@@ -81,7 +91,7 @@ export function sniffImageMime(bytes: Buffer): IconMime | null {
  * Accepts either a bare base64 string or a `data:` URL, because both are what
  * a browser's FileReader produces.
  */
-export function checkIconUpload(input: unknown): IconCheck {
+export function checkIconUpload(input: unknown, maxBytes = ICON_MAX_BYTES): IconCheck {
   if (typeof input !== 'string' || input.trim() === '') return reject('empty');
 
   let encoded = input.trim();
@@ -95,8 +105,8 @@ export function checkIconUpload(input: unknown): IconCheck {
 
   // Reject before decoding: base64 inflates by about a third, so this bounds
   // the work done on a hostile payload.
-  if (encoded.length > Math.ceil((ICON_MAX_BYTES * 4) / 3) + 1024) {
-    return reject('too_large');
+  if (encoded.length > Math.ceil((maxBytes * 4) / 3) + 1024) {
+    return reject('too_large', maxBytes);
   }
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(encoded.replace(/\s+/g, ''))) {
     return reject('malformed');
@@ -110,7 +120,7 @@ export function checkIconUpload(input: unknown): IconCheck {
   }
 
   if (bytes.length === 0) return reject('empty');
-  if (bytes.length > ICON_MAX_BYTES) return reject('too_large');
+  if (bytes.length > maxBytes) return reject('too_large', maxBytes);
 
   const mime = sniffImageMime(bytes);
   if (!mime) return reject('malformed');

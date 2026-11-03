@@ -60,13 +60,41 @@ export default async function PrivacyPage() {
         </p>
       </Section>
 
+      <Section title="Counting, which is not the same as tracking">
+        <p className="m-0">
+          Two numbers are kept, and both belong to a listing rather than to a person:
+        </p>
+        <Points
+          items={[
+            <>
+              <strong>How many times a site was opened.</strong> Pressing Visit adds one to a
+              total on that listing. No account, no address, no session and no clock beyond the
+              day the total last moved are recorded with it, so the number can say which sites
+              people open and cannot say which sites <em>you</em> opened.
+            </>,
+            <>
+              <strong>Survey answers.</strong> If you answer the one-question survey, the answer
+              is stored against your account so it is not asked twice, and it is only ever
+              reported as a total with everybody else&rsquo;s.
+            </>,
+          ]}
+        />
+        <p className="m-0">
+          Both are on the{' '}
+          <Link href="/stats" className="text-accent">
+            statistics page
+          </Link>
+          , which is the whole of what is done with them.
+        </p>
+      </Section>
+
       <Section title="What is never collected">
         <Points
           items={[
-            'No analytics, of any kind. There is no Google Analytics, no Plausible, no PostHog, no tracking pixel and no third-party script on any page.',
+            'No third-party analytics. There is no Google Analytics, no Plausible, no PostHog, no tracking pixel and no third-party script on any page.',
             'No advertising, and therefore no advertising profile.',
-            'No browsing history on the server. Which listings you open is not recorded against your account.',
-            'No location, no contacts, no device fingerprinting.',
+            'No per-person browsing history on the server. Which listings you open is never recorded against your account or your address — see the counting section above for the one aggregate total that is kept.',
+            'No location, no contacts, no device fingerprinting. Nothing on this site tries to work out whether you use an ad blocker.',
             'Nothing is sold, rented or shared with data brokers. There is no business model here to sell it for.',
           ]}
         />

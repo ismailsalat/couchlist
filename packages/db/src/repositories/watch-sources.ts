@@ -20,6 +20,7 @@ import {
   watchSourceRatings,
   watchSourceReports,
   watchSources,
+  watchSourceDomains,
   type MediaWatchSourceRow,
   type NewWatchSource,
   type WatchSourceRow,
@@ -215,9 +216,17 @@ export class WatchSourceRepository {
     supportsAnime?: boolean;
     supportsMovies?: boolean;
     supportsTv?: boolean;
+    supportsManga?: boolean;
+    supportsManhwa?: boolean;
+    supportsComics?: boolean;
     requiresAccount?: boolean;
     regionInfo?: string | null;
     isEnabled?: boolean;
+    description?: string | null;
+    hasLotsOfAds?: boolean;
+    shouldAvoid?: boolean;
+    avoidReason?: string | null;
+    qualityLabel?: string | null;
   }): Promise<WatchSourceRow> {
     const existing = await this.findSourceByDomain(input.domain);
 
@@ -236,9 +245,17 @@ export class WatchSourceRepository {
       if (input.supportsAnime !== undefined) update.supportsAnime = input.supportsAnime;
       if (input.supportsMovies !== undefined) update.supportsMovies = input.supportsMovies;
       if (input.supportsTv !== undefined) update.supportsTv = input.supportsTv;
+      if (input.supportsManga !== undefined) update.supportsManga = input.supportsManga;
+      if (input.supportsManhwa !== undefined) update.supportsManhwa = input.supportsManhwa;
+      if (input.supportsComics !== undefined) update.supportsComics = input.supportsComics;
       if (input.requiresAccount !== undefined) update.requiresAccount = input.requiresAccount;
       if (input.regionInfo !== undefined) update.regionInfo = input.regionInfo;
       if (input.isEnabled !== undefined) update.isEnabled = input.isEnabled;
+      if (input.description !== undefined) update.description = input.description;
+      if (input.hasLotsOfAds !== undefined) update.hasLotsOfAds = input.hasLotsOfAds;
+      if (input.shouldAvoid !== undefined) update.shouldAvoid = input.shouldAvoid;
+      if (input.avoidReason !== undefined) update.avoidReason = input.avoidReason;
+      if (input.qualityLabel !== undefined) update.qualityLabel = input.qualityLabel;
 
       const rows = await this.db
         .update(watchSources)
@@ -266,8 +283,16 @@ export class WatchSourceRepository {
         supportsAnime: input.supportsAnime ?? false,
         supportsMovies: input.supportsMovies ?? false,
         supportsTv: input.supportsTv ?? false,
+        supportsManga: input.supportsManga ?? false,
+        supportsManhwa: input.supportsManhwa ?? false,
+        supportsComics: input.supportsComics ?? false,
         requiresAccount: input.requiresAccount ?? false,
         regionInfo: input.regionInfo ?? null,
+        description: input.description ?? null,
+        hasLotsOfAds: input.hasLotsOfAds ?? false,
+        shouldAvoid: input.shouldAvoid ?? false,
+        avoidReason: input.avoidReason ?? null,
+        qualityLabel: input.qualityLabel ?? null,
         // An import never asserts trust. Verification stays a separate decision.
         isVerified: false,
         isEnabled: input.isEnabled ?? false,
@@ -277,6 +302,21 @@ export class WatchSourceRepository {
 
     const row = rows[0];
     if (!row) throw new Error('imported source insert returned no row');
+
+    // Record the address in the mirrors table too, so everything that reads
+    // mirrors can assume a listing has at least one and never special-case
+    // the listings that arrived by another route.
+    await this.db
+      .insert(watchSourceDomains)
+      .values({
+        watchSourceId: row.id,
+        domain: row.domain,
+        homepageUrl: row.homepageUrl,
+        isPrimary: true,
+        isConfirmed: true,
+      })
+      .onConflictDoNothing({ target: watchSourceDomains.domain });
+
     return row;
   }
 

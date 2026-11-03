@@ -54,9 +54,40 @@ or mirror video, comics or translated pages.
 - **Admin bulk actions** — tick rows and delete them in one confirmed step
   that lists every name first, and add a listing directly without suggesting
   it to yourself and approving your own suggestion.
+- **Bulk import and export** — paste or upload a JSON or CSV file of sites and
+  it tells you what would change *before* writing anything: how many created,
+  how many updated, how many repeats, and every rejected row with the reason.
+  A listing is identified by its domain, so re-importing a corrected file fixes
+  rather than duplicates. Everything new arrives hidden. The export is the same
+  shape, so it round-trips and doubles as a backup.
+- **Mirrors** — one listing, several addresses. A site that changes domain keeps
+  its votes, its credit and its description instead of being deleted and
+  re-added by a stranger a week later, and the weekly checker proposes a new
+  address when it sees a redirect — proposes, never accepts, because the site
+  being checked chooses where its redirect points.
+- **A thirty-day undo** — deleting marks rather than destroys. The listing
+  leaves the directory at once; the votes and credit wait in a recently-deleted
+  view in case it was a mistake, and the weekly job empties the bin.
+- **Icons and previews a moderator controls** — upload one, remove one, or
+  fetch the site's own: its favicon for the icon, and for the preview the share
+  image it publishes in its own HTML for other people's pages to display.
+  Never an automated screenshot of somebody's page.
+- **Statistics, in public** — how big the directory is, what it covers, how the
+  links are holding up and which sites get opened, drawn as charts that are
+  readable with the colour removed. Every number is a count of rows that
+  already exist, plus one aggregate total per listing, described on the privacy
+  page in the same words.
+- **A one-question survey** — a small dismissible bar, shown once, to a quarter
+  of people who have had an account for a day. It asks rather than detects:
+  working out whether somebody runs an ad blocker means probing their browser
+  with bait, which is what ad-walls do.
+- **Profiles worth having** — a real picture, a joined date, a line about
+  yourself, and the number that matters: how many strangers kept something you
+  found. Milestones are earned and quiet, never a points economy.
 - **It says who runs it** — an about page, a privacy page that lists exactly
-  what is stored (and that there are no analytics, no ad network and no
-  third-party scripts anywhere), terms with an address for removal requests,
+  what is stored (no third-party analytics, no ad network, no third-party
+  scripts anywhere; aggregate counters on listings, never on people), terms
+  with an address for removal requests,
   a contact address in the footer of every page, and a `security.txt` whose
   expiry never goes stale. These are the pages a phishing site never has, and
   a new domain that collects an email and a password is judged on whether it
@@ -144,6 +175,9 @@ npm run check:links                # everything due (last checked 6+ days ago)
 npm run check:links -- --all       # everything, ignoring the window
 npm run check:links -- --limit 20  # a handful, for a quick look
 ```
+
+The same job empties the deleted bin: anything deleted more than thirty days
+ago is removed for good.
 
 One `HEAD` request per source, four at a time, ten-second timeout, with an
 honest user agent. Three consecutive failures put a source on

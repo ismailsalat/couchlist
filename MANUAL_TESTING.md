@@ -251,6 +251,51 @@ them fails. That is the fastest way to see this working.
 - [ ] Confirm the footer is on the sign-in page. That is the page that looks
       most like phishing without it.
 
+## 4d. Import, export and the bin
+
+- [ ] Open `/admin/import`. Paste a small JSON file with one good row and one
+      broken one. Press **Check it first**: it reports what would change and
+      lists the bad row with a reason, and nothing is written.
+- [ ] Press Import. The good row arrives, and it is **hidden** — confirm it is
+      not on Discover.
+- [ ] In `/admin/sources`, the hidden badge is red with a crossed-out eye, not
+      grey. You can tell at a glance which rows are unpublished.
+- [ ] Import the same file again with one field corrected. It updates rather
+      than duplicating.
+- [ ] Download the export and import it straight back. No rejected rows, no new
+      listings.
+- [ ] Delete a listing that has votes. It disappears from the directory, and
+      appears in `/admin/deleted` with the days remaining. Restore it: it comes
+      back hidden, with its votes.
+
+## 4e. Mirrors, icons and previews
+
+- [ ] Edit a source. The open row has an accent edge and a tint, and a sticky
+      bar naming it that stays put as you scroll the form.
+- [ ] Add a second address under Addresses, then press **Use this**. The
+      listing's address changes, its votes stay, and the old address is still
+      listed on the public page as an alternative.
+- [ ] Try adding an address another listing already uses. It is refused, with a
+      reason.
+- [ ] Press **Fetch from site** on the icon of a real, reachable site. It takes
+      the site's favicon, or says plainly that there is none.
+- [ ] Press **Fetch from site** on the preview. It uses the share image the
+      site publishes, and the caption on the public page says so.
+- [ ] Upload a preview by hand. The caption changes to say a moderator added it.
+
+## 4f. Statistics and the survey
+
+- [ ] Open `/stats` signed out. Every panel renders and the numbers match what
+      you can count by hand in the admin list.
+- [ ] Press Visit on a listing, then reload `/stats`. The open count went up by
+      one. Press it again in the same browser session: it does not double-count.
+- [ ] Read the privacy page's counting section. It describes exactly what that
+      counter holds. If you change what is collected, change that section.
+- [ ] Sign in with an account older than a day. If the survey bar appears,
+      answer it — then reload. It never comes back.
+- [ ] Dismiss it with the X on another account. Also never comes back, and
+      nothing was stored.
+
 ## 5. On a real phone
 
 The one thing an emulator cannot show you is the status bar. Check these on

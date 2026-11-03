@@ -53,9 +53,14 @@ export class IconRepository {
     uploadedByUserId: string | null,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.delete(sourceIcons).where(eq(sourceIcons.sourceId, sourceId));
+      // Scoped to the icon. A listing may also hold a preview, and replacing
+      // one must never silently remove the other.
+      await tx
+        .delete(sourceIcons)
+        .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'ICON')));
       await tx.insert(sourceIcons).values({
         sourceId,
+        kind: 'ICON',
         mime: icon.mime,
         bytes: icon.bytes,
         byteSize: icon.byteSize,
@@ -68,9 +73,89 @@ export class IconRepository {
     });
   }
 
+  /**
+   * The picture of what a site looks like.
+   *
+   * Same table, same validation, different `kind`. `sourceNote` records where
+   * it came from — the site's own share image, or a moderator's upload — so
+   * the listing can say so rather than presenting somebody else's artwork as
+   * if we made it.
+   */
+  async setSourcePreview(
+    sourceId: string,
+    image: { mime: string; bytes: Buffer; byteSize: number },
+    uploadedByUserId: string | null,
+    sourceNote: string | null,
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(sourceIcons)
+        .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')));
+      await tx.insert(sourceIcons).values({
+        sourceId,
+        kind: 'PREVIEW',
+        sourceNote,
+        mime: image.mime,
+        bytes: image.bytes,
+        byteSize: image.byteSize,
+        uploadedByUserId,
+      });
+      await tx
+        .update(watchSources)
+        .set({ previewMime: image.mime, updatedAt: new Date() })
+        .where(eq(watchSources.id, sourceId));
+    });
+  }
+
+  async removeSourcePreview(sourceId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(sourceIcons)
+        .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')));
+      await tx
+        .update(watchSources)
+        .set({ previewMime: null, updatedAt: new Date() })
+        .where(eq(watchSources.id, sourceId));
+    });
+  }
+
+  /**
+   * Where a preview came from, without the bytes.
+   *
+   * The listing page needs the caption, not a megabyte of image, and reading
+   * the row with its `bytes` column would pull the whole picture into the
+   * render for the sake of one sentence.
+   */
+  async previewNoteForSource(sourceId: string): Promise<string | null> {
+    const rows = await this.db
+      .select({ sourceNote: sourceIcons.sourceNote })
+      .from(sourceIcons)
+      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')))
+      .limit(1);
+    return rows[0]?.sourceNote ?? null;
+  }
+
+  /** The preview bytes, and where it came from. Public. */
+  async previewForSource(
+    sourceId: string,
+  ): Promise<{ mime: string; bytes: Buffer; sourceNote: string | null } | undefined> {
+    const rows = await this.db
+      .select({
+        mime: sourceIcons.mime,
+        bytes: sourceIcons.bytes,
+        sourceNote: sourceIcons.sourceNote,
+      })
+      .from(sourceIcons)
+      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'PREVIEW')))
+      .limit(1);
+    return rows[0];
+  }
+
   async removeSourceIcon(sourceId: string): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.delete(sourceIcons).where(eq(sourceIcons.sourceId, sourceId));
+      await tx
+        .delete(sourceIcons)
+        .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'ICON')));
       await tx
         .update(watchSources)
         .set({ iconMime: null, updatedAt: new Date() })
@@ -83,7 +168,7 @@ export class IconRepository {
     const rows = await this.db
       .select({ mime: sourceIcons.mime, bytes: sourceIcons.bytes })
       .from(sourceIcons)
-      .where(eq(sourceIcons.sourceId, sourceId))
+      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'ICON')))
       .limit(1);
     return rows[0];
   }
@@ -164,8 +249,11 @@ export class IconRepository {
     const icon = rows[0];
     if (!icon) return false;
 
-    // The source may already have one, and the unique index allows only one.
-    await tx.delete(sourceIcons).where(eq(sourceIcons.sourceId, sourceId));
+    // The source may already have an icon, and the unique index allows one
+    // per kind. Scoped, so a preview on the same listing survives.
+    await tx
+      .delete(sourceIcons)
+      .where(and(eq(sourceIcons.sourceId, sourceId), eq(sourceIcons.kind, 'ICON')));
     await tx
       .update(sourceIcons)
       .set({ candidateId: null, sourceId })

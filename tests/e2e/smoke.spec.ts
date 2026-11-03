@@ -651,3 +651,61 @@ test.describe('showing who runs this', () => {
     await expect(page.getByText(/does not host, stream or proxy/)).toBeVisible();
   });
 });
+
+test.describe('the statistics page', () => {
+  test('is public, and says where its numbers come from', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('navigation', { name: 'Site information' })
+      .getByRole('link', { name: 'Statistics' })
+      .click();
+
+    await expect(page).toHaveURL(/\/stats/);
+    await expect(page.getByRole('heading', { name: 'Statistics', level: 1 })).toBeVisible();
+    await expect(page.getByText('count of things the site already holds')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'What the directory covers' })).toBeVisible();
+  });
+});
+
+test.describe('admin bulk import', () => {
+  test('checks a file before writing, then imports it hidden', async ({ page }) => {
+    await signInAsAdmin(page);
+    await page.goto('/admin/import');
+
+    const file = JSON.stringify([
+      { domain: 'e2e-import-one.test', name: 'E2E Import One', categories: ['Movies'] },
+      { domain: 'nope', name: 'Broken Row' },
+    ]);
+
+    await page.getByRole('textbox', { name: /paste it here/i }).fill(file);
+    await page.getByRole('button', { name: /Check it first/ }).click();
+
+    await expect(page.getByRole('heading', { name: 'What this would do' })).toBeVisible();
+    await expect(page.getByText('Rejected rows')).toBeVisible();
+
+    await page.getByRole('button', { name: /^Import/ }).click();
+    await expect(page.getByRole('heading', { name: 'Imported' })).toBeVisible();
+    await expect(page.getByText(/hidden until you publish/)).toBeVisible();
+
+    // Hidden means hidden: not on Discover.
+    await page.goto('/');
+    await expect(page.getByText('e2e-import-one.test')).toHaveCount(0);
+
+    // And obvious in the admin list, in a colour you can actually see.
+    await page.goto('/admin/sources?q=e2e-import-one');
+    await expect(page.getByText('Hidden').first()).toBeVisible();
+  });
+});
+
+test.describe('editing a source', () => {
+  test('makes it obvious which row is open', async ({ page }) => {
+    await signInAsAdmin(page);
+    await page.goto('/admin/sources');
+
+    const row = page.locator('div.border-b').filter({ has: page.getByRole('button', { name: 'Edit' }) }).first();
+    await row.getByRole('button', { name: 'Edit' }).click();
+
+    // The name of what is being edited stays on screen while the form scrolls.
+    await expect(page.getByText(/^Editing /)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Close' }).first()).toBeVisible();
+  });
+});

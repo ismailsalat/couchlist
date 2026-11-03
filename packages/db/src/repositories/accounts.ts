@@ -89,10 +89,15 @@ export class AccountRepository {
       .where(eq(users.id, userId));
   }
 
-  async updateProfile(userId: string, patch: { displayName?: string; avatarUrl?: string | null }): Promise<void> {
+  async updateProfile(
+    userId: string,
+    patch: { displayName?: string; avatarUrl?: string | null; bio?: string | null },
+  ): Promise<void> {
     const set: Record<string, unknown> = { updatedAt: new Date() };
     if (patch.displayName !== undefined) set.displayName = patch.displayName.trim();
     if (patch.avatarUrl !== undefined) set.avatarUrl = patch.avatarUrl;
+    // An empty bio is a cleared bio, not an empty string in the database.
+    if (patch.bio !== undefined) set.bio = patch.bio?.trim() ? patch.bio.trim() : null;
     await this.db.update(users).set(set).where(eq(users.id, userId));
   }
 

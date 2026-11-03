@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, Flag, PencilLine } from "lucide-react";
+import { Flag, PencilLine } from "lucide-react";
 import { confidenceWeightedLikeRatio, likeRatio } from "@couchlist/shared";
 import { SiteHeader } from "@/components/site-header";
 import {
@@ -17,7 +17,9 @@ import { SimilarSources } from "@/components/similar-sources";
 import { ContributorCredits } from "@/components/contributor-credits";
 import { LastChecked } from "@/components/last-checked";
 import { LooksDeadButton } from "@/components/looks-dead-button";
+import { VisitButton } from "@/components/visit-button";
 import { SavedNote } from "@/components/saved-note";
+import { SitePreview } from "@/components/site-preview";
 import { RecordVisit } from "@/components/record-visit";
 import { optionalUser } from "@/lib/api/guards";
 import { nowForRender } from "@/lib/clock";
@@ -70,7 +72,17 @@ export default async function SourcePage({
   const source = await sources.findById(id);
   if (!source) notFound();
 
-  const [savedCount, voteState, savedIds, note, credits, revisions, similar] =
+  const [
+    savedCount,
+    voteState,
+    savedIds,
+    note,
+    credits,
+    revisions,
+    similar,
+    mirrorsBySource,
+    previewNote,
+  ] =
     await Promise.all([
       savedCountFor(user),
       sources.voteState(source.id, user?.id),
@@ -81,10 +93,17 @@ export default async function SourcePage({
       contributions.publicContributions(source.id),
       contributions.revisions(source.id, 5),
       sources.similar(source.id, 5),
+      repos().mirrors.forSources([source.id]),
+      source.hasPreview
+        ? repos().icons.previewNoteForSource(source.id)
+        : Promise.resolve(null),
     ]);
 
   // Read once, outside render, and passed down as a value.
   const now = nowForRender();
+  const alternates = (mirrorsBySource.get(source.id) ?? []).filter(
+    (mirror) => !mirror.isPrimary,
+  );
   const saved = savedIds.has(source.id);
   const canInteract = Boolean(user?.emailVerifiedAt);
   const ratio = likeRatio(voteState);
@@ -215,24 +234,53 @@ export default async function SourcePage({
             * a lock.
             */}
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <a
-              href={source.homepageUrl}
-              target="_blank"
-              rel="noopener noreferrer nofollow"
-              className={
-                source.shouldAvoid
-                  ? 'cl-touch inline-flex items-center gap-2 rounded-pill border border-line bg-surface px-4 py-2.5 text-sm font-semibold text-muted no-underline hover:bg-hover hover:text-text'
-                  : 'cl-touch inline-flex items-center gap-2 rounded-pill bg-selected px-4 py-2.5 text-sm font-semibold text-selected-fg no-underline shadow-primary hover:bg-selected-hover'
-              }
-            >
-              {source.shouldAvoid ? 'Go anyway' : 'Visit website'}
-              <ArrowUpRight aria-hidden="true" className="h-4 w-4" />
-            </a>
+            <VisitButton
+              sourceId={source.id}
+              homepageUrl={source.homepageUrl}
+              shouldAvoid={source.shouldAvoid}
+            />
             <span className="text-sm text-muted">
               Opens <span className="text-text">{source.domain}</span> in a new
               tab
             </span>
           </div>
+
+          {source.hasPreview ? (
+            <SitePreview
+              sourceId={source.id}
+              name={source.name}
+              note={previewNote}
+              shouldAvoid={source.shouldAvoid}
+            />
+          ) : null}
+
+          {/*
+            * Where else this site answers.
+            *
+            * These sites move, and a reader who finds the main address down
+            * is better served by the alternatives we know about than by a
+            * dead end. Proposed mirrors are never shown here — only ones a
+            * moderator accepted.
+            */}
+          {alternates.length > 0 ? (
+            <p className="m-0 mt-3 text-xs text-muted">
+              Also answers at{' '}
+              {alternates.map((mirror, index) => (
+                <span key={mirror.id}>
+                  {index > 0 ? ', ' : ''}
+                  <a
+                    href={mirror.homepageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    className="text-accent"
+                  >
+                    {mirror.domain}
+                  </a>
+                </span>
+              ))}
+              .
+            </p>
+          ) : null}
 
           <LastChecked
             at={source.lastHealthCheckAt}

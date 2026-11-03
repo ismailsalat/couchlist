@@ -148,6 +148,20 @@
       "when": 1789385200000,
       "tag": "0020_link_health",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793000000000,
+      "tag": "0021_mirrors_stats_and_profiles",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793003000000,
+      "tag": "0022_site_previews",
+      "breakpoints": true
     }
   ]
 }

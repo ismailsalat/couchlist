@@ -27,6 +27,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // about, a privacy page and terms reads as a real site, which is half of
     // what a reputation check is looking for.
     { url: `${base}/about`, changeFrequency: 'monthly', priority: 0.5 },
+    { url: `${base}/stats`, changeFrequency: 'weekly', priority: 0.4 },
     { url: `${base}/privacy`, changeFrequency: 'yearly', priority: 0.3 },
     { url: `${base}/terms`, changeFrequency: 'yearly', priority: 0.3 },
     ...GUIDE_TOPICS.map((topic) => ({

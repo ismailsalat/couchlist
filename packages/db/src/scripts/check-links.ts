@@ -3,10 +3,13 @@ import {
   checkSourceHealth,
   countsAsFailure,
   createLogger,
+  parseExternalUrl,
   type HealthFetch,
 } from '@couchlist/shared';
 import { getDatabase } from '../client.js';
 import { watchSources } from '../schema.js';
+import { MirrorRepository } from '../repositories/mirrors.js';
+import { SourceDirectoryRepository } from '../repositories/sources.js';
 import { loadProjectEnv } from '../load-env.js';
 
 /**
@@ -34,6 +37,9 @@ const logger = createLogger({ service: 'links' });
 const DEFAULT_LIMIT = 100;
 /** Requests in flight at once. Small on purpose: this is not a crawler. */
 const CONCURRENCY = 4;
+
+/** How long a deleted listing can still be restored before it is removed. */
+const RESTORE_WINDOW_DAYS = 30;
 const TIMEOUT_MS = 10_000;
 
 /**
@@ -60,6 +66,8 @@ const realFetch: HealthFetch = (url, init) =>
 
 async function main(): Promise<void> {
   const db = getDatabase();
+  const mirrors = new MirrorRepository(db);
+  const sources = new SourceDirectoryRepository(db);
   const limit = Number.parseInt(argValue('limit') ?? '', 10) || DEFAULT_LIMIT;
   const all = process.argv.includes('--all');
 
@@ -74,9 +82,10 @@ async function main(): Promise<void> {
     .from(watchSources)
     .where(
       all
-        ? eq(watchSources.isEnabled, true)
+        ? and(eq(watchSources.isEnabled, true), sql`${watchSources.deletedAt} is null`)
         : and(
             eq(watchSources.isEnabled, true),
+            sql`${watchSources.deletedAt} is null`,
             // Nulls first: a source never checked is the most overdue there is.
             sql`(${watchSources.lastHealthCheckAt} is null
                  or ${watchSources.lastHealthCheckAt} < now() - interval '6 days')`,
@@ -124,6 +133,30 @@ async function main(): Promise<void> {
         })
         .where(eq(watchSources.id, source.id));
 
+      /*
+       * A site that redirects somewhere else has usually moved, and the
+       * address it moved to is the single most useful thing this job can
+       * find. It is recorded as a proposal, never accepted: the site being
+       * checked chooses where its redirect points, so taking it at its word
+       * would let any listed site write its own addresses into the directory.
+       */
+      if (outcome.status === 'MOVED' && outcome.finalUrl) {
+        try {
+          const moved = parseExternalUrl(outcome.finalUrl);
+          if (moved && moved.domain !== source.domain) {
+            await mirrors.add({
+              sourceId: source.id,
+              domain: moved.domain,
+              homepageUrl: moved.url.toString(),
+              isConfirmed: false,
+              note: `Seen as a redirect from ${source.domain}`,
+            });
+          }
+        } catch {
+          // A proposal is a convenience. It never fails the check.
+        }
+      }
+
       if (failure) {
         failed += 1;
         if (failures >= 3) flagged += 1;
@@ -147,6 +180,23 @@ async function main(): Promise<void> {
   }
 
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queue.length) }, worker));
+
+  /*
+   * Empty the bin on the way out.
+   *
+   * A thirty-day undo window only means something if something eventually
+   * removes what is past it; otherwise it is a bin nobody empties, which is
+   * just hoarding with extra steps. This job already runs weekly, so it is
+   * the natural place rather than a second schedule to forget about.
+   */
+  try {
+    const purged = await sources.purgeDeletedBefore(
+      new Date(Date.now() - RESTORE_WINDOW_DAYS * 86_400_000),
+    );
+    if (purged > 0) logger.info('purged_deleted', { count: purged, afterDays: RESTORE_WINDOW_DAYS });
+  } catch (error) {
+    logger.warn('purge_failed', { reason: (error as Error).message });
+  }
 
   logger.info('finished', { checked: due.length, ok, failed, flagged });
 }

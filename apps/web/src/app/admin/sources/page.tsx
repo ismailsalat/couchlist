@@ -18,7 +18,7 @@ export default async function AdminSourcesPage({
 }) {
   const params = await searchParams;
   const page = Math.max(1, Number.parseInt(params.page ?? '1', 10) || 1);
-  const { sources } = repos();
+  const { sources, mirrors } = repos();
 
   const [listing, reportCounts] = await Promise.all([
     sources.list({
@@ -30,6 +30,11 @@ export default async function AdminSourcesPage({
     }),
     sources.openReportCounts(),
   ]);
+
+  // Every address each listing answers on, in one query rather than one per row.
+  const mirrorsBySource = await mirrors.forSourcesIncludingProposed(
+    listing.sources.map((source) => source.id),
+  );
 
   // The admin row needs the raw flags the public shape does not carry.
   const rows = await Promise.all(
@@ -93,6 +98,9 @@ export default async function AdminSourcesPage({
                   trustedRank: source.trustedRank,
                   trustedNote: source.trustedNote,
                   qualityLabel: source.qualityLabel,
+                  hasIcon: source.hasIcon,
+                  hasPreview: source.hasPreview,
+                  mirrors: mirrorsBySource.get(source.id) ?? [],
                   isEnabled: row.isEnabled,
                   hiddenReason: row.hiddenReason,
                   adminRankPenalty: source.adminRankPenalty,

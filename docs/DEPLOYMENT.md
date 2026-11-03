@@ -53,6 +53,8 @@ removed, and no row is deleted.
 | `0018_trusted_sources` | Adds `trusted_rank`, `trusted_note` and `trusted_at` to `watch_sources`, with a bounds check and a partial index. Null means the usual ranking applies; a number pins the source above everything unpicked. |
 | `0019_source_quality` | Adds `quality_label` to `watch_sources`, a short free-text note bounded to twelve characters by a check constraint. |
 | `0020_link_health` | Adds `health_status`, `health_status_code`, `health_failures` and `health_detail` to `watch_sources`, plus two partial indexes: one that finds the sources due for a check, one that finds the sources currently failing. Nothing is backfilled, so every source starts as never-checked and the page says nothing about it until the checker has run. |
+| `0021_mirrors_stats_and_profiles` | Adds `watch_source_domains` (the addresses a listing answers on) and backfills one row per existing listing; soft-delete columns on `watch_sources` with an index; an aggregate `visit_count`; `survey_responses`; and a bio on `users`. Nothing a reader sees changes: every new column starts at a value meaning "nothing has happened yet". |
+| `0022_site_previews` | Adds `kind` and `source_note` to `source_icons` so a listing may hold one icon and one preview through the same validated pipeline, replaces the one-image-per-source index with one per source per kind, and adds `preview_mime` to `watch_sources`. |
 
 Two changes are worth reading closely before you run them.
 
@@ -171,6 +173,10 @@ Weekly is deliberate. The sites in the directory did not ask to be monitored,
 and one request a week per source is a courtesy that still catches a dead
 domain long before a reader does. Do not shorten it to hourly: it adds nothing
 and starts to look like traffic.
+
+The same run also empties the deleted bin: a listing deleted more than thirty
+days ago is removed for good. An undo window that nothing ever closes is just
+hoarding with extra steps.
 
 The run is safe to repeat and safe to interrupt. It writes one row at a time,
 so a cancelled run leaves the sources it reached updated and the rest due next

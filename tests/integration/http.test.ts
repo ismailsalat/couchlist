@@ -145,10 +145,22 @@ async function post(path: string, account: Account | null, body?: unknown): Prom
 /** Adds a listing directly, for tests that are not about the approval flow. */
 async function seedSource(name: string, domain: string): Promise<string> {
   const id = `wsr_${Math.random().toString(36).slice(2, 14)}`;
+  const homepageUrl = `https://${domain}/`;
+
   await db.execute(sql`
     insert into watch_sources (id, name, domain, homepage_url, source_type, supports_movies, is_enabled, description)
-    values (${id}, ${name}, ${domain}, ${'https://' + domain + '/'}, 'COMMUNITY', true, true, ${'About ' + name})
+    values (${id}, ${name}, ${domain}, ${homepageUrl}, 'COMMUNITY', true, true, ${'About ' + name})
   `);
+
+  // Every path that creates a listing in the app records its address with the
+  // mirrors, so a helper that skips it would be testing a shape the app never
+  // produces.
+  await db.execute(sql`
+    insert into watch_source_domains (id, watch_source_id, domain, homepage_url, is_primary, is_confirmed)
+    values (${`wsd_${id.slice(4)}`}, ${id}, ${domain}, ${homepageUrl}, true, true)
+    on conflict do nothing
+  `);
+
   return id;
 }
 
@@ -975,22 +987,46 @@ describe('trusted picks and deletion', () => {
     });
     expect(right.status).toBe(200);
 
-    const gone = await db.execute(
-      sql`select count(*)::int as n from watch_sources where id = ${id}`,
-    );
-    expect((gone.rows[0] as { n: number }).n).toBe(0);
+    // Gone from the directory immediately, which is what delete meant.
+    expect((await fetch(`${BASE_URL}/sources/${id}`)).status).toBe(404);
+    const listing = await fetch(`${BASE_URL}/`).then((r) => r.text());
+    expect(listing).not.toContain('delete-me.test');
 
-    // Everything hanging off it went too, and the voter's account did not.
-    for (const table of ['source_votes', 'source_bookmarks', 'source_contributions']) {
+    // But marked rather than destroyed, because the votes, saves and credit
+    // attached to a listing cannot be typed back in if it was a mistake.
+    const marked = await db.execute(
+      sql`select deleted_at, deleted_reason, is_enabled from watch_sources where id = ${id}`,
+    );
+    const row = marked.rows[0] as {
+      deleted_at: string | null;
+      deleted_reason: string | null;
+      is_enabled: boolean;
+    };
+    expect(row.deleted_at).not.toBeNull();
+    expect(row.deleted_reason).toBe('duplicate');
+    expect(row.is_enabled).toBe(false);
+
+    // Everything hanging off it is still there, which is the whole point, and
+    // the voter's account was never in question.
+    for (const table of ['source_votes', 'source_bookmarks']) {
       const left = await db.execute(
         sql.raw(`select count(*)::int as n from ${table} where source_id = 'wsr_delete_me'`),
       );
-      expect((left.rows[0] as { n: number }).n).toBe(0);
+      expect((left.rows[0] as { n: number }).n, table).toBeGreaterThan(0);
     }
     const accountStillThere = await db.execute(
       sql`select count(*)::int as n from users where email = ${voter.email}`,
     );
     expect((accountStillThere.rows[0] as { n: number }).n).toBe(1);
+
+    // And it can be put back, hidden, with everything intact.
+    const restored = await post('/api/admin/deleted', adminUser, { id });
+    expect(restored.status).toBe(200);
+    const back = await db.execute(
+      sql`select deleted_at, is_enabled from watch_sources where id = ${id}`,
+    );
+    expect((back.rows[0] as { deleted_at: string | null }).deleted_at).toBeNull();
+    expect((back.rows[0] as { is_enabled: boolean }).is_enabled).toBe(false);
 
     // The removal is on record even though its subject is not.
     const audit = await db.execute(
@@ -1019,10 +1055,22 @@ describe('trusted picks and deletion', () => {
 
 describe('adding and bulk-deleting sources as an admin', () => {
   /** Counts rows for a set of ids, parameterised rather than interpolated. */
+  /** Listings still live. A deleted one is marked, not destroyed. */
   async function countByIds(ids: string[]): Promise<number> {
     const rows = await db.execute(
       sql`select count(*)::int as n from watch_sources
-          where id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+          where deleted_at is null
+            and id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
+    );
+    return (rows.rows[0] as { n: number }).n;
+  }
+
+  /** Listings in the bin, waiting out their restore window. */
+  async function countDeleted(ids: string[]): Promise<number> {
+    const rows = await db.execute(
+      sql`select count(*)::int as n from watch_sources
+          where deleted_at is not null
+            and id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))`,
     );
     return (rows.rows[0] as { n: number }).n;
   }
@@ -1142,6 +1190,9 @@ describe('adding and bulk-deleting sources as an admin', () => {
     expect((await removed.json()).deleted).toBe(3);
 
     expect(await countByIds(ids)).toBe(0);
+    // Marked rather than destroyed: twenty listings and everything attached to
+    // them is exactly the deletion worth being able to undo.
+    expect(await countDeleted(ids)).toBe(3);
 
     const audit = await db.execute(
       sql`select count(*)::int as n from audit_logs where action = 'sources_bulk_deleted'`,
@@ -1963,8 +2014,11 @@ describe('the pages that say who runs this', () => {
 
   it('tells the truth about trackers on the privacy page', async () => {
     const html = await fetch(`${BASE_URL}/privacy`).then((r) => r.text());
-    expect(html).toContain('No analytics');
+    expect(html).toContain('No third-party analytics');
     expect(html).toContain('strictly necessary');
+    // The aggregate counters are described rather than quietly omitted.
+    expect(html).toContain('Counting, which is not the same as tracking');
+    expect(html).toContain('cannot say which sites');
   });
 
   it('gives a rights holder somewhere to write', async () => {
@@ -2030,5 +2084,329 @@ describe('the pages that say who runs this', () => {
       expect(sitemap, path).toContain(path);
       expect(robots, path).not.toContain(`Disallow: ${path}`);
     }
+  });
+});
+
+describe('bulk import and export', () => {
+  const file = (rows: unknown[]) => JSON.stringify(rows);
+
+  async function importIt(account: Account, text: string, apply: boolean) {
+    return post('/api/admin/import', account, { text, apply });
+  }
+
+  it('checks a file without writing anything', async () => {
+    const adminUser = await admin();
+    const response = await importIt(
+      adminUser,
+      file([{ domain: 'preview-only.test', name: 'Preview Only', categories: ['Movies'] }]),
+      false,
+    );
+
+    expect(response.status).toBe(200);
+    const report = await response.json();
+    expect(report).toMatchObject({ applied: false, create: 1, update: 0 });
+
+    const { rows } = await db.execute(
+      sql`select count(*)::int as n from watch_sources where domain = 'preview-only.test'`,
+    );
+    expect((rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it('imports listings hidden, so a bad row in a long file is a chore not an incident', async () => {
+    const adminUser = await admin();
+    const applied = await importIt(
+      adminUser,
+      file([
+        { domain: 'imported-one.test', name: 'Imported One', categories: ['Anime', 'Manga'] },
+        { domain: 'imported-two.test', name: 'Imported Two', categories: ['Comics'] },
+      ]),
+      true,
+    );
+
+    expect(applied.status).toBe(200);
+    await expect(applied.json()).resolves.toMatchObject({ applied: true, created: 2 });
+
+    const { rows } = await db.execute(sql`
+      select domain, is_enabled, supports_anime, supports_manga, supports_comics
+      from watch_sources where domain in ('imported-one.test', 'imported-two.test')
+      order by domain
+    `);
+    expect(rows).toHaveLength(2);
+    for (const row of rows as Array<{ is_enabled: boolean }>) {
+      expect(row.is_enabled).toBe(false);
+    }
+    const first = rows[0] as { supports_anime: boolean; supports_manga: boolean };
+    expect(first.supports_anime).toBe(true);
+    expect(first.supports_manga).toBe(true);
+
+    // Hidden means hidden: not in the public directory.
+    const listing = await fetch(`${BASE_URL}/`).then((r) => r.text());
+    expect(listing).not.toContain('imported-one.test');
+  });
+
+  it('updates rather than duplicating when the same file is imported again', async () => {
+    const adminUser = await admin();
+    await importIt(adminUser, file([{ domain: 'reimport.test', name: 'First Name' }]), true);
+    const again = await importIt(
+      adminUser,
+      file([{ domain: 'reimport.test', name: 'Corrected Name' }]),
+      true,
+    );
+
+    expect(again.status).toBe(200);
+    await expect(again.json()).resolves.toMatchObject({ created: 0, updated: 1 });
+
+    const { rows } = await db.execute(
+      sql`select name, count(*) over ()::int as n from watch_sources where domain = 'reimport.test'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect((rows[0] as { name: string }).name).toBe('Corrected Name');
+  });
+
+  it('skips a bad row and keeps the rest', async () => {
+    const adminUser = await admin();
+    const response = await importIt(
+      adminUser,
+      file([
+        { domain: 'good-row.test', name: 'Good Row' },
+        { domain: 'http://127.0.0.1/', name: 'Private Address' },
+        { domain: 'bad-category.test', categories: ['Podcasts'] },
+      ]),
+      true,
+    );
+
+    const report = await response.json();
+    expect(report.created).toBe(1);
+    expect(report.invalid).toHaveLength(2);
+    expect(JSON.stringify(report.invalid)).toContain('Podcasts');
+  });
+
+  it('refuses an import and an export to anyone who is not an admin', async () => {
+    const account = await createAccount();
+
+    const imported = await post('/api/admin/import', account, {
+      text: '[{"domain":"sneaky.test"}]',
+      apply: true,
+    });
+    expect([401, 403, 404]).toContain(imported.status);
+
+    const exported = await fetch(`${BASE_URL}/api/admin/export`, authed(account));
+    expect([401, 403, 404]).toContain(exported.status);
+  });
+
+  it('exports in the shape the importer reads back', async () => {
+    const adminUser = await admin();
+    await importIt(
+      adminUser,
+      file([{ domain: 'roundtrip.test', name: 'Round Trip', categories: ['TV'] }]),
+      true,
+    );
+
+    const response = await fetch(`${BASE_URL}/api/admin/export`, authed(adminUser));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-disposition')).toContain('attachment');
+
+    const rows = (await response.json()) as Array<Record<string, unknown>>;
+    const entry = rows.find((row) => row.domain === 'roundtrip.test');
+    expect(entry).toMatchObject({ name: 'Round Trip', categories: ['TV'], isEnabled: false });
+
+    // And it goes back in without complaint, which is what round-trip means.
+    const back = await importIt(adminUser, JSON.stringify(rows), false);
+    const report = await back.json();
+    expect(report.invalid).toHaveLength(0);
+    expect(report.create).toBe(0);
+  });
+});
+
+describe('counting visits, and the statistics page', () => {
+  it('counts a visit without recording who made it', async () => {
+    const id = await seedSource('Visit Counted', 'visitcounted.test');
+
+    for (let index = 0; index < 3; index += 1) {
+      const response = await fetch(`${BASE_URL}/api/sources/${id}/visit`, {
+        method: 'POST',
+        headers: { origin: BASE_URL },
+      });
+      expect(response.status).toBe(204);
+    }
+
+    const { rows } = await db.execute(
+      sql`select visit_count::int as n, visit_counted_on from watch_sources where id = ${id}`,
+    );
+    expect((rows[0] as { n: number }).n).toBe(3);
+    // A day, not a clock: the total moved today and that is all it knows.
+    expect((rows[0] as { visit_counted_on: string }).visit_counted_on).toBeTruthy();
+  });
+
+  it('never fails a visit, even for a listing that is not there', async () => {
+    const response = await fetch(`${BASE_URL}/api/sources/wsr_does_not_exist/visit`, {
+      method: 'POST',
+      headers: { origin: BASE_URL },
+    });
+    expect(response.status).toBe(204);
+  });
+
+  it('shows the statistics page to anyone, with real counts on it', async () => {
+    await seedSource('Counted Source', 'countedsource.test');
+
+    const response = await fetch(`${BASE_URL}/stats`);
+    expect(response.status).toBe(200);
+
+    const html = await response.text();
+    expect(html).toContain('Websites listed');
+    expect(html).toContain('What the directory covers');
+    expect(html).toContain('How the links are holding up');
+    // It says where the numbers come from rather than leaving it to be guessed.
+    expect(html).toContain('count of things the site already holds');
+  });
+});
+
+describe('mirrors', () => {
+  async function mirrorAction(account: Account, sourceId: string, body: unknown) {
+    return post(`/api/admin/sources/${sourceId}/mirrors`, account, body);
+  }
+
+  it('moves a listing to a new address, keeping its votes and credit', async () => {
+    const adminUser = await admin();
+    const voter = await createAccount();
+    const id = await seedSource('Moving Site', 'oldaddress.test');
+
+    const voted = await post(`/api/sources/${id}/vote`, voter, { value: 'LIKE' });
+    expect(voted.status).toBe(200);
+
+    const added = await mirrorAction(adminUser, id, {
+      action: 'add',
+      url: 'https://newaddress.test/',
+    });
+    expect(added.status).toBe(200);
+    const { mirror } = await added.json();
+
+    const promoted = await mirrorAction(adminUser, id, {
+      action: 'promote',
+      mirrorId: mirror.id,
+    });
+    expect(promoted.status).toBe(200);
+
+    const { rows } = await db.execute(
+      sql`select domain, homepage_url, health_failures::int as failures
+          from watch_sources where id = ${id}`,
+    );
+    const row = rows[0] as { domain: string; homepage_url: string; failures: number };
+    expect(row.domain).toBe('newaddress.test');
+    expect(row.homepage_url).toContain('newaddress.test');
+    // The old address's failures do not follow it to the new one.
+    expect(row.failures).toBe(0);
+
+    // The vote is still there, which is the entire reason this exists.
+    const votes = await db.execute(
+      sql`select count(*)::int as n from source_votes where source_id = ${id}`,
+    );
+    expect((votes.rows[0] as { n: number }).n).toBe(1);
+
+    // And the page still works, at the new address.
+    const page = await fetch(`${BASE_URL}/sources/${id}`).then((r) => r.text());
+    expect(page).toContain('newaddress.test');
+    expect(page).toContain('oldaddress.test');
+  });
+
+  it('refuses an address another listing already claims', async () => {
+    const adminUser = await admin();
+    const first = await seedSource('Claimant One', 'claimant-one.test');
+    await seedSource('Claimant Two', 'claimant-two.test');
+
+    const response = await mirrorAction(adminUser, first, {
+      action: 'add',
+      url: 'https://claimant-two.test/',
+    });
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain('already uses that address');
+  });
+
+  it('refuses an address that is not an ordinary web address', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Bad Mirror', 'badmirror.test');
+
+    for (const url of ['javascript:alert(1)', 'http://127.0.0.1/', 'file:///etc/passwd']) {
+      const response = await mirrorAction(adminUser, id, { action: 'add', url });
+      expect(response.status, url).toBe(400);
+    }
+  });
+
+  it('will not remove the address a listing is using', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('Only Address', 'onlyaddress.test');
+
+    const { rows } = await db.execute(
+      sql`select id from watch_source_domains where watch_source_id = ${id} and is_primary`,
+    );
+    const primaryId = (rows[0] as { id: string }).id;
+
+    const response = await mirrorAction(adminUser, id, {
+      action: 'remove',
+      mirrorId: primaryId,
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it('refuses every mirror action to a non-admin', async () => {
+    const account = await createAccount();
+    const id = await seedSource('Guarded Mirror', 'guardedmirror.test');
+
+    const response = await post(`/api/admin/sources/${id}/mirrors`, account, {
+      action: 'add',
+      url: 'https://sneaky-mirror.test/',
+    });
+    expect([401, 403, 404]).toContain(response.status);
+  });
+});
+
+describe('the survey', () => {
+  it('records an answer once and closes for good', async () => {
+    const account = await createAccount();
+
+    const answered = await post('/api/survey', account, { ease: 4, usesAdBlocker: true });
+    expect(answered.status).toBe(200);
+
+    const { rows } = await db.execute(sql`
+      select r.ease, r.uses_ad_blocker, u.survey_closed_at
+      from survey_responses r join users u on u.id = r.user_id
+      where u.email = ${account.email}
+    `);
+    const row = rows[0] as {
+      ease: number;
+      uses_ad_blocker: boolean;
+      survey_closed_at: string | null;
+    };
+    expect(row.ease).toBe(4);
+    expect(row.uses_ad_blocker).toBe(true);
+    expect(row.survey_closed_at).not.toBeNull();
+  });
+
+  it('treats dismissing as a final answer, and stores nothing', async () => {
+    const account = await createAccount();
+    const dismissed = await post('/api/survey', account, { dismiss: true });
+    expect(dismissed.status).toBe(200);
+
+    const { rows } = await db.execute(sql`
+      select (select count(*)::int from survey_responses r
+               join users u on u.id = r.user_id where u.email = ${account.email}) as answers,
+             (select survey_closed_at from users where email = ${account.email}) as closed
+    `);
+    const row = rows[0] as { answers: number; closed: string | null };
+    expect(row.answers).toBe(0);
+    expect(row.closed).not.toBeNull();
+  });
+
+  it('refuses a score that is not one of the five', async () => {
+    const account = await createAccount();
+    for (const ease of [0, 6, 2.5, 'five']) {
+      const response = await post('/api/survey', account, { ease });
+      expect(response.status, String(ease)).toBe(400);
+    }
+  });
+
+  it('refuses an answer from someone who is not signed in', async () => {
+    const response = await post('/api/survey', null, { ease: 5 });
+    expect([401, 403]).toContain(response.status);
   });
 });

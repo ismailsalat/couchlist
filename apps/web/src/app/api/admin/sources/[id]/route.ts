@@ -171,7 +171,16 @@ export const DELETE = apiRoute<NextResponse, { id: string }>(async (request, { p
     },
   });
 
-  await repos().db.delete(watchSources).where(eq(watchSources.id, existing.id));
+  // Marked, not destroyed. It leaves the directory at once, which is what
+  // pressing delete meant; the bytes wait thirty days in case it was a
+  // mistake, because the votes and credit attached to a listing cannot be
+  // typed back in.
+  await repos().sources.softDelete([existing.id], admin.id, input.reason ?? null);
 
-  return NextResponse.json({ ok: true, deleted: existing.domain, removed: counts });
+  return NextResponse.json({
+    ok: true,
+    deleted: existing.domain,
+    removed: counts,
+    restorableUntil: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+  });
 });

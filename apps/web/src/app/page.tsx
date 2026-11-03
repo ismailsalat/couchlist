@@ -1,14 +1,25 @@
 import type { Metadata } from 'next';
 import { SiteHeader } from '@/components/site-header';
+import { SurveyBar } from '@/components/survey-bar';
 import { DirectoryControls } from '@/components/directory-controls';
 import { SourceRow } from '@/components/source-row';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Pagination } from '@/components/ui/pagination';
 import { optionalUser } from '@/lib/api/guards';
 import { PAGE_SIZE, loadDirectoryView, savedCountFor } from '@/lib/directory/page-data';
+import { repos } from '@/lib/db';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * How many signed-in people are ever asked the survey.
+ *
+ * Enough answers to see a pattern, few enough that the site does not feel
+ * like it is asking for something. Raise it if the answers are too thin to
+ * read; there is no reason to make it everybody.
+ */
+const SURVEY_SHARE_PERCENT = 25;
 
 export const metadata: Metadata = {
   title: 'Find a good place to watch or read',
@@ -31,9 +42,13 @@ export default async function DiscoverPage({
 }) {
   const params = await searchParams;
   const user = await optionalUser();
-  const [view, savedCount] = await Promise.all([
+  const [view, savedCount, askSurvey] = await Promise.all([
     loadDirectoryView(params, user),
     savedCountFor(user),
+    // A slice of signed-in people, once ever, and never on the first day.
+    user?.emailVerifiedAt
+      ? repos().survey.shouldAsk(user.id, SURVEY_SHARE_PERCENT)
+      : Promise.resolve(false),
   ]);
 
   const canInteract = Boolean(user?.emailVerifiedAt);
@@ -42,6 +57,9 @@ export default async function DiscoverPage({
   return (
     <>
       <SiteHeader user={user} savedCount={savedCount} active="discover" />
+      {/* Asked on Discover only, of a slice of people who have had an account
+          for a day, once ever. Never on a listing, never over the page. */}
+      {askSurvey ? <SurveyBar /> : null}
 
       <main id="main" className="mx-auto max-w-[980px] px-3.5 pb-4 pt-6 sm:px-6">
         <div className="mb-4 sm:flex sm:items-baseline sm:gap-3.5">

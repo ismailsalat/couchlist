@@ -13,7 +13,10 @@ export const POST = apiRoute(async (request) => {
   checkRateLimit(`profile:${user.id}`, 20);
 
   const input = updateProfileSchema.parse(await request.json());
-  await repos().accounts.updateProfile(user.id, { displayName: input.displayName });
+  await repos().accounts.updateProfile(user.id, {
+    displayName: input.displayName,
+    bio: input.bio,
+  });
 
   return NextResponse.json({ ok: true });
 });

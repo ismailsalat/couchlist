@@ -48,7 +48,7 @@ const UNVERIFIED_COOKIE = 'couchlist_unverified';
 
 /** Routes whose response body is a file a stranger uploaded. */
 const SERVES_UPLOADED_BYTES =
-  /^\/api\/(?:sources\/[^/]+\/icon|admin\/candidates\/[^/]+\/icon|users\/[^/]+\/avatar)$/u;
+  /^\/api\/(?:sources\/[^/]+\/(?:icon|preview)|admin\/candidates\/[^/]+\/icon|users\/[^/]+\/avatar)$/u;
 
 /**
  * The only places an unverified session may go.

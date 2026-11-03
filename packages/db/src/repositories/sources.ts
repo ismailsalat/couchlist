@@ -46,6 +46,8 @@ export interface DirectorySource {
   healthFailures: number;
   /** True when a contributor supplied a site icon. Not the bytes. */
   hasIcon: boolean;
+  /** True when the listing has a picture of what the site looks like. */
+  hasPreview: boolean;
   likes: number;
   dislikes: number;
   adminRankPenalty: number;
@@ -151,6 +153,7 @@ function toDirectorySource(row: WatchSourceRow & { likes: number; dislikes: numb
     healthFailures: row.healthFailures,
     // Only the type is on the row, so this costs nothing.
     hasIcon: row.iconMime !== null,
+    hasPreview: row.previewMime !== null,
     likes: row.likes,
     dislikes: row.dislikes,
     adminRankPenalty: row.adminRankPenalty,
@@ -196,6 +199,10 @@ export class SourceDirectoryRepository {
     const sort = query.sort ?? SourceSort.RECOMMENDED;
 
     const conditions: SQL[] = [];
+    // A deleted listing is gone from every view, including the admin list.
+    // The only place it appears is the recently-deleted bin, which reads it
+    // deliberately and by itself.
+    conditions.push(sql`${watchSources.deletedAt} is null`);
     if (!query.includeHidden) conditions.push(eq(watchSources.isEnabled, true));
 
     const category = query.category ?? ALL_CATEGORIES;
@@ -309,6 +316,170 @@ export class SourceDirectoryRepository {
   }
 
   /**
+   * Deleting, reversibly.
+   *
+   * Bulk delete is one button away from taking forty listings and the votes,
+   * saves and credit attached to them. Marking rather than destroying costs
+   * one column and is the difference between a mistake and a disaster. The
+   * listing disappears from the directory immediately, which is what the
+   * person pressing the button meant; it is only the bytes that wait.
+   */
+  async softDelete(
+    ids: string[],
+    deletedByUserId: string | null,
+    reason: string | null,
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+
+    const rows = await this.db
+      .update(watchSources)
+      .set({
+        deletedAt: new Date(),
+        deletedByUserId,
+        deletedReason: reason,
+        isEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(and(inArray(watchSources.id, ids), sql`${watchSources.deletedAt} is null`))
+      .returning({ id: watchSources.id });
+
+    return rows.length;
+  }
+
+  /** Puts a deleted listing back, with everything that was attached to it. */
+  async restore(id: string): Promise<boolean> {
+    const rows = await this.db
+      .update(watchSources)
+      .set({
+        deletedAt: null,
+        deletedByUserId: null,
+        deletedReason: null,
+        // Back, but not back in public: a moderator looks before it returns
+        // to the directory, since whatever caused the deletion may still be
+        // true.
+        isEnabled: false,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(watchSources.id, id), sql`${watchSources.deletedAt} is not null`))
+      .returning({ id: watchSources.id });
+
+    return rows.length > 0;
+  }
+
+  /** What is in the bin, newest first. */
+  async recentlyDeleted(limit = 100): Promise<
+    Array<{
+      id: string;
+      name: string;
+      domain: string;
+      deletedAt: Date;
+      deletedReason: string | null;
+      likes: number;
+      dislikes: number;
+    }>
+  > {
+    const { rows } = await this.db.execute(sql`
+      select s.id, s.name, s.domain, s.deleted_at, s.deleted_reason,
+             (select count(*)::int from source_votes v
+               where v.source_id = s.id and v.value = 'LIKE') as likes,
+             (select count(*)::int from source_votes v
+               where v.source_id = s.id and v.value = 'DISLIKE') as dislikes
+      from watch_sources s
+      where s.deleted_at is not null
+      order by s.deleted_at desc
+      limit ${limit}
+    `);
+
+    return (rows as Array<Record<string, unknown>>).map((row) => ({
+      id: String(row.id),
+      name: String(row.name),
+      domain: String(row.domain),
+      deletedAt: new Date(String(row.deleted_at)),
+      deletedReason: row.deleted_reason === null ? null : String(row.deleted_reason),
+      likes: Number(row.likes ?? 0),
+      dislikes: Number(row.dislikes ?? 0),
+    }));
+  }
+
+  /**
+   * Removes for good anything whose window has passed.
+   *
+   * Run by the same weekly job that checks links, because a bin that is never
+   * emptied is just a slower kind of hoarding.
+   */
+  async purgeDeletedBefore(cutoff: Date): Promise<number> {
+    const rows = await this.db
+      .delete(watchSources)
+      .where(sql`${watchSources.deletedAt} is not null and ${watchSources.deletedAt} < ${cutoff}`)
+      .returning({ id: watchSources.id });
+
+    return rows.length;
+  }
+
+  /**
+   * Somebody opened this website.
+   *
+   * One integer, incremented. No account, no address, no session, and the
+   * only date is the day this listing's total last moved. It can say which
+   * sites people open; it cannot say who opened them, which is the whole
+   * design.
+   */
+  async recordVisit(sourceId: string): Promise<void> {
+    await this.db
+      .update(watchSources)
+      .set({
+        visitCount: sql`${watchSources.visitCount} + 1`,
+        visitCountedOn: sql`current_date`,
+      })
+      .where(eq(watchSources.id, sourceId));
+  }
+
+  /**
+   * Every listing, in the shape the importer reads back.
+   *
+   * Deliberately the same vocabulary as an import file rather than the
+   * database's: `categories` as words, no internal ids, no vote counts. What
+   * comes out of here can be edited in a spreadsheet and fed straight back
+   * in, which makes it both a backup and the easiest way to fix fifty
+   * descriptions at once.
+   */
+  async exportAll(): Promise<
+    Array<{
+      domain: string;
+      name: string;
+      homepageUrl: string;
+      description: string | null;
+      categories: string[];
+      hasLotsOfAds: boolean;
+      shouldAvoid: boolean;
+      avoidReason: string | null;
+      qualityLabel: string | null;
+      requiresAccount: boolean;
+      isEnabled: boolean;
+    }>
+  > {
+    const rows = await this.db
+      .select()
+      .from(watchSources)
+      .where(sql`${watchSources.deletedAt} is null`)
+      .orderBy(asc(sql`lower(${watchSources.name})`));
+
+    return rows.map((row) => ({
+      domain: row.domain,
+      name: row.name,
+      homepageUrl: row.homepageUrl,
+      description: row.description,
+      categories: categoriesFromFlags(row),
+      hasLotsOfAds: row.hasLotsOfAds,
+      shouldAvoid: row.shouldAvoid,
+      avoidReason: row.avoidReason,
+      qualityLabel: row.qualityLabel,
+      requiresAccount: row.requiresAccount,
+      isEnabled: row.isEnabled,
+    }));
+  }
+
+  /**
    * What would go with a source if it were deleted.
    *
    * Shown to a moderator before they confirm, because "delete this listing"
@@ -370,10 +541,13 @@ export class SourceDirectoryRepository {
       .select()
       .from(watchSources)
       .where(
-        or(
-          sql`${watchSources.healthFailures} >= 3`,
-          sql`${watchSources.healthStatus} in ('MOVED', 'REFUSED')`,
-          reported.length > 0 ? inArray(watchSources.id, reported) : sql`false`,
+        and(
+          sql`${watchSources.deletedAt} is null`,
+          or(
+            sql`${watchSources.healthFailures} >= 3`,
+            sql`${watchSources.healthStatus} in ('MOVED', 'REFUSED')`,
+            reported.length > 0 ? inArray(watchSources.id, reported) : sql`false`,
+          )!,
         ),
       )
       .orderBy(desc(watchSources.healthFailures), asc(sql`lower(${watchSources.name})`))
@@ -440,6 +614,7 @@ export class SourceDirectoryRepository {
       .where(
         and(
           eq(watchSources.isEnabled, true),
+          sql`${watchSources.deletedAt} is null`,
           sql`${watchSources.id} <> ${sourceId}`,
           or(...shared)!,
         ),

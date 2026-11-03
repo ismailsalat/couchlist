@@ -29,10 +29,51 @@ export interface ParsedSourceRow {
   supportsAnime?: boolean;
   supportsMovies?: boolean;
   supportsTv?: boolean;
+  supportsManga?: boolean;
+  supportsManhwa?: boolean;
+  supportsComics?: boolean;
   requiresAccount?: boolean;
   regionInfo?: string | null;
   isEnabled?: boolean;
+  /** What a reader sees under the name. */
+  description?: string | null;
+  hasLotsOfAds?: boolean;
+  shouldAvoid?: boolean;
+  avoidReason?: string | null;
+  qualityLabel?: string | null;
 }
+
+/** The six categories the directory has, as an operator would write them. */
+export const IMPORT_CATEGORIES = [
+  'Anime',
+  'Movies',
+  'TV',
+  'Manga',
+  'Manhwa',
+  'Comics',
+] as const;
+
+const CATEGORY_FLAGS: Record<string, keyof ParsedSourceRow> = {
+  ANIME: 'supportsAnime',
+  MOVIES: 'supportsMovies',
+  MOVIE: 'supportsMovies',
+  FILM: 'supportsMovies',
+  FILMS: 'supportsMovies',
+  TV: 'supportsTv',
+  SHOWS: 'supportsTv',
+  SERIES: 'supportsTv',
+  MANGA: 'supportsManga',
+  MANHWA: 'supportsManhwa',
+  WEBTOON: 'supportsManhwa',
+  WEBTOONS: 'supportsManhwa',
+  COMICS: 'supportsComics',
+  COMIC: 'supportsComics',
+};
+
+/** Longest description an import may set, matching the suggestion form. */
+export const IMPORT_DESCRIPTION_MAX = 240;
+/** Longest quality label, matching the database constraint. */
+export const IMPORT_QUALITY_MAX = 12;
 
 export interface InvalidSourceRow {
   index: number;
@@ -148,6 +189,49 @@ export function parseCsv(input: string): Array<Record<string, string>> {
   });
 }
 
+
+/**
+ * Reads a categories field, however an operator wrote it.
+ *
+ * JSON lists, comma-separated, pipe-separated and semicolon-separated all
+ * work, because a file assembled by hand from a forum thread will use
+ * whichever the person felt like. Naming categories is the recommended way to
+ * write an import: it says "these six and no others", where the individual
+ * supportsX booleans quietly leave out whatever the author forgot.
+ *
+ * Returns the flags to set, or the first unrecognised word.
+ */
+export function readCategories(
+  value: unknown,
+): { ok: true; flags: Partial<ParsedSourceRow> } | { ok: false; unknown: string } | null {
+  if (value === undefined || value === null || value === '') return null;
+
+  const words = (Array.isArray(value) ? value : String(value).split(/[,|;]/))
+    .map((entry) => String(entry).trim())
+    .filter((entry) => entry !== '');
+  if (words.length === 0) return null;
+
+  // Naming any category means the row states all six, so an import can take a
+  // category away as well as add one.
+  const flags: Partial<ParsedSourceRow> = {
+    supportsAnime: false,
+    supportsMovies: false,
+    supportsTv: false,
+    supportsManga: false,
+    supportsManhwa: false,
+    supportsComics: false,
+  };
+
+  for (const word of words) {
+    const key = CATEGORY_FLAGS[word.toUpperCase()];
+    if (!key) return { ok: false, unknown: word };
+    (flags as Record<string, boolean>)[key] = true;
+  }
+
+  return { ok: true, flags };
+}
+
+
 function normalizeRow(raw: Record<string, unknown>, index: number): ParsedSourceRow | InvalidSourceRow {
   const label = JSON.stringify(raw).slice(0, 200);
   const fail = (reason: string): InvalidSourceRow => ({ index, reason, raw: label });
@@ -197,6 +281,33 @@ function normalizeRow(raw: Record<string, unknown>, index: number): ParsedSource
     return fail('sourceOriginUrl is not a valid http(s) URL');
   }
 
+  const categories = readCategories(raw.categories);
+  if (categories && !categories.ok) {
+    return fail(
+      `unknown category "${categories.unknown.slice(0, 40)}" (use ${IMPORT_CATEGORIES.join(', ')})`,
+    );
+  }
+
+  const description = hasOwn(raw, 'description') ? (readString(raw.description) ?? null) : undefined;
+  if (description && description.length > IMPORT_DESCRIPTION_MAX) {
+    return fail(`description is ${description.length} characters; the limit is ${IMPORT_DESCRIPTION_MAX}`);
+  }
+
+  const qualityLabel = hasOwn(raw, 'qualityLabel')
+    ? (readString(raw.qualityLabel) ?? null)
+    : undefined;
+  if (qualityLabel && qualityLabel.length > IMPORT_QUALITY_MAX) {
+    return fail(`qualityLabel is ${qualityLabel.length} characters; the limit is ${IMPORT_QUALITY_MAX}`);
+  }
+
+  const shouldAvoid = readBoolean(raw.shouldAvoid);
+  const avoidReason = hasOwn(raw, 'avoidReason') ? (readString(raw.avoidReason) ?? null) : undefined;
+  if (shouldAvoid === true && !avoidReason) {
+    // Marking a site as one to avoid without saying why gives a reader a red
+    // banner and no information, which is worse than not marking it at all.
+    return fail('shouldAvoid is true but avoidReason is missing');
+  }
+
   return {
     domain: parsed.domain,
     name: hasOwn(raw, 'name') ? readString(raw.name) : undefined,
@@ -205,12 +316,23 @@ function normalizeRow(raw: Record<string, unknown>, index: number): ParsedSource
     accessType: accessInput as AccessType | undefined,
     origin,
     originUrl: originUrlWasSupplied ? (originUrlInput ?? null) : undefined,
-    supportsAnime: readBoolean(raw.supportsAnime),
-    supportsMovies: readBoolean(raw.supportsMovies),
-    supportsTv: readBoolean(raw.supportsTv),
+    // Individual flags still work, and win over the list when both appear, so
+    // an older file keeps importing exactly as it did.
+    ...(categories?.ok ? categories.flags : {}),
+    supportsAnime: readBoolean(raw.supportsAnime) ?? (categories?.ok ? categories.flags.supportsAnime : undefined),
+    supportsMovies: readBoolean(raw.supportsMovies) ?? (categories?.ok ? categories.flags.supportsMovies : undefined),
+    supportsTv: readBoolean(raw.supportsTv) ?? (categories?.ok ? categories.flags.supportsTv : undefined),
+    supportsManga: readBoolean(raw.supportsManga) ?? (categories?.ok ? categories.flags.supportsManga : undefined),
+    supportsManhwa: readBoolean(raw.supportsManhwa) ?? (categories?.ok ? categories.flags.supportsManhwa : undefined),
+    supportsComics: readBoolean(raw.supportsComics) ?? (categories?.ok ? categories.flags.supportsComics : undefined),
     requiresAccount: readBoolean(raw.requiresAccount),
     regionInfo: hasOwn(raw, 'regionInfo') ? (readString(raw.regionInfo) ?? null) : undefined,
     isEnabled: readBoolean(raw.isEnabled),
+    description,
+    hasLotsOfAds: readBoolean(raw.hasLotsOfAds),
+    shouldAvoid,
+    avoidReason,
+    qualityLabel,
   };
 }
 

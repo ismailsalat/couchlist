@@ -33,6 +33,9 @@ export function SiteFooter() {
         <Link href="/guides" className="text-muted no-underline hover:text-accent">
           Guides
         </Link>
+        <Link href="/stats" className="text-muted no-underline hover:text-accent">
+          Statistics
+        </Link>
         <Link href="/submit" className="text-muted no-underline hover:text-accent">
           Suggest a source
         </Link>
