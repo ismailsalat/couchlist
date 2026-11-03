@@ -212,6 +212,28 @@ export class IconRepository {
     }));
   }
 
+  /**
+   * One listing, for a capture somebody asked for by name.
+   *
+   * Separate from `sourcesWithoutPreview` because that one deliberately skips
+   * anything that already has a picture, and an administrator pressing the
+   * button on a listing with a bad screenshot means "take another".
+   */
+  async sourceForCapture(
+    sourceId: string,
+  ): Promise<{ id: string; domain: string; homepageUrl: string } | undefined> {
+    const rows = await this.db
+      .select({
+        id: watchSources.id,
+        domain: watchSources.domain,
+        homepageUrl: watchSources.homepageUrl,
+      })
+      .from(watchSources)
+      .where(and(eq(watchSources.id, sourceId), isNull(watchSources.deletedAt)))
+      .limit(1);
+    return rows[0];
+  }
+
   /** Listings a screenshot would help: no preview, and none waiting. */
   async sourcesWithoutPreview(limit: number): Promise<
     Array<{ id: string; domain: string; homepageUrl: string }>

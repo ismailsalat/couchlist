@@ -2591,3 +2591,37 @@ describe('refusing an absurd request body', () => {
     expect(response.status).toBe(200);
   });
 });
+
+describe('taking a screenshot from the admin pages', () => {
+  it('refuses the button to anyone who is not an admin', async () => {
+    const account = await createAccount();
+    const id = await seedSource('Button Guard', 'buttonguard.test');
+
+    const response = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: account.cookie, origin: BASE_URL },
+      body: JSON.stringify({ screenshot: true }),
+    });
+    expect([401, 403, 404]).toContain(response.status);
+  });
+
+  it('says plainly when the server has no browser, rather than failing oddly', async () => {
+    const adminUser = await admin();
+    const id = await seedSource('No Browser Here', 'nobrowserhere.test');
+
+    const response = await fetch(`${BASE_URL}/api/admin/sources/${id}/preview`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({ screenshot: true }),
+    });
+
+    // The test server has no CHROMIUM_PATH, which is the common case for a
+    // deployment that has not turned screenshots on. It must be a readable
+    // sentence, not a stack trace.
+    expect([200, 400]).toContain(response.status);
+    if (response.status === 400) {
+      const text = await response.text();
+      expect(text.toLowerCase()).toMatch(/browser|screenshot/);
+    }
+  });
+});

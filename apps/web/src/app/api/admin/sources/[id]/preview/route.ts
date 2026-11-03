@@ -7,6 +7,7 @@ import {
   iconResponseHeaders,
 } from '@couchlist/shared';
 import { apiRoute } from '@/lib/api/handler';
+import { captureNow } from '@/lib/capture';
 import { requireAdmin } from '@/lib/api/guards';
 import { repos } from '@/lib/db';
 
@@ -28,8 +29,25 @@ export const PUT = apiRoute<NextResponse, { id: string }>(async (request, { para
   const source = await repos().sources.findRowById(params.id);
   if (!source) throw AppError.notFound('source');
 
-  const body = (await request.json()) as { image?: unknown; fetchFromSite?: unknown };
+  const body = (await request.json()) as {
+    image?: unknown;
+    fetchFromSite?: unknown;
+    screenshot?: unknown;
+  };
   const { icons } = repos();
+
+  /*
+   * A real screenshot, taken now.
+   *
+   * The share image a site publishes is often its logo, which is why this
+   * exists: when the site does not publish a usable picture, photograph the
+   * page instead of asking somebody to go and do it by hand.
+   */
+  if (body.screenshot === true) {
+    const result = await captureNow(params.id);
+    if (!result.ok) throw AppError.validation(result.message);
+    return NextResponse.json({ ok: true, screenshot: true });
+  }
 
   if (body.fetchFromSite === true) {
     const found = await fetchSitePreview(source.homepageUrl, (url, init) => fetch(url, init));

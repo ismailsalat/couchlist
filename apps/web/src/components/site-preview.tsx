@@ -32,7 +32,13 @@ export function SitePreview({
         alt={`How ${name} presents itself`}
         loading="lazy"
         decoding="async"
-        className="block max-h-[320px] w-full object-cover object-top"
+        /*
+         * A fixed page-shaped window rather than however tall the picture
+         * happens to be. Share images are 1200x630, screenshots 1280x800 and
+         * uploads are anything at all; without a box of its own the listing
+         * jumped around depending on which one it got.
+         */
+        className="block aspect-[16/9] w-full bg-active object-cover object-top"
       />
       <figcaption className="border-t border-line px-3 py-2 text-xs text-muted">
         {note ?? 'A picture of how this site presents itself.'} Couchlist does not host or

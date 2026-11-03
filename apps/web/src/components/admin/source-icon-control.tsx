@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Download, ImagePlus, Trash2 } from 'lucide-react';
+import { Camera, Download, ImagePlus, Trash2 } from 'lucide-react';
 import { ICON_MAX_BYTES, ICON_MIME_TYPES, PREVIEW_MAX_BYTES } from '@couchlist/shared';
 
 /**
@@ -161,8 +161,21 @@ export function SourceIconControl({
           className="cl-touch inline-flex items-center gap-2 rounded-pill border border-line bg-surface px-3 py-2 text-sm text-text hover:bg-hover disabled:opacity-60"
         >
           <Download aria-hidden="true" className="h-4 w-4" />
-          Fetch from site
+          {isPreview ? "Use the site's picture" : 'Get the icon'}
         </button>
+
+        {isPreview ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void send({ screenshot: true }, 'Taking a screenshot…')}
+            title="Opens the site and photographs the top of the page"
+            className="cl-touch inline-flex items-center gap-2 rounded-pill border border-line bg-surface px-3 py-2 text-sm text-text hover:bg-hover disabled:opacity-60"
+          >
+            <Camera aria-hidden="true" className="h-4 w-4" />
+            Take a screenshot
+          </button>
+        ) : null}
 
         {present ? (
           <button

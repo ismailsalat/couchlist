@@ -151,7 +151,7 @@ async function capture(
  * the result.
  */
 export async function runPreviewCapture(
-  options: { limit?: number; only?: string } = {},
+  options: { limit?: number; only?: string; approved?: boolean } = {},
 ): Promise<void> {
   const logger = createLogger({ service: 'previews' });
   const { only } = options;
@@ -169,7 +169,7 @@ export async function runPreviewCapture(
   const icons = new IconRepository(db);
 
   const targets = only
-    ? (await icons.sourcesWithoutPreview(1000)).filter((row) => row.id === only)
+    ? [await icons.sourceForCapture(only)].filter((row) => row !== undefined)
     : await icons.sourcesWithoutPreview(limit);
 
   if (targets.length === 0) {
@@ -211,12 +211,19 @@ export async function runPreviewCapture(
         continue;
       }
 
+      /*
+       * A screenshot the scheduled job took waits for a moderator; one an
+       * administrator asked for does not. They pressed the button and are
+       * looking at the result, which is the review.
+       */
       await icons.setSourcePreview(
         source.id,
         { mime: check.mime, bytes: check.bytes, byteSize: check.byteSize },
         null,
-        'Screenshot of the site, taken automatically',
-        { approved: false, capturedFrom: shot.from },
+        options.approved
+          ? 'Screenshot of the site'
+          : 'Screenshot of the site, taken automatically',
+        { approved: options.approved ?? false, capturedFrom: shot.from },
       );
       captured += 1;
       logger.info('captured', { domain: source.domain, bytes: check.byteSize });
@@ -228,7 +235,10 @@ export async function runPreviewCapture(
   logger.info('finished', {
     captured,
     skipped,
-    note: captured > 0 ? 'Waiting for review at /admin/previews' : undefined,
+    note:
+      captured > 0 && !options.approved
+        ? 'Waiting for review at /admin/previews'
+        : undefined,
   });
 }
 
@@ -249,6 +259,8 @@ async function main(): Promise<void> {
   await runPreviewCapture({
     only: args.includes('--source') ? args[args.indexOf('--source') + 1] : undefined,
     limit: Number.isFinite(limitArg) && limitArg! > 0 ? Number(limitArg) : undefined,
+    // Only ever passed by the admin button, where a person is watching.
+    approved: args.includes('--approved'),
   });
 }
 
