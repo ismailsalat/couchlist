@@ -2526,3 +2526,68 @@ describe('screenshots, and the review they wait for', () => {
     expect(page).toContain('Added by a moderator');
   });
 });
+
+describe('refusing an absurd request body', () => {
+  /*
+   * A validator checks every element of an array against its rules before it
+   * reaches the rule saying the array may hold six, so the length limit is
+   * enforced too late to protect the memory the validator is about to use.
+   * These guard the pass that counts lengths first.
+   */
+  it('refuses a list far longer than anything the app asks for', async () => {
+    const account = await createAccount();
+    const response = await post('/api/sources/suggest', account, {
+      url: 'https://absurd-list.test/',
+      name: 'Absurd List',
+      description: 'A body with a list nobody meant to send.',
+      categories: Array.from({ length: 50_000 }, () => 'Movies'),
+      creditMode: 'CREDITED',
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.text()).resolves.toContain('limit is');
+  });
+
+  it('refuses one buried inside another object', async () => {
+    const account = await createAccount();
+    const response = await post('/api/sources/suggest', account, {
+      url: 'https://buried-list.test/',
+      name: 'Buried List',
+      categories: ['Movies'],
+      creditMode: 'CREDITED',
+      extra: { deeper: { items: Array.from({ length: 20_000 }, () => 'x') } },
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('still accepts the biggest list the app really uses', async () => {
+    const adminUser = await admin();
+    // Bulk delete allows 200 ids; a request of that size must pass the guard
+    // and be refused (or accepted) on its own merits, not on length.
+    const response = await fetch(`${BASE_URL}/api/admin/sources`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', cookie: adminUser.cookie, origin: BASE_URL },
+      body: JSON.stringify({
+        ids: Array.from({ length: 200 }, (_, index) => `wsr_missing_${index}`),
+        confirmCount: 200,
+      }),
+    });
+
+    const text = await response.text();
+    expect(text).not.toContain('The limit is 1000');
+  });
+
+  it('leaves an ordinary request alone', async () => {
+    const account = await createAccount();
+    const response = await post('/api/sources/suggest', account, {
+      url: 'https://ordinary-list.test/',
+      name: 'Ordinary List',
+      description: 'Nothing unusual about this one at all.',
+      categories: ['Movies', 'TV'],
+      creditMode: 'CREDITED',
+    });
+
+    expect(response.status).toBe(200);
+  });
+});

@@ -37,6 +37,10 @@
     "capture:previews": "npm run build --workspace @couchlist/shared && npm run capture:previews --workspace @couchlist/db --",
     "maintenance": "npm run build --workspace @couchlist/shared && npm run maintenance --workspace @couchlist/db --"
   },
+  "_comment_overrides": "Pins a transitive dependency that npm audit flags and npm audit fix cannot reach. source-map-js is pulled in by postcss, which only ever parses this project's own CSS at build time, so the advisory does not describe anything a visitor can reach — but a clean audit is worth more than an argument about which warnings to ignore.",
+  "overrides": {
+    "source-map-js": "^1.2.2"
+  },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^22.10.2",

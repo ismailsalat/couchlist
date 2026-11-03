@@ -113,6 +113,51 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 export const MAX_REQUEST_BODY_BYTES = 2 * 1024 * 1024;
 
 /**
+ * The longest array any request to this application legitimately carries.
+ *
+ * The biggest real one is a bulk delete of 200 listings; everything else is
+ * six categories or eight links. A thousand is far above anything meant, and
+ * far below anything that hurts.
+ */
+export const MAX_ARRAY_ELEMENTS = 1_000;
+
+/** How deep to look. Request bodies here are flat; this is a cycle guard. */
+const MAX_BODY_DEPTH = 8;
+
+/**
+ * Refuses an absurd array before the validator walks it.
+ *
+ * The body cap above means a request can never be enormous, but two megabytes
+ * of `["a","a","a",...]` is still four hundred thousand elements, and a
+ * schema validator checks every one of them against its rules *before* it
+ * reaches the rule that says the array may hold six. The length limit is
+ * therefore enforced too late by the validator to protect the memory the
+ * validator itself is about to use.
+ *
+ * Counting lengths first is one cheap pass over an already-parsed object, and
+ * it is the difference between rejecting a hostile body and allocating for it.
+ * (The underlying flaw is a known advisory in the validator; this holds the
+ * line until that dependency can take a major upgrade.)
+ */
+export function assertSaneArrays(value: unknown, depth = 0): void {
+  if (depth > MAX_BODY_DEPTH || value === null || typeof value !== 'object') return;
+
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ARRAY_ELEMENTS) {
+      throw AppError.validation(
+        `That request contains a list of ${value.length} items. The limit is ${MAX_ARRAY_ELEMENTS}.`,
+      );
+    }
+    for (const entry of value) assertSaneArrays(entry, depth + 1);
+    return;
+  }
+
+  for (const entry of Object.values(value as Record<string, unknown>)) {
+    assertSaneArrays(entry, depth + 1);
+  }
+}
+
+/**
  * Refuses a body that is too large, before anything parses it.
  *
  * `Content-Length` is a claim, not a fact, so it is used only as an early
@@ -143,13 +188,29 @@ function withBodyLimit(request: Request): Request {
     }),
   );
 
-  return new Request(request.url, {
+  const limited = new Request(request.url, {
     method: request.method,
     headers: request.headers,
     body: counted,
     // Required by undici whenever a stream is used as a body.
     duplex: 'half',
   } as RequestInit & { duplex: 'half' });
+
+  /*
+   * Every route reads its body with `.json()`, so the array check belongs
+   * here rather than in each of them: a guard that has to be remembered once
+   * per route is a guard that is eventually forgotten.
+   */
+  const parse = limited.json.bind(limited);
+  Object.defineProperty(limited, 'json', {
+    value: async (): Promise<unknown> => {
+      const body: unknown = await parse();
+      assertSaneArrays(body);
+      return body;
+    },
+  });
+
+  return limited;
 }
 
 /**

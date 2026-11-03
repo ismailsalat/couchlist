@@ -42,8 +42,11 @@ at it.
 - [ ] Password reset works end to end.
 - [ ] A normal account cannot reach `/admin` or call any admin endpoint.
 - [ ] `/api/health` reports `database: healthy` and `mail: configured`.
-- [ ] The weekly link check is scheduled (`npm run check:links`), and has been
-      run once by hand so `/admin/attention` starts from a known state.
+- [ ] The weekly job is scheduled (`npm run maintenance`), and has been run
+      once by hand so `/admin/attention` starts from a known state. Optional:
+      nothing breaks without it.
+- [ ] `npm audit --omit=dev` shows nothing you have not read. One known
+      advisory is accepted on purpose: see the note in `docs/REMAINING_WORK.md`.
 - [ ] `/robots.txt` and `/sitemap.xml` show the real domain, and private paths
       are disallowed.
 - [ ] A signed-in page's HTML contains no email address and no password hash.

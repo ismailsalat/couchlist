@@ -32,6 +32,19 @@ outstanding:
   inventing one would have produced an endpoint that cannot work. Validation by
   type and size, and revoking public access to a deleted picture, need to be
   written with the storage backend. Until then a profile shows a letter tile.
+- **The zod upgrade.** `npm audit` reports one high-severity advisory in
+  production dependencies: zod below 4.6.6 can exhaust memory while validating
+  an oversized list, because it checks every element against its rules before
+  it reaches the rule saying the list may hold six. Fixing it properly means
+  zod 4, which is a major version and touches every schema in
+  `packages/shared/src`, so it is its own piece of work rather than a
+  drive-by.
+
+  Two things already stand in front of it: request bodies are capped at 2 MB,
+  and `assertSaneArrays` in `apps/web/src/lib/api/handler.ts` refuses any list
+  over a thousand elements before a validator sees it. Together those remove
+  the practical attack. Do the upgrade anyway when there is time, and delete
+  the array guard only once it is done.
 - **Google sign-in.** The brief marks it optional and later. Not started.
 - **Automatic link health checking.** Done, with one thing left to you: it
   does not run unless you schedule it. `npm run check:links` is the command and
