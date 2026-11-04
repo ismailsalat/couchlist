@@ -42,4 +42,16 @@ export async function register(): Promise<void> {
 
   // The PostgreSQL pool installs its own shutdown handler in lib/db.ts, which
   // is Node-only and so can safely import the driver.
+
+  /*
+   * Download the public blocklists if this database has never had them.
+   *
+   * Deliberately not awaited: the server must come up regardless, and a
+   * healthcheck must not wait on a 13 MB download. It is a no-op on every
+   * boot after the first.
+   */
+  if (config.ENVIRONMENT !== 'test') {
+    const { bootstrapBlocklists } = await import('@/lib/tools/bootstrap-blocklists');
+    bootstrapBlocklists();
+  }
 }

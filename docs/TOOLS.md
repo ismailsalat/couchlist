@@ -116,9 +116,19 @@ classification. If the list would flag a source purely for being the kind of
 site Couchlist exists to catalogue, it does not belong here, however
 reputable the project behind it.
 
-Capped at 300,000 entries per list, ordered most-recent-first. Run manually
-with `npm run db:sync:blocklists`; otherwise the weekly maintenance job does
-it.
+Capped at 300,000 entries per list, ordered most-recent-first.
+
+**They fill themselves.** When the web server starts and finds the table
+empty, it downloads them in the background — not awaited, so the server comes
+up immediately and a healthcheck never waits on a 13 MB download. It is a
+no-op on every boot after the first, which keeps the weekly job in charge of
+freshness rather than the restart schedule.
+
+That exists because the alternative was asking somebody to remember a one-off
+command after each fresh deploy, and a tool that silently checks less than it
+claims is worse than one that is plainly switched off.
+
+To refresh them by hand: `npm run db:sync:blocklists`.
 
 ## The browser-side tools
 
