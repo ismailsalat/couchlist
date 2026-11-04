@@ -15,13 +15,28 @@ export interface ProviderAnswer {
   cacheFor: number;
 }
 
+/**
+ * What to ask about.
+ *
+ * `host` is the hostname; `path` is the rest of the address when somebody
+ * pasted a full link. The distinction matters: Safe Browsing flags *URLs*,
+ * often a single page on an otherwise ordinary domain, so asking only about
+ * the root silently misses the thing the person is standing in front of.
+ * Google's own test URLs are path-specific for exactly this reason.
+ */
+export interface LookupTarget {
+  host: string;
+  /** Includes the leading slash, or null when only a bare domain was given. */
+  path: string | null;
+}
+
 export interface ReputationProvider {
   /** Shown verbatim in the result. */
   name: string;
   /** False when no key is configured, so the chain can skip it silently. */
   configured(): boolean;
-  /** Never receives a URL it has to fetch — only a hostname to ask about. */
-  lookup(domain: string, signal: AbortSignal): Promise<ProviderAnswer>;
+  /** Only ever asks *about* an address. Nothing here retrieves one. */
+  lookup(target: LookupTarget, signal: AbortSignal): Promise<ProviderAnswer>;
 }
 
 export const MINUTE = 60_000;

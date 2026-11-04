@@ -1,6 +1,6 @@
 import 'server-only';
 import { config } from '@/lib/config';
-import { DAY, HOUR, type ProviderAnswer, type ReputationProvider } from './types';
+import { DAY, HOUR, type LookupTarget, type ProviderAnswer, type ReputationProvider } from './types';
 
 /**
  * Google Safe Browsing, Lookup API v4.
@@ -44,13 +44,25 @@ export const safeBrowsing: ReputationProvider = {
     return config().GOOGLE_SAFE_BROWSING_API_KEY.length > 0;
   },
 
-  async lookup(domain: string, signal: AbortSignal): Promise<ProviderAnswer> {
+  async lookup(target: LookupTarget, signal: AbortSignal): Promise<ProviderAnswer> {
     const key = config().GOOGLE_SAFE_BROWSING_API_KEY;
     if (!key) return { status: 'unavailable', detail: 'Not configured.', cacheFor: 0 };
 
-    // Both schemes, because Safe Browsing matches on the URL it is given and
-    // a site can be flagged under one and not the other.
-    const threatEntries = [{ url: `http://${domain}/` }, { url: `https://${domain}/` }];
+    /*
+     * Both schemes, because Safe Browsing matches on the URL it is given and a
+     * site can be flagged under one and not the other.
+     *
+     * And the exact page when one was pasted. Safe Browsing flags URLs, not
+     * domains: a single bad page on an otherwise ordinary host is the common
+     * case, and asking only about `/` misses it entirely.
+     */
+    const threatEntries = [{ url: `http://${target.host}/` }, { url: `https://${target.host}/` }];
+    if (target.path && target.path !== '/') {
+      threatEntries.push(
+        { url: `https://${target.host}${target.path}` },
+        { url: `http://${target.host}${target.path}` },
+      );
+    }
 
     const response = await fetch(`${ENDPOINT}?key=${encodeURIComponent(key)}`, {
       method: 'POST',

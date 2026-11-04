@@ -1,6 +1,6 @@
 import 'server-only';
 import { config } from '@/lib/config';
-import { DAY, HOUR, type ProviderAnswer, type ReputationProvider } from './types';
+import { DAY, HOUR, type LookupTarget, type ProviderAnswer, type ReputationProvider } from './types';
 
 /**
  * URLhaus, by abuse.ch.
@@ -30,7 +30,11 @@ export const urlhaus: ReputationProvider = {
     return config().URLHAUS_AUTH_KEY.length > 0;
   },
 
-  async lookup(domain: string, signal: AbortSignal): Promise<ProviderAnswer> {
+  async lookup(target: LookupTarget, signal: AbortSignal): Promise<ProviderAnswer> {
+    // The host endpoint answers for a whole host, which is the right question
+    // for this source: URLhaus records where payloads were served, and a host
+    // that served one is worth knowing about whatever page you arrived at.
+    const domain = target.host;
     const key = config().URLHAUS_AUTH_KEY;
     if (!key) return { status: 'unavailable', detail: 'Not configured.', cacheFor: 0 };
 

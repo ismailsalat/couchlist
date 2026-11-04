@@ -110,3 +110,34 @@ describe('download inspection', () => {
     expect(identifyBytes(new Uint8Array([0x25, 0x50, 0x44, 0x46]))?.executable).toBe(false);
   });
 });
+
+describe('safe browsing request shape', () => {
+  it('asks about the pasted page as well as the site root', async () => {
+    const { safeBrowsing } = await import('@/lib/tools/providers/safe-browsing');
+    const sent: string[] = [];
+
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body));
+      for (const entry of body.threatInfo.threatEntries) sent.push(entry.url);
+      return new Response(JSON.stringify({}), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      process.env.GOOGLE_SAFE_BROWSING_API_KEY = 'test-key';
+      await safeBrowsing.lookup(
+        { host: 'testsafebrowsing.appspot.com', path: '/apiv4/ANY_PLATFORM/MALWARE/URL/' },
+        new AbortController().signal,
+      );
+    } finally {
+      globalThis.fetch = original;
+      delete process.env.GOOGLE_SAFE_BROWSING_API_KEY;
+    }
+
+    // The page itself, which is the only form Google's own test URLs match.
+    expect(sent).toContain('https://testsafebrowsing.appspot.com/apiv4/ANY_PLATFORM/MALWARE/URL/');
+    // And the root, both schemes, since a site can be flagged under one only.
+    expect(sent).toContain('https://testsafebrowsing.appspot.com/');
+    expect(sent).toContain('http://testsafebrowsing.appspot.com/');
+  });
+});

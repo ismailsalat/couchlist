@@ -61,6 +61,33 @@ feature is a permanent "ignore warnings" switch, and it would be a bad one.
 
 The set is captured server-side from a live check, never sent by the client.
 
+## Setting up Google Safe Browsing
+
+1. In a Google Cloud project, **enable the Safe Browsing API** — a key alone
+   is not enough, and a key for a project without the API enabled fails with
+   403 rather than anything that reads like "turn this on".
+2. Create an API key and restrict it to the Safe Browsing API, so a leaked key
+   costs you quota and nothing else.
+3. Set `GOOGLE_SAFE_BROWSING_API_KEY` locally and in the host's variables.
+
+**Testing it.** Google's test URLs are path-specific:
+
+    http://testsafebrowsing.appspot.com/apiv4/ANY_PLATFORM/MALWARE/URL/
+    http://malware.testing.google.test/testing/malware/
+
+Paste the whole thing, not the domain. The bare root of those hosts returns no
+match, so a domain-only check looks like a broken key when it is working
+perfectly.
+
+This is why the checker keeps the path when one is given. Safe Browsing flags
+*URLs*: one bad page on an otherwise ordinary host is the common case, and
+asking only about `/` misses it. Our own directory and the blocklists are
+keyed by host, so they still answer about the site; only the URL-based
+providers see the path.
+
+Cached answers are keyed by the exact target, so a clean page cannot vouch for
+a whole site and a bad page cannot condemn one.
+
 ## Blocklists
 
 Synced by `packages/db/src/scripts/sync-blocklists.ts`, from GitHub mirrors

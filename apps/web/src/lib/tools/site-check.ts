@@ -114,6 +114,24 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     throw new InvalidDomainError('That address is on a private network, so there is nothing to look up.');
   }
 
+  /*
+   * Keep the path when one was pasted.
+   *
+   * `normalizeDomain` deliberately reduces anything to a hostname, which is
+   * right for the directory and the blocklists — both are keyed by host. It
+   * is wrong for Safe Browsing, which flags individual URLs: the common case
+   * is one bad page on an otherwise ordinary domain, and dropping the path
+   * meant we asked a question nobody had.
+   */
+  let path: string | null = null;
+  try {
+    const candidate = input.query.trim().includes('://') ? input.query.trim() : `https://${input.query.trim()}`;
+    const url = new URL(candidate);
+    path = url.pathname === '/' && !url.search ? null : `${url.pathname}${url.search}`;
+  } catch {
+    path = null;
+  }
+
   const parsed = parseDomain(domain);
   const registrable = parsed.domain ?? domain;
   const label = parsed.domainWithoutSuffix ?? domain.split('.')[0]!;
@@ -266,7 +284,14 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
   }
 
   // ---- tier 3: keyed providers ---------------------------------------
-  const cachedByProvider = new Map(cached.map((entry) => [entry.provider, entry]));
+  /*
+   * Cache per exact target, not per domain. Caching a page's answer under its
+   * host would let one clean page vouch for a whole site, and one bad page
+   * condemn it.
+   */
+  const cacheTarget = path ? `${domain}${path}` : domain;
+  const cachedForTarget = path ? await tools.freshReputation(cacheTarget) : cached;
+  const cachedByProvider = new Map(cachedForTarget.map((entry) => [entry.provider, entry]));
 
   for (const provider of PROVIDERS) {
     const hit = cachedByProvider.get(provider.name);
@@ -293,12 +318,12 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
     try {
-      const answer = await provider.lookup(domain, controller.signal);
+      const answer = await provider.lookup({ host: domain, path }, controller.signal);
       signals.push({ source: provider.name, status: answer.status, detail: answer.detail });
 
       if (answer.cacheFor > 0) {
         await repos().tools.cacheReputation({
-          domain,
+          domain: cacheTarget,
           provider: provider.name,
           status: answer.status,
           detail: answer.detail,

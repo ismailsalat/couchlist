@@ -214,3 +214,36 @@ describe("a moderator's review of an external flag", () => {
     expect(verdict.level).toBe('DANGEROUS');
   });
 });
+
+describe('a pasted page, not just a domain', () => {
+  it('keeps the path for the providers but keys our own tiers by host', async () => {
+    await addSource({ id: 'wsr_path', name: 'Pathy', domain: 'pathy.test' });
+    resetKnownDomainCache();
+
+    const verdict = await checkSite({ query: 'https://pathy.test/some/page?x=1', allowNetwork: false });
+
+    // The answer is still about the site, because that is what we list.
+    expect(verdict.domain).toBe('pathy.test');
+    expect(verdict.source?.name).toBe('Pathy');
+  });
+
+  it('does not let one page cache an answer for the whole host', async () => {
+    await repos.tools.cacheReputation({
+      domain: 'cached.test/bad-page',
+      provider: 'Google Safe Browsing',
+      status: 'flagged',
+      detail: 'Flagged for malware.',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    // Asking about the bare host must not pick up the page's cached answer.
+    const host = await checkSite({ query: 'cached.test', allowNetwork: false });
+    expect(host.signals.find((s) => s.source === 'Google Safe Browsing')?.status).toBe('unavailable');
+    expect(host.level).not.toBe('DANGEROUS');
+
+    // Asking about that page again does.
+    const page = await checkSite({ query: 'https://cached.test/bad-page', allowNetwork: false });
+    expect(page.signals.find((s) => s.source === 'Google Safe Browsing')?.status).toBe('flagged');
+    expect(page.level).toBe('DANGEROUS');
+  });
+});
