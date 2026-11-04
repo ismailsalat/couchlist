@@ -5,10 +5,10 @@ import { TOOLS, toolBySlug } from '@couchlist/shared';
 import { SiteHeader } from '@/components/site-header';
 import { ComingSoon } from '@/components/tools/coming-soon';
 import { SiteChecker } from '@/components/tools/site-checker';
-import { SiteDown } from '@/components/tools/site-down';
 import { AdBlockerCheck } from '@/components/tools/ad-blocker-check';
 import { DownloadCheck } from '@/components/tools/download-check';
-import { RegionCheck } from '@/components/tools/region-check';
+import { SubtitleFixer } from '@/components/tools/subtitle-fixer';
+import { ComicBuilder } from '@/components/tools/comic-builder';
 import { StatusBoard } from '@/components/tools/status-board';
 import { liveStatus } from '@/lib/tools/status';
 import { optionalUser } from '@/lib/api/guards';
@@ -82,14 +82,14 @@ async function ToolBody({ slug }: { slug: string }) {
   switch (slug) {
     case 'site-safety':
       return <SiteChecker />;
-    case 'site-down':
-      return <SiteDown />;
     case 'ad-blocker':
       return <AdBlockerCheck />;
     case 'download-check':
       return <DownloadCheck />;
-    case 'region':
-      return <RegionCheck />;
+    case 'subtitles':
+      return <SubtitleFixer />;
+    case 'comics':
+      return <ComicBuilder />;
     case 'status':
       return <StatusBoard status={await liveStatus(repos())} />;
     default:

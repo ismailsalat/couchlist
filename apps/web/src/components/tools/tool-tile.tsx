@@ -12,6 +12,7 @@ import { Pill, ToolGlyph } from './tool-glyph';
  */
 export function ToolTile({ tool }: { tool: ToolMeta }) {
   const soon = tool.state === 'COMING_SOON';
+  const testing = tool.state === 'TESTING';
 
   return (
     <Link
@@ -40,6 +41,13 @@ export function ToolTile({ tool }: { tool: ToolMeta }) {
           <Pill tone="soon">
             <ToolGlyph icon="cone" className="h-[11px] w-[11px]" />
             Coming soon
+          </Pill>
+        ) : testing ? (
+          <Pill tone="testing">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M9.6 2.4h4.8v2.1h-1v4.1l5.2 9.6a2.4 2.4 0 0 1-2.1 3.5H7.5a2.4 2.4 0 0 1-2.1-3.5l5.2-9.6V4.5h-1z" />
+            </svg>
+            Testing
           </Pill>
         ) : (
           <Pill tone="ready">

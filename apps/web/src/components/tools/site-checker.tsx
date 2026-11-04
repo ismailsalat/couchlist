@@ -96,12 +96,12 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
   return (
     <div data-palette="green" className="rounded-2xl border border-line bg-surface p-5">
       <div className="mb-1 flex flex-wrap items-center gap-3">
-        <h2 className="m-0 text-[18px] font-bold">Is this site safe?</h2>
+        <h2 className="m-0 text-[18px] font-bold">Check a link</h2>
         <Pill palette="green">Safety</Pill>
       </div>
       <p className="mb-4 mt-0 max-w-[60ch] text-[13.5px] text-muted">
-        Paste a link. We check it against our own directory, the public blocklists we keep a copy of,
-        and the reputation services we have keys for.
+        Paste a link. You get what we know about it, the other addresses it answers on, and what to
+        use instead if it has stopped working.
       </p>
 
       <form onSubmit={run} className="flex flex-wrap gap-2.5">
@@ -139,6 +139,35 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
           tone={LEVEL_TONE[verdict.level]}
           title={verdict.title}
           footer={
+            <>
+            {verdict.mirrors?.length ? (
+              <div className="mb-4">
+                <SignalList label="Also answers on">
+                  {verdict.mirrors.map((mirror) => (
+                    <SignalRow key={mirror} tone="good" name={mirror} detail="Known address" />
+                  ))}
+                </SignalList>
+              </div>
+            ) : null}
+
+            {verdict.alternatives?.length ? (
+              <div className="mb-4">
+                <SignalList label="If this one is not working">
+                  {verdict.alternatives.map((entry) => (
+                    <li key={entry.id} className="flex items-center gap-3 py-[7px]">
+                      <Link
+                        href={`/source/${entry.id}`}
+                        className="text-[13.5px] font-semibold text-text underline underline-offset-[3px]"
+                      >
+                        {entry.name}
+                      </Link>
+                      <span className="ml-auto text-right text-[13px] text-muted">{entry.domain}</span>
+                    </li>
+                  ))}
+                </SignalList>
+              </div>
+            ) : null}
+
             <SignalList>
               {verdict.signals.map((signal, index) => (
                 <SignalRow
@@ -150,6 +179,7 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
                 />
               ))}
             </SignalList>
+            </>
           }
         >
           <p className="m-0">{verdict.body}</p>

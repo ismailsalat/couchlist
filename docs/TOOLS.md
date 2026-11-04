@@ -88,6 +88,28 @@ providers see the path.
 Cached answers are keyed by the exact target, so a clean page cannot vouch for
 a whole site and a bad page cannot condemn one.
 
+## Why there is no region check
+
+There was one. It asked your browser to fetch something from the site and
+compared that with our own scheduled check. It reported that YouTube was down.
+
+A browser cannot tell you *why* a request failed. Blocked where you are,
+blocked by your ad blocker, and refused by the site's own cross-origin policy
+all arrive as the same failure. In practice the ad blocker is the common case:
+a request to another site fired from ours looks exactly like a tracking pixel,
+which is the thing a blocker exists to stop. So the tool told people a working
+site was down, while the tool beside it congratulated them on the blocker that
+caused it.
+
+Probing a known-good control first would catch most of that — if the control
+fails too, the browser cannot probe at all. It would still not distinguish a
+regional block from a site that refuses cross-origin requests, which is most
+large sites.
+
+A real region check needs a server *in that region*. That is infrastructure,
+not a bug fix. The tool was removed rather than shipped with caveats, on the
+rule that a tool which confidently says the wrong thing is worse than no tool.
+
 ## Blocklists
 
 Synced by `packages/db/src/scripts/sync-blocklists.ts`, from GitHub mirrors
@@ -137,13 +159,38 @@ page. Nothing is uploaded. The download check reads only the first 16 bytes of
 a file — enough to tell a Windows executable from a Matroska video, and not
 enough to be worth sending anywhere.
 
+## The three states
+
+`READY` — works, and we are confident it is right.
+
+`TESTING` — works, but depends on something we cannot verify, so it says so
+and asks to be told when it is wrong. The ad blocker check lives here: it
+turns on how somebody's extension behaves, which no test of ours can settle.
+
+`COMING_SOON` — not built. Gets a dashed tile and the roadworks screen for
+free, with no page needed.
+
+The middle state exists because the alternative was a choice between
+overstating a tool and hiding it. A tool that is honest about its own
+uncertainty is still useful; one that is quietly unsure is not.
+
 ## Adding a tool
 
 1. Add an entry to `TOOLS` in `packages/shared/src/tools/catalog.ts`.
-2. With `state: 'COMING_SOON'` it gets a dashed tile and the roadworks screen
-   for free — no page needed.
-3. When it is built, add a case to `ToolBody` in `apps/web/src/app/tools/[slug]/page.tsx`
-   and flip the state to `READY`.
+2. With `COMING_SOON` there is nothing else to do.
+3. When it is built, add a case to `ToolBody` in
+   `apps/web/src/app/tools/[slug]/page.tsx` and move it to `TESTING`, then
+   `READY` once it has been used in anger.
+
+## Why there is one link tool and not two
+
+"Is this site safe?" and "Site down — what else?" were separate tools that
+took the same input and ran the same lookup. Somebody holding a link has one
+question — what is this, and where else can I go — and being made to choose a
+door first was our problem rather than theirs.
+
+The safety endpoint already returned mirrors and alternatives; the second tool
+existed only because the first was not showing them.
 
 The same `ComingSoon` component renders the maintenance screen: pass
 `heading="Be right back"` for a page that is down rather than unbuilt.

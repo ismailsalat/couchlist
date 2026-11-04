@@ -94,14 +94,16 @@ export function Pill({
 }: {
   palette?: ToolPalette;
   children: React.ReactNode;
-  tone?: 'ready' | 'soon';
+  tone?: 'ready' | 'testing' | 'soon';
 }) {
   const toneClass =
     tone === 'ready'
       ? 'bg-[#2b4037] text-[#b9e1c6] border-[#466c54]'
-      : tone === 'soon'
-        ? 'bg-warn-bg text-warn-text border-warn-line'
-        : 'bg-pal-bg text-pal-text border-pal-line';
+      : tone === 'testing'
+        ? 'bg-[#2f3a4a] text-[#c3d6ee] border-[#4d6180]'
+        : tone === 'soon'
+          ? 'bg-warn-bg text-warn-text border-warn-line'
+          : 'bg-pal-bg text-pal-text border-pal-line';
 
   return (
     <span

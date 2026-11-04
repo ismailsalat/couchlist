@@ -99,7 +99,7 @@ test.describe('download safety check', () => {
 
 test.describe('coming soon', () => {
   test('a tool that is not built says so and offers the way back', async ({ page }) => {
-    await page.goto('/tools/subtitles');
+    await page.goto('/tools/video');
 
     await expect(page.getByRole('heading', { name: 'Coming soon' })).toBeVisible();
     await expect(page.getByRole('img', { name: 'Roadworks cone' })).toBeVisible();
@@ -123,5 +123,82 @@ test.describe('live status', () => {
     await expect(page.getByText('not answering', { exact: true })).toBeVisible();
     await expect(page.getByText('answering', { exact: true })).toBeVisible();
     await expect(page.getByText('domains on our blocklists', { exact: true })).toBeVisible();
+  });
+});
+
+test.describe('subtitle fixer', () => {
+  test('shifts timing and offers the fixed file', async ({ page }) => {
+    await page.goto('/tools/subtitles');
+
+    // A real .srt, handed over the way a person would hand one over.
+    await page.setInputFiles('input[type="file"]', {
+      name: 'episode.srt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from(
+        '1\n00:00:20,000 --> 00:00:24,400\nSubtitles by someone\n\n' +
+          '2\n00:00:24,600 --> 00:00:27,800\nGood morning.\n',
+      ),
+    });
+
+    const result = page.getByRole('status');
+    await expect(result).toBeVisible({ timeout: 10_000 });
+
+    // The advert line goes, the dialogue stays.
+    await expect(result).toContainText('1 lines ready');
+    await expect(result).toContainText('1 removed');
+    await expect(result).toContainText('Good morning.');
+
+    // Nudging the slider moves the first line.
+    await expect(result).toContainText('00:00:24,600');
+    await page.getByRole('button', { name: '+1s' }).click();
+    await expect(result).toContainText('00:00:25,600');
+  });
+
+  test('says so when the file has nothing readable in it', async ({ page }) => {
+    await page.goto('/tools/subtitles');
+    await page.setInputFiles('input[type="file"]', {
+      name: 'notes.srt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('this is not a subtitle file at all'),
+    });
+
+    await expect(page.getByRole('status')).toContainText('Nothing readable');
+  });
+});
+
+test.describe('comic builder', () => {
+  test('turns loose images into a .cbz and names them in order', async ({ page }) => {
+    await page.goto('/tools/comics');
+
+    // Tiny real PNGs, so the byte sniffing has something true to read.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    await page.setInputFiles('input[type="file"]', [
+      { name: 'page10.png', mimeType: 'image/png', buffer: png },
+      { name: 'page2.png', mimeType: 'image/png', buffer: png },
+    ]);
+
+    // Sorted the way a reader would expect, not as text.
+    const rows = page.locator('li', { hasText: 'page' });
+    await expect(rows.first()).toContainText('page2.png');
+
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Build the .cbz' }).click();
+    expect((await download).suggestedFilename()).toBe('chapter.cbz');
+
+    await expect(page.getByRole('status')).toContainText('2');
+  });
+
+  test('refuses files that are not images', async ({ page }) => {
+    await page.goto('/tools/comics');
+    await page.setInputFiles('input[type="file"]', {
+      name: 'notes.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('not an image'),
+    });
+
+    await expect(page.locator('p[role="alert"]')).toContainText('images we can read');
   });
 });

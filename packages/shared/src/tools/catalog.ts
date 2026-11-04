@@ -13,7 +13,15 @@
 export const TOOL_PALETTES = ['blue', 'purple', 'green', 'pink', 'olive', 'teal', 'slate'] as const;
 export type ToolPalette = (typeof TOOL_PALETTES)[number];
 
-export type ToolState = 'READY' | 'COMING_SOON';
+/**
+ * `TESTING` is the honest middle.
+ *
+ * A tool can work and still not be proven — the ad blocker check depends on
+ * how somebody's extension behaves, which cannot be verified from here.
+ * Calling that Ready overstates it and hiding it behind a cone understates
+ * it, so it says what it is and invites being told when it is wrong.
+ */
+export type ToolState = 'READY' | 'TESTING' | 'COMING_SOON';
 
 export interface ToolMeta {
   slug: string;
@@ -34,9 +42,17 @@ export interface ToolMeta {
 
 export const TOOLS: readonly ToolMeta[] = [
   {
+    /*
+     * One link tool, not two.
+     *
+     * "Is this safe?" and "this is down, what else?" were separate tools that
+     * took the same input and ran the same lookup. Somebody with a link in
+     * their hand has one question — what is this and where else can I go —
+     * and making them pick a door first was our problem, not theirs.
+     */
     slug: 'site-safety',
-    name: 'Is this site safe?',
-    blurb: 'Paste a link and see what Couchlist and the public blocklists know about it.',
+    name: 'Check a link',
+    blurb: 'Is it safe, where else does it live, and what to use instead.',
     tag: 'Safety',
     palette: 'green',
     state: 'READY',
@@ -44,23 +60,33 @@ export const TOOLS: readonly ToolMeta[] = [
     runsInBrowser: false,
   },
   {
-    slug: 'site-down',
-    name: 'Site down — what else?',
-    blurb: 'Dead link in, mirrors and close alternatives out.',
-    tag: 'Links',
-    palette: 'blue',
+    slug: 'subtitles',
+    name: 'Fix subtitles',
+    blurb: 'Out of sync? Shift it until it matches. Converts and cleans them too.',
+    tag: 'Watching',
+    palette: 'pink',
     state: 'READY',
-    icon: 'link',
-    runsInBrowser: false,
+    icon: 'captions',
+    runsInBrowser: true,
   },
   {
-    slug: 'ad-blocker',
-    name: 'Ad blocker check',
-    blurb: 'Tells you whether yours is actually working, right now.',
+    slug: 'comics',
+    name: 'Make a .cbz',
+    blurb: 'Chapter images into one file your reader opens, in the right order.',
+    tag: 'Reading',
+    palette: 'teal',
+    state: 'READY',
+    icon: 'book',
+    runsInBrowser: true,
+  },
+  {
+    slug: 'download-check',
+    name: 'Check a download',
+    blurb: 'Spots the .exe pretending to be a video, without uploading anything.',
     tag: 'Safety',
     palette: 'green',
     state: 'READY',
-    icon: 'shield',
+    icon: 'download',
     runsInBrowser: true,
   },
   {
@@ -74,57 +100,25 @@ export const TOOLS: readonly ToolMeta[] = [
     runsInBrowser: false,
   },
   {
-    slug: 'region',
-    name: 'Region check',
-    blurb: 'Whether a site works where you are, or only elsewhere.',
-    tag: 'Links',
-    palette: 'blue',
-    state: 'READY',
-    icon: 'globe',
-    runsInBrowser: true,
-  },
-  {
-    slug: 'download-check',
-    name: 'Download safety check',
-    blurb: 'Spots the .exe pretending to be a video, without uploading anything.',
+    slug: 'ad-blocker',
+    name: 'Ad blocker check',
+    blurb: 'Tells you whether yours is actually working, right now.',
     tag: 'Safety',
     palette: 'green',
-    state: 'READY',
-    icon: 'download',
+    state: 'TESTING',
+    icon: 'shield',
     runsInBrowser: true,
-  },
-  {
-    slug: 'subtitles',
-    name: 'Subtitle tools',
-    blurb: 'Fix timing, convert formats, repair garbled text.',
-    tag: 'Subtitles',
-    palette: 'pink',
-    state: 'COMING_SOON',
-    icon: 'captions',
-    runsInBrowser: true,
-    plan: 'Shift or stretch a .srt, convert between .ass, .vtt and .srt, repair subtitles that show as nonsense, and strip the advert lines rippers bake in.',
   },
   {
     slug: 'video',
     name: 'Video tools',
     blurb: 'Pull subtitles out of an .mkv, trim, compress.',
-    tag: 'Video',
+    tag: 'Watching',
     palette: 'purple',
     state: 'COMING_SOON',
     icon: 'film',
     runsInBrowser: true,
-    plan: 'Extract the subtitle tracks baked into an .mkv, cut a clip, or shrink a file — all on your own machine. It needs a large one-time download in the browser, which is why it is not first in the queue.',
-  },
-  {
-    slug: 'comics',
-    name: 'Comic file tools',
-    blurb: 'Build a .cbz, shrink one, split long strips.',
-    tag: 'Files',
-    palette: 'teal',
-    state: 'COMING_SOON',
-    icon: 'book',
-    runsInBrowser: true,
-    plan: 'Turn a folder of chapter images into one .cbz your reader opens, shrink an oversized volume, and cut a giant webtoon strip into readable pages.',
+    plan: 'Extract the subtitle tracks baked into an .mkv, cut a clip, or shrink a file \u2014 all on your own machine. It needs a large one-time download in the browser, which is why it is not first in the queue.',
   },
 ];
 
@@ -132,5 +126,10 @@ export function toolBySlug(slug: string): ToolMeta | undefined {
   return TOOLS.find((tool) => tool.slug === slug);
 }
 
-export const READY_TOOLS: readonly ToolMeta[] = TOOLS.filter((tool) => tool.state === 'READY');
-export const UPCOMING_TOOLS: readonly ToolMeta[] = TOOLS.filter((tool) => tool.state === 'COMING_SOON');
+/** Everything somebody can use today, proven or not. */
+export const USABLE_TOOLS: readonly ToolMeta[] = TOOLS.filter(
+  (tool) => tool.state === 'READY' || tool.state === 'TESTING',
+);
+export const UPCOMING_TOOLS: readonly ToolMeta[] = TOOLS.filter(
+  (tool) => tool.state === 'COMING_SOON',
+);

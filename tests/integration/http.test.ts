@@ -254,7 +254,7 @@ describe('public browsing needs no account', () => {
 
     const html = await hub.text();
     expect(html).toContain('Tools &amp; Guides');
-    expect(html).toContain('Is this site safe?');
+    expect(html).toContain('Check a link');
 
     // Server-rendered order, not just presence: the tools section has to come
     // before the guides one, which is the whole point of the page.
@@ -267,7 +267,7 @@ describe('public browsing needs no account', () => {
     expect(ready.status).toBe(200);
     expect(await ready.text()).toContain('Download safety check');
 
-    const soon = await fetch(`${BASE_URL}/tools/subtitles`);
+    const soon = await fetch(`${BASE_URL}/tools/video`);
     expect(soon.status).toBe(200);
     expect(await soon.text()).toContain('Coming soon');
 

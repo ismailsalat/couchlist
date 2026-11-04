@@ -116,3 +116,44 @@ to do is match on display name or on an unverified email address.
 guides, a capped favourites shelf on profiles, and a Discord bot. Each entry
 records the trap the obvious version falls into, which is the part that gets
 forgotten when somebody picks the idea up again.
+
+## Open items from the tools work
+
+### The live status page is empty until something checks the links
+
+`/tools/status` reads stored results from the weekly link check. That job has
+never run in production, so all 54 sources read "not checked yet" and the
+counts are 0 up, 0 down, 54 unchecked.
+
+This is the page behaving correctly — unchecked is its own state and is never
+counted as working — but it makes the page useless until the job exists.
+
+**The cause is the missing weekly service**, not the page. The same job also
+fills listing screenshots and empties the thirty-day deleted bin, which are
+likewise empty. `docs/DEPLOYMENT.md` has the five-field setup.
+
+**The fix, if the cron keeps not happening:** do what the blocklists now do and
+run the check from `instrumentation.ts` in the background when nothing has
+ever been checked. Started and then abandoned, deliberately: unlike a
+blocklist, link health goes stale within days, so a boot-time check gives one
+good snapshot and then quietly rots unless deploys are frequent. A staleness
+window (re-check when the newest result is over a week old) would make deploys
+refresh it, at the cost of 54 outbound requests per deploy. Worth doing only
+if the scheduled service is genuinely never going to exist.
+
+### KissAnime is listed at `kissanime.tv.in`
+
+Worth a human look. That is the exact shape the tool's own lookalike check
+exists to catch: a well-known name, long dead at its original address, on an
+unusual suffix. It may be a genuine successor and it may be somebody who took
+the name — the directory cannot tell, and neither can the checker.
+
+Two consequences while it stays listed:
+
+- the name check will flag *other* domains for resembling it, treating it as
+  the thing worth imitating;
+- anybody pasting a different `kissanime.*` address gets told it resembles a
+  site Couchlist lists, which is only useful advice if this one is the real one.
+
+Same question applies to `kuoranime.com`, listed as **KuroAnime** — the
+spelling in the domain is not the spelling in the name.

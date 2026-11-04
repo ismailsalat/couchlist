@@ -9,7 +9,7 @@ import {
   parseGuideDevice,
   parseGuideTopicFilter,
 } from '@couchlist/shared';
-import { READY_TOOLS, UPCOMING_TOOLS } from '@couchlist/shared';
+import { USABLE_TOOLS, UPCOMING_TOOLS } from '@couchlist/shared';
 import { SiteHeader } from '@/components/site-header';
 import { SiteChecker } from '@/components/tools/site-checker';
 import { ToolTile } from '@/components/tools/tool-tile';
@@ -109,7 +109,7 @@ export default async function GuidesPage({
           <SiteChecker />
 
           <div className="mt-2.5 grid grid-cols-1 gap-2.5 xs:grid-cols-2 lg:grid-cols-3">
-            {READY_TOOLS.filter((tool) => tool.slug !== 'site-safety').map((tool) => (
+            {USABLE_TOOLS.filter((tool) => tool.slug !== 'site-safety').map((tool) => (
               <ToolTile key={tool.slug} tool={tool} />
             ))}
             {UPCOMING_TOOLS.map((tool) => (
