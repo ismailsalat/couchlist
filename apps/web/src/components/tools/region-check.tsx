@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { SignalList, SignalRow, ToolResult, type Tone } from './result';
 
 /**
  * Pull the message out of an API failure.
@@ -38,24 +39,24 @@ interface ServerSide {
   checkedAt: string | null;
 }
 
-const COPY: Record<Outcome, { palette: string; title: string; body: string }> = {
+const COPY: Record<Outcome, { tone: Tone; title: string; body: string }> = {
   both: {
-    palette: 'green',
+    tone: 'good',
     title: 'Works for you and for us',
     body: 'Your browser reached it and so did our last scheduled check. Nothing regional is in the way.',
   },
   'only-us': {
-    palette: 'olive',
+    tone: 'warn',
     title: 'We can reach it, you cannot',
     body: 'It answered our check but not your browser. That usually means a regional block, your network or DNS filtering it, or an extension stopping the request.',
   },
   'only-you': {
-    palette: 'blue',
+    tone: 'neutral',
     title: 'You can reach it, we could not',
     body: 'Your browser got through where our last check did not. Our check may be out of date, or the site may refuse automated requests. Either way it works for you.',
   },
   neither: {
-    palette: 'pink',
+    tone: 'bad',
     title: 'Neither of us can reach it',
     body: 'It did not answer here or on our last check, so it is most likely down for everyone rather than blocked where you are.',
   },
@@ -170,20 +171,35 @@ export function RegionCheck() {
       ) : null}
 
       {shown ? (
-        <div
-          data-palette={shown.palette}
-          className="mt-4 rounded-xl border border-pal-line bg-pal-bg p-4"
-          role="status"
+        <ToolResult
+          tone={shown.tone}
+          title={shown.title}
+          footer={
+            <SignalList label="Who could reach it">
+              <SignalRow
+                tone={outcome === 'both' || outcome === 'only-you' ? 'good' : 'bad'}
+                name="Your browser, just now"
+                detail={outcome === 'both' || outcome === 'only-you' ? 'Reached it' : 'Could not reach it'}
+              />
+              <SignalRow
+                tone={server?.reachable ? 'good' : server?.checkedAt ? 'bad' : 'off'}
+                name="Couchlist, on its last check"
+                detail={
+                  server?.checkedAt
+                    ? server.reachable
+                      ? 'Reached it'
+                      : 'Could not reach it'
+                    : 'Never checked'
+                }
+                when={server?.checkedAt ? new Date(server.checkedAt).toLocaleDateString() : undefined}
+              />
+            </SignalList>
+          }
         >
-          <strong className="text-[15px] font-bold text-pal-text">{shown.title}</strong>
-          <p className="mb-0 mt-1.5 max-w-[62ch] text-[13.5px] text-muted">{shown.body}</p>
-          <p className="mb-0 mt-2.5 text-[12px] text-muted/75">
-            {server?.checkedAt
-              ? `Our side was last checked ${new Date(server.checkedAt).toLocaleDateString()}.`
-              : 'We have no scheduled check for this one yet, so the comparison is one-sided.'}
-          </p>
-        </div>
+          <p className="m-0">{shown.body}</p>
+        </ToolResult>
       ) : null}
+
     </div>
   );
 }

@@ -36,7 +36,7 @@ export const urlhaus: ReputationProvider = {
     // that served one is worth knowing about whatever page you arrived at.
     const domain = target.host;
     const key = config().URLHAUS_AUTH_KEY;
-    if (!key) return { status: 'unavailable', detail: 'Not configured.', cacheFor: 0 };
+    if (!key) return { status: 'unavailable', detail: 'No key set up', cacheFor: 0 };
 
     const response = await fetch(ENDPOINT, {
       method: 'POST',
@@ -49,23 +49,23 @@ export const urlhaus: ReputationProvider = {
     });
 
     if (!response.ok) {
-      return { status: 'unavailable', detail: `HTTP ${response.status}.`, cacheFor: 0 };
+      return { status: 'unavailable', detail: `Service error ${response.status}`, cacheFor: 0 };
     }
 
     const body = (await response.json()) as HostResponse;
 
     if (body.query_status === 'no_results') {
-      return { status: 'clean', detail: 'No malware URLs recorded for this host.', cacheFor: 12 * HOUR };
+      return { status: 'clean', detail: 'No malware recorded here', cacheFor: 12 * HOUR };
     }
     if (body.query_status !== 'ok') {
-      return { status: 'unknown', detail: 'URLhaus could not answer for this host.', cacheFor: HOUR };
+      return { status: 'unknown', detail: 'No answer', cacheFor: HOUR };
     }
 
     const urls = body.urls ?? [];
     const online = urls.filter((entry) => entry.url_status === 'online').length;
 
     if (urls.length === 0) {
-      return { status: 'clean', detail: 'No malware URLs recorded for this host.', cacheFor: 12 * HOUR };
+      return { status: 'clean', detail: 'No malware recorded here', cacheFor: 12 * HOUR };
     }
 
     const threats = [...new Set(urls.map((entry) => entry.threat).filter(Boolean))];

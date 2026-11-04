@@ -137,7 +137,7 @@ describe('being honest about what was checked', () => {
 
     const tier = verdict.signals.find((signal) => signal.source === 'Public blocklists');
     expect(tier?.status).toBe('unavailable');
-    expect(tier?.detail).toContain('Not synced yet');
+    expect(tier?.detail).toContain('Not downloaded yet');
   });
 
   it('says how much it checked against once they are synced', async () => {

@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { SiteVerdict, VerdictLevel } from '@couchlist/shared';
+import type { SiteVerdict, VerdictLevel, VerdictSignal } from '@couchlist/shared';
 import { Pill } from './tool-glyph';
+import { SignalList, SignalRow, ToolResult, type Tone } from './result';
 
 /**
  * Pull the message out of an API failure.
@@ -28,20 +29,36 @@ function apiMessage(body: unknown, fallback: string): string {
  * number we made up.
  */
 
-const TONE: Record<VerdictLevel, { palette: string; dot: string }> = {
-  LISTED_OK: { palette: 'green', dot: '#b9e1c6' },
-  LISTED_WARN: { palette: 'olive', dot: '#f6ba7b' },
-  REMOVED: { palette: 'pink', dot: '#ffb0b0' },
-  DANGEROUS: { palette: 'pink', dot: '#ffb0b0' },
-  UNKNOWN: { palette: 'slate', dot: '#c3d6ee' },
+const LEVEL_TONE: Record<VerdictLevel, Tone> = {
+  LISTED_OK: 'good',
+  LISTED_WARN: 'warn',
+  REMOVED: 'bad',
+  DANGEROUS: 'bad',
+  UNKNOWN: 'neutral',
 };
 
-const STATUS_WORD: Record<string, string> = {
-  clean: 'clean',
-  flagged: 'flagged',
-  unknown: 'no answer',
-  unavailable: 'unavailable',
-};
+/**
+ * How one piece of evidence reads.
+ *
+ * `unavailable` is deliberately not a failure mark. A provider we have no key
+ * for has not gone wrong; it simply has nothing to say, and dressing that as
+ * an error teaches people to ignore the marks that matter.
+ */
+function signalTone(signal: VerdictSignal): Tone {
+  if (signal.status === 'flagged') return 'bad';
+  if (signal.status === 'clean') return 'good';
+  if (signal.status === 'unavailable') return 'off';
+  return 'neutral';
+}
+
+function ago(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days < 1) return 'today';
+  if (days === 1) return 'yesterday';
+  if (days < 30) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
 
 export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
   const [query, setQuery] = useState(initialQuery);
@@ -75,8 +92,6 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
       setBusy(false);
     }
   }
-
-  const tone = verdict ? TONE[verdict.level] : null;
 
   return (
     <div data-palette="green" className="rounded-2xl border border-line bg-surface p-5">
@@ -119,42 +134,36 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
         </p>
       ) : null}
 
-      {verdict && tone ? (
-        <div
-          data-palette={tone.palette}
-          className="mt-4 rounded-xl border border-pal-line bg-pal-bg p-4"
-          role="status"
+      {verdict ? (
+        <ToolResult
+          tone={LEVEL_TONE[verdict.level]}
+          title={verdict.title}
+          footer={
+            <SignalList>
+              {verdict.signals.map((signal, index) => (
+                <SignalRow
+                  key={`${signal.source}-${index}`}
+                  tone={signalTone(signal)}
+                  name={signal.source}
+                  detail={signal.detail}
+                  when={ago(signal.checkedAt)}
+                />
+              ))}
+            </SignalList>
+          }
         >
-          <div className="flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 flex-none rounded-full" style={{ background: tone.dot }} aria-hidden />
-            <strong className="text-[15px] font-bold text-pal-text">{verdict.title}</strong>
-          </div>
-          <p className="mb-0 mt-1.5 max-w-[64ch] text-[13.5px] text-muted">{verdict.body}</p>
-
+          <p className="m-0">{verdict.body}</p>
           {verdict.source ? (
             <Link
               href={verdict.source.slugPath}
-              className="mt-2.5 inline-block text-[13px] font-semibold text-pal-text underline underline-offset-[3px]"
+              className="mt-2 inline-block text-[13.5px] font-semibold text-pal-text underline underline-offset-[3px]"
             >
-              Open the listing for {verdict.source.name}
+              Open {verdict.source.name}
             </Link>
           ) : null}
-
-          <ul className="mt-3.5 flex list-none flex-col gap-1.5 border-t border-pal-line/60 p-0 pt-3">
-            {verdict.signals.map((signal, index) => (
-              <li key={`${signal.source}-${index}`} className="flex flex-wrap items-baseline gap-x-2 text-[12.5px]">
-                <span className="font-semibold text-pal-text">{signal.source}</span>
-                <span className="text-muted">— {STATUS_WORD[signal.status] ?? signal.status}.</span>
-                <span className="text-muted/85">{signal.detail}</span>
-              </li>
-            ))}
-          </ul>
-
-          <p className="mb-0 mt-3 text-[12px] text-muted/75">
-            A clean result means nobody has reported this address. It is not a promise that it is safe.
-          </p>
-        </div>
+        </ToolResult>
       ) : null}
+
     </div>
   );
 }

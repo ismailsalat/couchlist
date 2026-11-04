@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { SiteVerdict } from '@couchlist/shared';
+import { SignalList, SignalRow, ToolResult } from './result';
 
 /**
  * Pull the message out of an API failure.
@@ -100,71 +101,56 @@ export function SiteDown() {
       ) : null}
 
       {verdict ? (
-        <div data-palette="blue" className="mt-4 rounded-xl border border-pal-line bg-pal-bg p-4" role="status">
-          {verdict.source ? (
-            <>
-              <strong className="text-[15px] font-bold text-pal-text">{verdict.source.name}</strong>
-              <p className="mb-0 mt-1 text-[13px] text-muted">
-                {check ? check.detail : 'We have not checked this one yet.'}
-              </p>
-            </>
-          ) : (
-            <>
-              <strong className="text-[15px] font-bold text-pal-text">Not in the directory</strong>
-              <p className="mb-0 mt-1 max-w-[62ch] text-[13px] text-muted">
-                We do not list this address, so there are no mirrors to offer. Browsing by category in
-                Discover is the next best thing.
-              </p>
-            </>
-          )}
-
-          {verdict.mirrors?.length ? (
-            <div className="mt-3.5 border-t border-pal-line/60 pt-3">
-              <p className="m-0 text-[12.5px] font-semibold text-pal-text">Other addresses it answers on</p>
-              <ul className="mt-1.5 flex list-none flex-wrap gap-2 p-0">
-                {verdict.mirrors.map((mirror) => (
-                  <li
-                    key={mirror}
-                    className="rounded-pill border border-pal-line px-2.5 py-1 text-[12.5px] text-muted"
-                  >
-                    {mirror}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {verdict.alternatives?.length ? (
-            <div className="mt-3.5 border-t border-pal-line/60 pt-3">
-              <p className="m-0 text-[12.5px] font-semibold text-pal-text">Close alternatives</p>
-              <ul className="mt-1.5 flex list-none flex-col gap-1.5 p-0">
-                {verdict.alternatives.map((entry) => (
-                  <li key={entry.id} className="text-[13px]">
-                    <Link
-                      href={`/source/${entry.id}`}
-                      className="font-semibold text-pal-text underline underline-offset-[3px]"
-                    >
-                      {entry.name}
-                    </Link>
-                    <span className="text-muted"> — {entry.domain}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : verdict.source ? (
-            <p className="mb-0 mt-3 text-[12.5px] text-muted/80">
-              Nothing else in the directory shares its categories yet.
-            </p>
-          ) : null}
-
+        <ToolResult
+          tone={verdict.source ? (verdict.mirrors?.length ? 'good' : 'neutral') : 'off'}
+          title={verdict.source ? verdict.source.name : 'Not in the directory'}
+          footer={
+            verdict.mirrors?.length || verdict.alternatives?.length ? (
+              <>
+                {verdict.mirrors?.length ? (
+                  <SignalList label="Other addresses it answers on">
+                    {verdict.mirrors.map((mirror) => (
+                      <SignalRow key={mirror} tone="good" name={mirror} detail="Known mirror" />
+                    ))}
+                  </SignalList>
+                ) : null}
+                {verdict.alternatives?.length ? (
+                  <div className={verdict.mirrors?.length ? 'mt-4' : ''}>
+                    <SignalList label="Close alternatives">
+                      {verdict.alternatives.map((entry) => (
+                        <li key={entry.id} className="flex items-center gap-3 py-[7px]">
+                          <Link
+                            href={`/source/${entry.id}`}
+                            className="text-[13.5px] font-semibold text-text underline underline-offset-[3px]"
+                          >
+                            {entry.name}
+                          </Link>
+                          <span className="ml-auto text-right text-[13px] text-muted">{entry.domain}</span>
+                        </li>
+                      ))}
+                    </SignalList>
+                  </div>
+                ) : null}
+              </>
+            ) : null
+          }
+        >
+          <p className="m-0">
+            {verdict.source
+              ? check
+                ? check.detail
+                : 'We have not checked this one yet.'
+              : 'We do not list this address, so there are no mirrors to offer. Browsing by category in Discover is the next best thing.'}
+          </p>
           <Link
             href="/"
-            className="mt-3.5 inline-block text-[13px] font-semibold text-pal-text underline underline-offset-[3px]"
+            className="mt-2 inline-block text-[13.5px] font-semibold text-pal-text underline underline-offset-[3px]"
           >
             Browse the directory
           </Link>
-        </div>
+        </ToolResult>
       ) : null}
+
     </div>
   );
 }

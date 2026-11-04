@@ -412,6 +412,13 @@ h3 {
 [data-palette='teal']   { --pal-bg: #26433f; --pal-text: #a9e0d6; --pal-line: #406c62; }
 [data-palette='slate']  { --pal-bg: #2f3a4a; --pal-text: #c3d6ee; --pal-line: #4d6180; }
 
+/* A caution is amber, not olive. The olive in the set above is a *category*
+   colour; warnings have their own reserved range and must not borrow from the
+   categories, or a warning reads as a content type. */
+[data-palette='caution'] { --pal-bg: #4a3522; --pal-text: #f6ba7b; --pal-line: #7d5531; }
+/* And danger is the reserved red, not the pink used for the Manga category. */
+[data-palette='danger']  { --pal-bg: #4e2a2d; --pal-text: #ffb0b0; --pal-line: #864447; }
+
 /* The roadworks cone rocks, gently, and only for people who want motion. */
 @media (prefers-reduced-motion: no-preference) {
   .cl-cone { animation: cl-cone-tilt 3.2s ease-in-out infinite; transform-origin: 50% 88%; }
@@ -425,4 +432,13 @@ h3 {
 .cl-hazard {
   background-color: #2b2c33;
   background-image: repeating-linear-gradient(135deg, #f0963f 0 12px, transparent 12px 24px);
+}
+
+/* Results arrive rather than appear. One short movement, nothing bouncy. */
+@media (prefers-reduced-motion: no-preference) {
+  .cl-rise { animation: cl-rise .34s cubic-bezier(.22, 1, .36, 1) both; }
+  @keyframes cl-rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+  }
 }

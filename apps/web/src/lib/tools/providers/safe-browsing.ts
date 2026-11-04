@@ -46,7 +46,7 @@ export const safeBrowsing: ReputationProvider = {
 
   async lookup(target: LookupTarget, signal: AbortSignal): Promise<ProviderAnswer> {
     const key = config().GOOGLE_SAFE_BROWSING_API_KEY;
-    if (!key) return { status: 'unavailable', detail: 'Not configured.', cacheFor: 0 };
+    if (!key) return { status: 'unavailable', detail: 'No key set up', cacheFor: 0 };
 
     /*
      * Both schemes, because Safe Browsing matches on the URL it is given and a
@@ -81,7 +81,7 @@ export const safeBrowsing: ReputationProvider = {
 
     if (!response.ok) {
       // 429 is the quota, which is a normal condition rather than a bug.
-      const reason = response.status === 429 ? 'Daily quota reached.' : `HTTP ${response.status}.`;
+      const reason = response.status === 429 ? 'Daily quota used up' : `Service error ${response.status}`;
       return { status: 'unavailable', detail: reason, cacheFor: 0 };
     }
 
@@ -99,7 +99,7 @@ export const safeBrowsing: ReputationProvider = {
 
     return {
       status: 'flagged',
-      detail: `Flagged for ${kinds.join(' and ')}.`,
+      detail: `Flagged for ${kinds.join(' and ')}`,
       cacheFor,
     };
   },

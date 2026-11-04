@@ -170,19 +170,19 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
       signals.push({
         source: 'Couchlist',
         status: 'flagged',
-        detail: 'Removed from the directory.',
+        detail: 'Removed from the directory',
         checkedAt: row.deletedAt.toISOString(),
       });
     } else if (row.shouldAvoid) {
       level = 'LISTED_WARN';
       title = 'Listed, with an avoid warning';
       body = row.avoidReason ?? 'This is in the directory but carries our strongest warning.';
-      signals.push({ source: 'Couchlist', status: 'flagged', detail: 'Carries an avoid warning.' });
+      signals.push({ source: 'Couchlist', status: 'flagged', detail: 'Carries an avoid warning' });
     } else if (row.hiddenAt) {
       level = 'UNKNOWN';
       title = 'Not published yet';
       body = 'This one is in the directory but not published, so it has not been checked by anybody yet.';
-      signals.push({ source: 'Couchlist', status: 'unknown', detail: 'Added but not yet published.' });
+      signals.push({ source: 'Couchlist', status: 'unknown', detail: 'Added, not published yet' });
     } else {
       level = row.hasLotsOfAds ? 'LISTED_WARN' : 'LISTED_OK';
       title = row.hasLotsOfAds ? 'Listed, expect heavy ads' : 'Listed on Couchlist';
@@ -195,8 +195,8 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
         source: 'Couchlist',
         status: row.hasLotsOfAds ? 'flagged' : 'clean',
         detail: row.hasLotsOfAds
-          ? 'Listed, with the heavy-ads warning.'
-          : `Listed${row.trustedRank !== null ? ' and marked as a moderator pick' : ''}.`,
+          ? 'Listed, heavy ads'
+          : `Listed${row.trustedRank !== null ? ' \u00b7 moderator pick' : ''}`,
       });
     }
 
@@ -207,8 +207,8 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
         source: 'Couchlist link check',
         status: healthy ? 'clean' : 'unknown',
         detail: healthy
-          ? 'Answered normally when we last checked.'
-          : `Last check came back ${String(row.healthStatus ?? 'inconclusive').toLowerCase()}.`,
+          ? 'Answered normally'
+          : `Last check: ${String(row.healthStatus ?? 'inconclusive').toLowerCase()}`,
         checkedAt: row.lastHealthCheckAt.toISOString(),
       });
       if (!healthy && row.healthFailures >= 3 && level === 'LISTED_OK') {
@@ -233,7 +233,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     signals.push({
       source: hit.list,
       status: 'flagged',
-      detail: `Listed as ${hit.category.toLowerCase()}.`,
+      detail: `Listed as ${hit.category.toLowerCase()}`,
       checkedAt: hit.lastSeenAt.toISOString(),
     });
   }
@@ -244,7 +244,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     signals.push({
       source: hit.list,
       status: 'unknown',
-      detail: 'On ad and tracker blocklists. Common, and not dangerous by itself.',
+      detail: 'On ad and tracker lists \u00b7 common, not dangerous',
       checkedAt: hit.lastSeenAt.toISOString(),
     });
   }
@@ -265,13 +265,13 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
         ? {
             source: coverage.lists.length > 0 ? coverage.lists.join(' + ') : 'Public blocklists',
             status: 'clean',
-            detail: `Not on ${coverage.domains.toLocaleString('en-GB')} domains we hold from the public phishing and malware lists.`,
+            detail: `Clear of ${coverage.domains.toLocaleString('en-GB')} known bad domains`,
             checkedAt: coverage.syncedAt ? coverage.syncedAt.toISOString() : undefined,
           }
         : {
             source: 'Public blocklists',
             status: 'unavailable',
-            detail: 'Not synced yet, so nothing was checked against them.',
+            detail: 'Not downloaded yet',
           },
     );
   }
@@ -307,11 +307,11 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     }
 
     if (!provider.configured()) {
-      signals.push({ source: provider.name, status: 'unavailable', detail: 'Not configured.' });
+      signals.push({ source: provider.name, status: 'unavailable', detail: 'Not set up' });
       continue;
     }
     if (input.allowNetwork === false) {
-      signals.push({ source: provider.name, status: 'unavailable', detail: 'Skipped.' });
+      signals.push({ source: provider.name, status: 'unavailable', detail: 'Skipped' });
       continue;
     }
 
@@ -338,7 +338,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
       signals.push({
         source: provider.name,
         status: 'unavailable',
-        detail: 'Did not answer in time.',
+        detail: 'Timed out',
       });
     } finally {
       clearTimeout(timer);
@@ -390,7 +390,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
       signals.push({
         source: 'Couchlist review',
         status: 'clean',
-        detail: `A moderator reviewed ${flaggedBy.join(' and ')} and kept this listing.`,
+        detail: 'A moderator checked this warning and kept it',
         checkedAt: row.reputationReviewedAt.toISOString(),
       });
     } else {
@@ -409,7 +409,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     signals.push({
       source: 'Couchlist name check',
       status: 'flagged',
-      detail: 'Written in a non-Latin script that can be made to look Latin.',
+      detail: 'Non-Latin characters that can imitate ordinary letters',
     });
     if (!row) {
       level = escalate(level, 'LISTED_WARN');
@@ -434,7 +434,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
       signals.push({
         source: 'Couchlist name check',
         status: 'flagged',
-        detail: `Resembles ${strong.known.domain}, which is a different site.`,
+        detail: `Resembles ${strong.known.domain}`,
       });
     }
   }
@@ -443,7 +443,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
     signals.push({
       source: 'Couchlist',
       status: 'unknown',
-      detail: 'Not in the directory. Nobody has added or reported it.',
+      detail: 'Not listed here',
     });
   }
 

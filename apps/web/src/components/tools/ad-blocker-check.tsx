@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import Link from 'next/link';
+import { SignalList, SignalRow, ToolResult, type Tone } from './result';
 
 /**
  * Is your ad blocker working?
@@ -127,52 +128,48 @@ export function AdBlockerCheck() {
       </button>
 
       {result ? (
-        <div
-          data-palette={blockedCount === 2 ? 'green' : blockedCount === 1 ? 'olive' : 'pink'}
-          className="mt-4 rounded-xl border border-pal-line bg-pal-bg p-4"
-          role="status"
-        >
-          <strong className="text-[15px] font-bold text-pal-text">
-            {blockedCount === 2
+        <ToolResult
+          tone={(blockedCount === 2 ? 'good' : blockedCount === 1 ? 'warn' : 'bad') as Tone}
+          title={
+            blockedCount === 2
               ? 'Your ad blocker is working'
               : blockedCount === 1
                 ? 'Partly working'
-                : 'Nothing is being blocked'}
-          </strong>
-
-          <p className="mb-0 mt-1.5 max-w-[62ch] text-[13.5px] text-muted">
+                : 'Nothing is being blocked'
+          }
+          footer={
+            <SignalList label="The two tests">
+              <SignalRow
+                tone={result.element === 'blocked' ? 'good' : 'bad'}
+                name="Hidden elements"
+                detail={result.element === 'blocked' ? 'Blocked' : 'Not blocked'}
+              />
+              <SignalRow
+                tone={result.request === 'blocked' ? 'good' : 'bad'}
+                name="Blocked requests"
+                detail={result.request === 'blocked' ? 'Blocked' : 'Not blocked'}
+              />
+            </SignalList>
+          }
+        >
+          <p className="m-0">
             {blockedCount === 2
               ? 'Both tests were blocked. You are about as protected as a blocker can make you.'
               : blockedCount === 1
-                ? 'One test was blocked and one was not. That usually means a blocker is installed but running in a limited mode, or that its filter lists are out of date.'
-                : `Neither test was blocked, so this browser is showing whatever a site decides to serve. On the kind of site Couchlist lists, that is the difference between watching something and chasing fake play buttons.`}
+                ? 'One test was blocked and one was not. Usually a blocker running in a limited mode, or filter lists that are out of date.'
+                : 'This browser is showing whatever a site decides to serve. On the sites Couchlist lists, that is the difference between watching something and chasing fake play buttons.'}
           </p>
-
-          <ul className="mt-3 flex list-none flex-col gap-1.5 border-t border-pal-line/60 p-0 pt-3 text-[12.5px]">
-            <li>
-              <span className="font-semibold text-pal-text">Hidden elements</span>{' '}
-              <span className="text-muted">
-                — {result.element === 'blocked' ? 'blocked. Cosmetic filtering is on.' : 'not blocked.'}
-              </span>
-            </li>
-            <li>
-              <span className="font-semibold text-pal-text">Blocked requests</span>{' '}
-              <span className="text-muted">
-                — {result.request === 'blocked' ? 'blocked. Network filtering is on.' : 'not blocked.'}
-              </span>
-            </li>
-          </ul>
-
           {blockedCount < 2 && browser ? (
             <Link
               href={browser.guide}
-              className="mt-3 inline-block text-[13px] font-semibold text-pal-text underline underline-offset-[3px]"
+              className="mt-2 inline-block text-[13.5px] font-semibold text-pal-text underline underline-offset-[3px]"
             >
-              How to set one up in {browser.name}
+              Set one up in {browser.name}
             </Link>
           ) : null}
-        </div>
+        </ToolResult>
       ) : null}
+
     </div>
   );
 }
