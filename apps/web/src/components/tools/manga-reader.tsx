@@ -7,7 +7,8 @@ import {
   groupOfPage,
   classifyReaderLinks,
   neighbours,
-  orderChapters,
+  type ExtensionState,
+  seriesChapters,
   handoverFromHash,
   parseHandover,
   type ChapterLink,
@@ -89,6 +90,13 @@ export function MangaReader() {
   } | null>(null);
   const [handoverProblem, setHandoverProblem] = useState<string | null>(null);
 
+  /*
+   * Checked once when a chapter from a source is open, because every page of
+   * it has to come through the extension. Reporting it once at the top beats
+   * the same sentence repeated under all 78 pages.
+   */
+  const [extension, setExtension] = useState<ExtensionState | null>(null);
+
   const cache = useMemo(() => new PageCache(), []);
 
   /*
@@ -145,7 +153,9 @@ export function MangaReader() {
     setChapters((current) => [...current, chapter]);
     setSource({
       url: incoming.sourceUrl ?? '',
-      chapters: orderChapters(incoming.chapters, incoming.sourceUrl ?? undefined),
+      // Filtered to this series: a raw scrape of every anchor offers
+      // usernames and timestamps as chapters.
+      chapters: seriesChapters(incoming.sourceUrl ?? "", incoming.chapters),
       previous: incoming.previous,
       next: incoming.next,
       guessed: incoming.guessed,
@@ -153,6 +163,32 @@ export function MangaReader() {
     setOpenId(chapter.id);
     setHandoverProblem(null);
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    if (!source) {
+      /*
+       * Cleared on a later tick rather than in the effect body: setting
+       * state synchronously here runs a second render for something the
+       * previous one already knew.
+       */
+      const clear = window.setTimeout(() => {
+        if (alive) setExtension(null);
+      }, 0);
+      return () => {
+        alive = false;
+        window.clearTimeout(clear);
+      };
+    }
+    void (async () => {
+      const { extensionState } = await import('@/lib/tools/reader-bridge');
+      const state = await extensionState();
+      if (alive) setExtension(state);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [source]);
 
   useEffect(() => {
     /*
@@ -432,6 +468,36 @@ export function MangaReader() {
         onPage={setPage}
         onThumbs={() => setShowThumbs((open) => !open)}
       />
+
+      {source && extension && extension !== 'ready' ? (
+        <div className="cl-reader-chrome border-b border-line bg-[#ffb0b0]/10 px-4 py-3 sm:px-5">
+          <p className="m-0 flex items-start gap-2.5 text-[13px] text-[#ffb0b0]">
+            <span className="mt-[1px] flex-none">
+              <StatusMark tone="bad" className="h-[16px] w-[16px]" />
+            </span>
+            <span className="min-w-0 max-w-[62ch]">
+              {extension === 'outdated' ? (
+                <>
+                  <strong>Your Couchlist extension is out of date.</strong> This chapter&rsquo;s
+                  pages are loaded by the extension, and your version cannot do that yet. Download
+                  it again from{' '}
+                  <Link href="/tools/reader-extension" className="underline">
+                    the extension page
+                  </Link>
+                  , then reload it in your browser.
+                </>
+              ) : (
+                <>
+                  <strong>The Couchlist extension is not responding.</strong> Pages from a source
+                  site have to be loaded through it. Check it is still installed and enabled at{' '}
+                  <code className="rounded bg-bg px-1 py-0.5 text-[12px]">chrome://extensions</code>
+                  , then reload this page.
+                </>
+              )}
+            </span>
+          </p>
+        </div>
+      ) : null}
 
       {source ? (
         <ChapterNav

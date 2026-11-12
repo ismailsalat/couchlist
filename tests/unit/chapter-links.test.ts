@@ -6,6 +6,7 @@ import {
   neighbours,
   orderChapters,
   sameFamily,
+  seriesChapters,
 } from '@couchlist/shared';
 
 /**
@@ -164,5 +165,59 @@ describe('previous and next', () => {
     });
     // Rejected by family, then the list supplies the real answer.
     expect(result.next).toEqual({ kind: 'chapter-list', url: 'https://site.test/m/t/c3' });
+  });
+});
+
+describe('filtering a real chapter page', () => {
+  /*
+   * Taken from what the extension actually collected on a live site: the
+   * chapter list came back offering "Next", "Edward" and "2 years ago" as
+   * chapters, because every anchor on the page had been swept up.
+   */
+  const current = 'https://site.test/manga/title/chapter-1';
+  const scraped = [
+    { url: 'https://site.test/manga/title/chapter-1', label: 'Chapter 1' },
+    { url: 'https://site.test/manga/title/chapter-2', label: 'Chapter 2' },
+    { url: 'https://site.test/manga/title/chapter-3', label: 'Chapter 3' },
+    { url: 'https://site.test/users/edward', label: 'Edward' },
+    { url: 'https://site.test/comments/9912', label: '2 years ago' },
+    { url: 'https://site.test/manga/title/chapter-2', label: 'Next' },
+    { url: 'https://site.test/login', label: 'Sign in' },
+    { url: 'https://site.test/genre/action', label: 'Action' },
+    { url: 'https://other.test/manga/title/chapter-9', label: 'Chapter 9' },
+  ];
+
+  it('keeps the chapters and drops the furniture', () => {
+    const list = seriesChapters(current, scraped);
+    const labels = list.map((entry) => entry.label);
+
+    expect(labels).toContain('Chapter 1');
+    expect(labels).toContain('Chapter 2');
+    expect(labels).toContain('Chapter 3');
+
+    for (const junk of ['Edward', '2 years ago', 'Sign in', 'Action']) {
+      expect(labels, junk).not.toContain(junk);
+    }
+    // Another site's chapter is not this series.
+    expect(list.some((entry) => entry.url.includes('other.test'))).toBe(false);
+  });
+
+  it('keeps opaque chapter ids that sit in the same place', () => {
+    // WeebCentral: no number anywhere in the URL to compare.
+    const list = seriesChapters('https://weebcentral.com/chapters/AAA', [
+      { url: 'https://weebcentral.com/chapters/BBB', label: 'Chapter 2' },
+      { url: 'https://weebcentral.com/chapters/CCC', label: 'Chapter 3' },
+      { url: 'https://weebcentral.com/series/ZZZ', label: 'All chapters' },
+      { url: 'https://weebcentral.com/users/edward', label: 'Edward' },
+    ]);
+
+    expect(list.map((entry) => entry.label)).toEqual(['Chapter 2', 'Chapter 3']);
+  });
+
+  it('does not keep a sibling page that is not a chapter', () => {
+    const list = seriesChapters(current, [
+      { url: 'https://site.test/manga/title/popular', label: 'Most popular' },
+    ]);
+    expect(list).toHaveLength(0);
   });
 });

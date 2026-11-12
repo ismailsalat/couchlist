@@ -147,3 +147,26 @@ test.describe('reader extension', () => {
     await page.close();
   });
 });
+
+/**
+ * Version skew.
+ *
+ * An extension from before page relaying never answers a page request, which
+ * is indistinguishable from having none installed — and the reader said so,
+ * repeating "the extension did not answer" under all 78 pages. The version in
+ * the ping is what makes the two tellable apart, so it is worth a test that
+ * the ping actually carries one.
+ */
+test('reports a version the reader can compare', async () => {
+  const page = await context.newPage();
+  await page.goto('http://127.0.0.1:3000/tools/comics');
+
+  const reply = await askExtension(page, { type: 'ping' });
+  expect(reply.ok).toBe(true);
+  expect(String(reply.version)).toMatch(/^\d+\.\d+\.\d+$/u);
+
+  // Must be at least the version the reader requires for page relaying.
+  const [major, minor] = String(reply.version).split('.').map(Number);
+  expect(major! > 0 || minor! >= 2).toBe(true);
+  await page.close();
+});

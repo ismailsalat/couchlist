@@ -229,3 +229,77 @@ export function neighbours(
 
   return { previous: pick(published.previous, -1), next: pick(published.next, 1) };
 }
+
+/** The path with its final segment removed — the "shape" of a chapter URL. */
+function pathShape(url: URL): string {
+  const parts = url.pathname.replace(/\/+$/u, '').split('/');
+  parts.pop();
+  return parts.join('/').toLowerCase();
+}
+
+/** Words that mark a link as site furniture rather than a chapter. */
+const NOT_A_CHAPTER =
+  /\b(?:login|register|sign[\s-]?in|sign[\s-]?up|comment|reply|user|profile|account|bookmark|report|donate|discord|search|home|genre|tag|random|download|app|privacy|terms|dmca|contact|advertis)\b/iu;
+
+/**
+ * Keep only the links that are plausibly other chapters of this series.
+ *
+ * A chapter page links to a great deal besides its siblings — comment
+ * permalinks, the person who uploaded it, "2 years ago" timestamps, genre
+ * tags, the site's own navigation. Collected raw, those all end up in the
+ * chapter list, which is how it comes to offer "Edward" as a chapter.
+ *
+ * Two things have to hold. The link must sit at the same depth of the same
+ * path as the chapter being read — `/chapters/ABC` beside `/chapters/XYZ`,
+ * never `/users/edward` — which also covers sites whose chapter URLs are
+ * opaque IDs and carry no number to compare. And it must not be obvious site
+ * furniture.
+ *
+ * Deliberately conservative: a list that is missing a few chapters is marked
+ * incomplete and still useful, while a list full of usernames is not.
+ */
+export function seriesChapters(
+  current: string,
+  raw: Array<{ url: string; label?: string }>,
+): ChapterLink[] {
+  let here: URL;
+  try {
+    here = new URL(current);
+  } catch {
+    return orderChapters(raw);
+  }
+
+  const shape = pathShape(here);
+  const family = chapterNumber(here)?.family ?? null;
+
+  const kept = raw.filter((entry) => {
+    let target: URL;
+    try {
+      target = new URL(entry.url, current);
+    } catch {
+      return false;
+    }
+    if (target.hostname.replace(/^www\./u, '') !== here.hostname.replace(/^www\./u, '')) {
+      return false;
+    }
+
+    const label = entry.label ?? '';
+    if (NOT_A_CHAPTER.test(label) || NOT_A_CHAPTER.test(target.pathname)) return false;
+
+    // Same series by number, when both carry one.
+    const theirs = chapterNumber(target)?.family ?? null;
+    if (family && theirs) return family === theirs;
+
+    // Otherwise, same place in the site's structure.
+    if (pathShape(target) !== shape) return false;
+
+    /*
+     * At this point the link is a sibling by shape. Require some sign it is
+     * a chapter — a number in the label or the URL — so that a sibling page
+     * like `/chapters/popular` does not slip in.
+     */
+    return labelNumber(label) !== null || chapterNumber(target) !== null || /\d/u.test(label);
+  });
+
+  return orderChapters(kept, current);
+}

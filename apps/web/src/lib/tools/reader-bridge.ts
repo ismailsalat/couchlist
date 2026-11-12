@@ -14,6 +14,8 @@
  * other page chatter is ignored.
  */
 
+import { versionAtLeast, type ExtensionState } from '@couchlist/shared';
+
 const TAG = 'couchlist-reader-extension';
 const TIMEOUT_MS = 30_000;
 
@@ -58,10 +60,20 @@ function ask(request: Record<string, unknown>, timeoutMs = TIMEOUT_MS): Promise<
   });
 }
 
-/** Whether the extension is installed and talking. Fast: it is local. */
-export async function extensionPresent(): Promise<boolean> {
-  const reply = await ask({ type: 'ping' }, 1_200);
-  return reply.ok === true;
+/**
+ * Whether the extension is there, and new enough.
+ *
+ * Three answers, not two. An extension from before page relaying existed
+ * never answers a page request, exactly like no extension at all — so
+ * without the version the reader can only report "no reply", which tells
+ * somebody nothing about what to do next.
+ */
+export async function extensionState(): Promise<ExtensionState> {
+  const reply = await ask({ type: 'ping' }, 1_500);
+  if (reply.ok !== true) return 'missing';
+  // An extension too old to report a version is certainly too old.
+  if (!reply.version || !versionAtLeast(reply.version)) return 'outdated';
+  return 'ready';
 }
 
 /** Collect a chapter the extension put aside, by its one-time key. */

@@ -207,3 +207,41 @@ export function handoverFromHash(hash: string): HandoverResult | null {
     return { chapter: null, problem: 'That link was not a readable chapter.' };
   }
 }
+
+/* -------------------------------------------------------------------------
+ * Extension version
+ * ---------------------------------------------------------------------- */
+
+/**
+ * The oldest extension this reader can work with.
+ *
+ * Raised whenever the reader starts depending on something the extension did
+ * not do before. 0.2.0 is where page images began coming back through the
+ * extension; before that the reader loaded them directly, which a source's
+ * CDN refuses.
+ *
+ * Without this check the two failures are indistinguishable — an old
+ * extension and no extension both simply never answer — and the reader can
+ * only say "no reply", which tells somebody nothing about what to do.
+ */
+export const EXTENSION_MIN_VERSION = '0.2.0';
+
+/** True when `version` is at least `minimum`. Non-numeric parts sort low. */
+export function versionAtLeast(version: string, minimum = EXTENSION_MIN_VERSION): boolean {
+  const parts = (value: string) =>
+    value.split('.').map((piece) => {
+      const number = Number.parseInt(piece, 10);
+      return Number.isFinite(number) ? number : 0;
+    });
+
+  const left = parts(version);
+  const right = parts(minimum);
+  for (let i = 0; i < Math.max(left.length, right.length); i += 1) {
+    const a = left[i] ?? 0;
+    const b = right[i] ?? 0;
+    if (a !== b) return a > b;
+  }
+  return true;
+}
+
+export type ExtensionState = 'ready' | 'outdated' | 'missing';
