@@ -118,6 +118,18 @@ export function MangaReader() {
      * form is still read so a link someone saved keeps working.
      */
     let result = inline;
+
+    /*
+     * An inline handover proves the extension is old.
+     *
+     * Only the pre-0.2.0 popup packs the whole chapter into the fragment;
+     * from 0.2.0 it stores the chapter and passes a key. That old build has
+     * no bridge either, so pinging it is pointless — it will never answer,
+     * and the reader would report "not responding" when the truth is "out of
+     * date". The arrival route is the one reliable signal, so it is used.
+     */
+    if (!key && inline?.chapter) setExtension('outdated');
+
     if (key) {
       const { takeChapter } = await import('@/lib/tools/reader-bridge');
       const raw = await takeChapter(key);
@@ -183,7 +195,8 @@ export function MangaReader() {
     void (async () => {
       const { extensionState } = await import('@/lib/tools/reader-bridge');
       const state = await extensionState();
-      if (alive) setExtension(state);
+      // Do not downgrade a known-outdated verdict to a vague "missing".
+      if (alive) setExtension((current) => (current === 'outdated' ? current : state));
     })();
     return () => {
       alive = false;
@@ -478,13 +491,15 @@ export function MangaReader() {
             <span className="min-w-0 max-w-[62ch]">
               {extension === 'outdated' ? (
                 <>
-                  <strong>Your Couchlist extension is out of date.</strong> This chapter&rsquo;s
-                  pages are loaded by the extension, and your version cannot do that yet. Download
-                  it again from{' '}
+                  <strong>Your Couchlist extension is out of date</strong> — it is version 0.1,
+                  which cannot load page images. Reloading it is not enough, because the newer
+                  version has files the old folder does not contain. In{' '}
+                  <code className="rounded bg-bg px-1 py-0.5 text-[12px]">chrome://extensions</code>{' '}
+                  remove &ldquo;Couchlist Reader&rdquo;, then{' '}
                   <Link href="/tools/reader-extension" className="underline">
-                    the extension page
-                  </Link>
-                  , then reload it in your browser.
+                    download it again
+                  </Link>{' '}
+                  and load the new folder. The card should read 0.2.0.
                 </>
               ) : (
                 <>

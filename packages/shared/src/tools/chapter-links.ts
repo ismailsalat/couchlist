@@ -158,7 +158,7 @@ export function orderChapters(
   raw: Array<{ url: string; label?: string }>,
   base?: string,
 ): ChapterLink[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const out: ChapterLink[] = [];
 
   for (const entry of raw.slice(0, 5000)) {
@@ -171,10 +171,23 @@ export function orderChapters(
     } catch {
       continue;
     }
-    if (seen.has(url)) continue;
-    seen.add(url);
-
     const label = (entry.label ?? '').trim().slice(0, 200);
+
+    /*
+     * The same chapter is commonly linked twice: once as "Next" by the
+     * reader's own controls and once by name in the list. Keeping whichever
+     * came first leaves "Next" sitting in the list where "Chapter 12"
+     * belongs, so a named duplicate replaces an unnamed one.
+     */
+    const already = seen.get(url);
+    if (already !== undefined) {
+      const better = labelNumber(label) !== null && NAVIGATION_LABEL.test(out[already]!.label);
+      if (better) {
+        out[already] = { ...out[already]!, label, number: labelNumber(label) };
+      }
+      continue;
+    }
+    seen.set(url, out.length);
     const number = labelNumber(label) ?? chapterNumber(url)?.value ?? null;
     out.push({ url, label: label || (number === null ? 'Chapter link' : `Chapter ${number}`), number });
   }
@@ -241,6 +254,18 @@ function pathShape(url: URL): string {
 const NOT_A_CHAPTER =
   /\b(?:login|register|sign[\s-]?in|sign[\s-]?up|comment|reply|user|profile|account|bookmark|report|donate|discord|search|home|genre|tag|random|download|app|privacy|terms|dmca|contact|advertis)\b/iu;
 
+/** "2 years ago", "3 hours ago" — comment timestamps, not chapters. */
+const RELATIVE_TIME = /\b\d+\s*(?:second|minute|hour|day|week|month|year)s?\s*ago\b/iu;
+
+/**
+ * Labels a reader-navigation control carries.
+ *
+ * These point at real chapters, so they are kept — but the label is useless
+ * in a list, and the same chapter almost always appears again under its own
+ * name. `orderChapters` prefers the named copy when it dedupes.
+ */
+const NAVIGATION_LABEL = /^\s*(?:prev(?:ious)?|next|first|last|back|forward|«|»|‹|›|<|>)\s*$/iu;
+
 /**
  * Keep only the links that are plausibly other chapters of this series.
  *
@@ -285,6 +310,7 @@ export function seriesChapters(
 
     const label = entry.label ?? '';
     if (NOT_A_CHAPTER.test(label) || NOT_A_CHAPTER.test(target.pathname)) return false;
+    if (RELATIVE_TIME.test(label)) return false;
 
     // Same series by number, when both carry one.
     const theirs = chapterNumber(target)?.family ?? null;
@@ -294,11 +320,15 @@ export function seriesChapters(
     if (pathShape(target) !== shape) return false;
 
     /*
-     * At this point the link is a sibling by shape. Require some sign it is
-     * a chapter — a number in the label or the URL — so that a sibling page
-     * like `/chapters/popular` does not slip in.
+     * A sibling by shape still has to look like a chapter.
+     *
+     * "Any digit in the label" was the first attempt and it is far too
+     * generous: a comment timestamp reading "2 years ago" contains a digit
+     * and sailed straight through, which is how four of them ended up listed
+     * as chapters. What counts is a chapter number — in the label, or in the
+     * URL — and nothing else.
      */
-    return labelNumber(label) !== null || chapterNumber(target) !== null || /\d/u.test(label);
+    return labelNumber(label) !== null || chapterNumber(target) !== null;
   });
 
   return orderChapters(kept, current);

@@ -221,3 +221,43 @@ describe('filtering a real chapter page', () => {
     expect(list).toHaveLength(0);
   });
 });
+
+describe('the junk that actually reached a reader', () => {
+  /*
+   * Straight from a screenshot of the live site: the chapter list offered
+   * "Prev", "Next" and four copies of "2 years ago". The first filter let
+   * the timestamps through because it accepted any label containing a digit.
+   */
+  const current = 'https://site.test/manga/title/chapter-2';
+
+  it('drops comment timestamps', () => {
+    const list = seriesChapters(current, [
+      { url: 'https://site.test/manga/title/chapter-3', label: 'Chapter 3' },
+      { url: 'https://site.test/manga/title/chapter-2/c/1', label: '2 years ago' },
+      { url: 'https://site.test/manga/title/chapter-2/c/2', label: '3 hours ago' },
+      { url: 'https://site.test/manga/title/chapter-2/c/3', label: '11 months ago' },
+    ]);
+    expect(list.map((entry) => entry.label)).toEqual(['Chapter 3']);
+  });
+
+  it('prefers a chapter name over Prev/Next for the same link', () => {
+    const list = seriesChapters(current, [
+      { url: 'https://site.test/manga/title/chapter-3', label: 'Next' },
+      { url: 'https://site.test/manga/title/chapter-1', label: 'Prev' },
+      { url: 'https://site.test/manga/title/chapter-3', label: 'Chapter 3' },
+      { url: 'https://site.test/manga/title/chapter-1', label: 'Chapter 1' },
+    ]);
+
+    // Both links survive once each, under their real names.
+    expect(list).toHaveLength(2);
+    expect(list.map((entry) => entry.label).sort()).toEqual(['Chapter 1', 'Chapter 3']);
+  });
+
+  it('still keeps a legitimately unnumbered special', () => {
+    const list = seriesChapters(current, [
+      { url: 'https://site.test/manga/title/chapter-3', label: 'Chapter 3' },
+      { url: 'https://site.test/manga/title/chapter-3-5', label: 'Chapter 3.5 Extra' },
+    ]);
+    expect(list).toHaveLength(2);
+  });
+});
