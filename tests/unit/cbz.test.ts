@@ -3,7 +3,16 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildCbz, chooseCuts, crc32, imageExtension, pageName } from '@couchlist/shared';
+import {
+  buildCbz,
+  chooseCuts,
+  crc32,
+  imageEntries,
+  imageExtension,
+  pageName,
+  readArchiveEntry,
+  readArchiveIndex,
+} from '@couchlist/shared';
 
 /**
  * The archive is checked with the real `unzip`, not with a reader written
@@ -150,5 +159,86 @@ describe('chooseCuts', () => {
       expect(cut).toBeGreaterThan(0);
       expect(cut).toBeLessThan(9_000);
     }
+  });
+});
+
+describe('reading an archive', () => {
+  /** Inflate via Node's zlib, standing in for the browser's DecompressionStream. */
+  async function inflateRaw(input: Uint8Array): Promise<Uint8Array> {
+    const { inflateRawSync } = await import('node:zlib');
+    return new Uint8Array(inflateRawSync(input));
+  }
+
+  /** An archive made by the real `zip` command, not by our own writer. */
+  function realZip(files: Record<string, Buffer>, extraArgs: string[] = []): Uint8Array {
+    const dir = mkdtempSync(join(tmpdir(), 'zip-'));
+    for (const [name, body] of Object.entries(files)) {
+      writeFileSync(join(dir, name), body);
+    }
+    const archive = join(dir, 'made.cbz');
+    execFileSync('zip', ['-q', ...extraArgs, archive, ...Object.keys(files)], { cwd: dir });
+    return new Uint8Array(readFileSync(archive));
+  }
+
+  it('reads a deflated archive made by the zip command', async () => {
+    // Highly compressible, so `zip` really does deflate it rather than store it.
+    const body = Buffer.from('A'.repeat(5_000));
+    const archive = realZip({ '001.png': Buffer.concat([Buffer.from(PNG), body]) });
+
+    const entries = readArchiveIndex(archive);
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.method).toBe(8);
+
+    const out = await readArchiveEntry(archive, entries[0]!, inflateRaw);
+    expect(out.length).toBe(PNG.length + body.length);
+    expect(out.subarray(0, 4)).toEqual(PNG.subarray(0, 4));
+  });
+
+  it('reads a stored archive too', async () => {
+    const archive = realZip({ '001.png': Buffer.from(PNG) }, ['-0']);
+    const entries = readArchiveIndex(archive);
+    expect(entries[0]?.method).toBe(0);
+    expect(await readArchiveEntry(archive, entries[0]!, inflateRaw)).toEqual(PNG);
+  });
+
+  it('reads back what our own writer produced', async () => {
+    const archive = buildCbz([
+      { name: '001.png', bytes: PNG },
+      { name: '002.jpg', bytes: JPG },
+    ]);
+    const entries = readArchiveIndex(archive);
+    expect(entries.map((entry) => entry.name)).toEqual(['001.png', '002.jpg']);
+    expect(await readArchiveEntry(archive, entries[1]!, inflateRaw)).toEqual(JPG);
+  });
+
+  it('refuses something that is not an archive', () => {
+    expect(() => readArchiveIndex(new TextEncoder().encode('just some text'))).toThrow(
+      /does not look like/u,
+    );
+  });
+
+  it('ignores folders and the junk archivers add', () => {
+    const archive = realZip({
+      '002.jpg': Buffer.from(JPG),
+      '001.png': Buffer.from(PNG),
+      'notes.txt': Buffer.from('not a page'),
+    });
+
+    const pages = imageEntries(readArchiveIndex(archive));
+    expect(pages.map((entry) => entry.name)).toEqual(['001.png', '002.jpg']);
+  });
+
+  it('puts pages in reading order even when the archive does not', () => {
+    const archive = realZip({
+      'page10.png': Buffer.from(PNG),
+      'page2.png': Buffer.from(PNG),
+      'page1.png': Buffer.from(PNG),
+    });
+
+    expect(imageEntries(readArchiveIndex(archive)).map((entry) => entry.name)).toEqual([
+      'page1.png',
+      'page2.png',
+      'page10.png',
+    ]);
   });
 });

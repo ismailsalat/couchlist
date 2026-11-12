@@ -93,9 +93,16 @@ function NavLink({
        * The visible label shortens on a narrow screen, but the accessible
        * name must not: a screen-reader user would otherwise hear a different
        * name for the same link depending on the window width.
+       *
+       * The horizontal padding is narrower below `sm`, and `min-w-0` lets the
+       * pills shrink. Tailwind's `px-4` is rem-based, so somebody reading at
+       * 150% gets 24px of padding a side while the 13px label stays 13px:
+       * three pills then need more room than the row has, `min-width: auto`
+       * stops `flex-1` shrinking them, and the last one hangs off the edge of
+       * a 320px phone.
        */
       aria-label={labelWide ?? undefined}
-      className={`cl-touch cl-pill flex flex-1 items-center justify-center gap-1 rounded-pill px-4 py-2.5 text-[13px] font-bold no-underline sm:flex-initial ${
+      className={`cl-touch cl-pill flex min-w-0 flex-1 items-center justify-center gap-1 rounded-pill px-2.5 py-2.5 text-[13px] font-bold no-underline sm:flex-initial sm:px-4 ${
         current
           ? 'bg-selected text-selected-fg shadow-pop-red hover:bg-selected-hover'
           : 'text-muted hover:bg-hover hover:text-text'

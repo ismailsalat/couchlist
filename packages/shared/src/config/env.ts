@@ -117,6 +117,29 @@ export const environmentSchema = z.object({
    */
   GOOGLE_SAFE_BROWSING_API_KEY: z.string().default(''),
   URLHAUS_AUTH_KEY: z.string().default(''),
+  /*
+   * VirusTotal, used only for hash lookups — never uploads. Their free tier
+   * is four requests a minute and is not licensed for commercial use, which
+   * Couchlist is not, carrying no advertising.
+   */
+  VIRUSTOTAL_API_KEY: z.string().default(''),
+
+  /*
+   * Run the scheduled maintenance inside the web server.
+   *
+   * Couchlist's host charges per service, and a cron service that nobody
+   * remembers to create is how the Live status tool ends up reporting that it
+   * has never checked anything. Running it in-process needs no second service
+   * and no dashboard step, at the cost of stopping while the site is down —
+   * which is the one time nobody is reading the status page anyway.
+   *
+   * A PostgreSQL advisory lock means only one instance runs a pass, so this
+   * stays correct if the web service is ever scaled past one.
+   *
+   * Set it to false to go back to an external schedule; the same work is
+   * still one command (`npm run maintenance`).
+   */
+  MAINTENANCE_IN_PROCESS: boolish(true),
 
   TEST_MODE: boolish(false),
   TEST_GUILD_IDS: csvIds,

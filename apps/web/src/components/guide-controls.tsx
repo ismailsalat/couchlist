@@ -57,7 +57,7 @@ export function GuideControls({ search, device }: { search: string; device: Guid
 
   return (
     <div className="mb-5 flex flex-wrap items-stretch gap-2.5 sm:mb-6">
-      <label className="flex min-h-11 flex-1 basis-full items-center gap-2.5 rounded-[13px] border border-line bg-surface px-3.5 py-2.5 text-muted focus-within:border-focus sm:basis-0">
+      <label className="flex min-h-11 min-w-0 flex-1 basis-full items-center gap-2.5 rounded-[13px] border border-line bg-surface px-3.5 py-2.5 text-muted focus-within:border-focus sm:basis-0">
         <Search aria-hidden="true" className="h-[17px] w-[17px] shrink-0" />
         <span className="sr-only">Search guides and tools</span>
         <input

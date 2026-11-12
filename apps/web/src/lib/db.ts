@@ -14,7 +14,7 @@ import {
   WatchSourceRepository,
   closeDatabase,
   getDatabase,
-  type Database,
+  type DatabaseWithPool,
   ToolsRepository,
 } from '@couchlist/db';
 import { config } from './config';
@@ -50,7 +50,11 @@ function registerShutdown(): void {
 }
 
 export interface Repositories {
-  db: Database;
+  /*
+   * Pool-backed on purpose: the maintenance schedule holds one connection
+   * for the length of a pass to keep a session-level advisory lock.
+   */
+  db: DatabaseWithPool;
 
   /** Email accounts, verification codes and reset tokens. */
   accounts: AccountRepository;

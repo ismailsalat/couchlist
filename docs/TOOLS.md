@@ -194,3 +194,68 @@ existed only because the first was not showing them.
 
 The same `ComingSoon` component renders the maintenance screen: pass
 `heading="Be right back"` for a page that is down rather than unbuilt.
+
+## Live status, and what keeps it current
+
+`/tools/status` reports four states per listed source, not two. The extra two
+exist to stop the board overclaiming in either direction:
+
+| State | Meaning |
+| --- | --- |
+| answering | Last check got a reply. A redirect counts: it answered. |
+| missed one check | One failed check. Shown amber, worded "That may well have been us." |
+| not answering | Two or more failures in a row. |
+| not checked yet | Never checked. Never counted as working. |
+
+A single failure is not evidence that a website is down — from our server it is
+about as likely to be our DNS, our network, or a host that dislikes our user
+agent that minute. Painting that red tells every visitor a working site is
+broken. Two in a row is the same evidence the moderator queue already waits
+for before flagging a source.
+
+Note also that `401`, `403`, `405` and `429` are treated as **answering**, not
+as failures: plenty of hosts refuse an unusual client, and a refusal is proof
+that something is there to refuse.
+
+### What keeps it filled
+
+The checks run from inside the web server
+(`apps/web/src/lib/maintenance/scheduler.ts`, started by `instrumentation.ts`)
+— first pass 60 seconds after boot, then every six hours. A pass runs the link
+check, which already selects only sources last checked over six days ago and
+empties the thirty-day deleted bin, then refreshes the blocklists if the
+newest sync is over a week old.
+
+Only one instance runs a pass, guarded by a PostgreSQL advisory lock held on a
+single connection checked out of the pool for the length of the pass. That
+detail is load-bearing: the lock belongs to the *session*, and the ordinary
+query helper hands its connection back after every statement, so taking the
+lock with one query and releasing it with the next unlocks a different session
+and leaves the lock held forever. See `tests/integration/maintenance-lock.test.ts`.
+
+Set `MAINTENANCE_IN_PROCESS=false` to use an external schedule instead; the
+same work is one command, `npm run maintenance`. Preview capture is not in the
+pass — it drives a real browser — and stays `npm run capture:previews`.
+
+### Telling "never ran" apart from "keeps failing"
+
+Every job writes a row to `maintenance_runs` when it starts and again when it
+finishes. Without that record those two states produce an identical page —
+every source unchecked, "No check has run yet" — which is how a schedule that
+quietly broke goes unnoticed for a month.
+
+The board therefore shows a line above the counts, but only when it would tell
+the reader something the rows cannot:
+
+- nothing on record → "The scheduled check has not run yet. It runs shortly
+  after the site starts, then every six hours." (expected for the first minute
+  after a deploy)
+- started, never finished → interrupted, or running right now
+- finished and failed → says so, and quotes the reason
+
+When the schedule is healthy the line is absent: the rows already say
+everything, and a banner repeating it is noise.
+
+A run that is killed mid-pass — a redeploy, an out-of-memory kill — leaves
+`finished_at` null, which is why the started/finished pair is written rather
+than one row at the end.

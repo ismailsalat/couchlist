@@ -81,19 +81,21 @@ test.describe('download safety check', () => {
   test('flags a video name that is really an executable', async ({ page }) => {
     await page.goto('/tools/download-check');
 
+    await page.getByText('Only have the name, not the file?').click();
     await page.getByLabel('Filename').fill('Episode.01.1080p.mp4.exe');
 
     const result = page.getByRole('status');
     await expect(result).toBeVisible();
-    await expect(result).toContainText('Do not open this');
+    await expect(result).toContainText('Pretends to be .mp4');
   });
 
   test('stays calm about an ordinary download', async ({ page }) => {
     await page.goto('/tools/download-check');
 
+    await page.getByText('Only have the name, not the file?').click();
     await page.getByLabel('Filename').fill('Show.S01E04.1080p.WEB-DL.mkv');
 
-    await expect(page.getByRole('status')).toContainText('Looks like what it says');
+    await expect(page.getByRole('status')).toContainText('Nothing wrong with the name');
   });
 });
 
@@ -122,6 +124,9 @@ test.describe('live status', () => {
     await expect(page.getByText('not checked yet', { exact: true })).toBeVisible();
     await expect(page.getByText('not answering', { exact: true })).toBeVisible();
     await expect(page.getByText('answering', { exact: true })).toBeVisible();
+    // One missed check is its own figure: calling that "not answering" would
+    // tell visitors a working site is broken on the strength of one request.
+    await expect(page.getByText('missed one check', { exact: true })).toBeVisible();
     await expect(page.getByText('domains on our blocklists', { exact: true })).toBeVisible();
   });
 });
@@ -166,32 +171,48 @@ test.describe('subtitle fixer', () => {
   });
 });
 
-test.describe('comic builder', () => {
-  test('turns loose images into a .cbz and names them in order', async ({ page }) => {
+test.describe('manga reader', () => {
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+
+  test('imports loose images and opens them for reading', async ({ page }) => {
     await page.goto('/tools/comics');
 
-    // Tiny real PNGs, so the byte sniffing has something true to read.
-    const png = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-      'base64',
-    );
     await page.setInputFiles('input[type="file"]', [
-      { name: 'page10.png', mimeType: 'image/png', buffer: png },
-      { name: 'page2.png', mimeType: 'image/png', buffer: png },
+      { name: 'page10.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'page2.png', mimeType: 'image/png', buffer: PNG },
+      { name: 'page1.png', mimeType: 'image/png', buffer: PNG },
     ]);
 
-    // Sorted the way a reader would expect, not as text.
-    const rows = page.locator('li', { hasText: 'page' });
-    await expect(rows.first()).toContainText('page2.png');
+    // One chapter, three pages, sorted the way a person expects.
+    await expect(page.getByText('3 pages')).toBeVisible({ timeout: 10_000 });
 
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Build the .cbz' }).click();
-    expect((await download).suggestedFilename()).toBe('chapter.cbz');
-
-    await expect(page.getByRole('status')).toContainText('2');
+    await page.getByRole('button', { name: /3 pages/ }).click();
+    await expect(page.getByRole('button', { name: '← Chapters' })).toBeVisible();
+    await expect(page.getByText('/ 3')).toBeVisible();
+    // All three pages actually decoded and rendered.
+    await expect(page.locator('main img')).toHaveCount(3);
   });
 
-  test('refuses files that are not images', async ({ page }) => {
+  test('switches to page mode and reads right to left', async ({ page }) => {
+    await page.goto('/tools/comics');
+
+    await page.setInputFiles('input[type="file"]', [
+      { name: '001.png', mimeType: 'image/png', buffer: PNG },
+      { name: '002.png', mimeType: 'image/png', buffer: PNG },
+    ]);
+    await expect(page.getByText('2 pages')).toBeVisible({ timeout: 10_000 });
+    await page.getByRole('button', { name: /2 pages/ }).click();
+
+    await page.getByRole('button', { name: 'Pages', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'R→L' })).toBeVisible();
+    await page.getByRole('button', { name: 'R→L' }).click();
+    await expect(page.getByRole('button', { name: 'Previous page' })).toBeVisible();
+  });
+
+  test('says which files it could not use rather than dropping them', async ({ page }) => {
     await page.goto('/tools/comics');
     await page.setInputFiles('input[type="file"]', {
       name: 'notes.txt',
@@ -199,6 +220,69 @@ test.describe('comic builder', () => {
       buffer: Buffer.from('not an image'),
     });
 
-    await expect(page.locator('p[role="alert"]')).toContainText('images we can read');
+    await expect(page.getByText('Not an image or an archive')).toBeVisible({ timeout: 10_000 });
+  });
+});
+
+test.describe('download check', () => {
+  test('hashes locally and never offers a way to send the file', async ({ page }) => {
+    const sent: string[] = [];
+    await page.route('**/api/tools/file-check', async (route) => {
+      sent.push(route.request().postData() ?? '');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sha256: 'a'.repeat(64),
+          verdict: 'NOT_KNOWN',
+          title: 'No threats detected',
+          body: 'Nobody has reported this exact file as malware.',
+          signals: [{ source: 'MalwareBazaar', status: 'unknown', detail: 'Not in their database' }],
+        }),
+      });
+    });
+
+    await page.goto('/tools/download-check');
+    await page.setInputFiles('input[type="file"]', {
+      name: 'installer.exe',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('MZ fake executable body'),
+    });
+
+    await expect(page.getByRole('status')).toContainText('No threats detected', { timeout: 10_000 });
+
+    // The request carries a hash and nothing else.
+    expect(sent).toHaveLength(1);
+    const body = JSON.parse(sent[0]!);
+    expect(Object.keys(body)).toEqual(['sha256']);
+    expect(body.sha256).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  test('still catches a disguise the databases have never seen', async ({ page }) => {
+    await page.route('**/api/tools/file-check', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          sha256: 'b'.repeat(64),
+          verdict: 'NOT_KNOWN',
+          title: 'No threats detected',
+          body: 'Nobody has reported this exact file.',
+          signals: [],
+        }),
+      }),
+    );
+
+    await page.goto('/tools/download-check');
+    await page.setInputFiles('input[type="file"]', {
+      name: 'Episode.01.1080p.mp4.exe',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('anything'),
+    });
+
+    const result = page.getByRole('status');
+    await expect(result).toBeVisible({ timeout: 10_000 });
+    // Unknown to the databases, but the name alone is damning.
+    await expect(result).toContainText('Pretends to be .mp4');
   });
 });

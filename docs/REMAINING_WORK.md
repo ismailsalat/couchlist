@@ -119,27 +119,69 @@ forgotten when somebody picks the idea up again.
 
 ## Open items from the tools work
 
-### The live status page is empty until something checks the links
+### The live status page now fills itself — done
 
-`/tools/status` reads stored results from the weekly link check. That job has
-never run in production, so all 54 sources read "not checked yet" and the
-counts are 0 up, 0 down, 54 unchecked.
+**Resolved.** `/tools/status` used to read stored results from a weekly job
+that had never run in production, so all 54 sources read "not checked yet" and
+the counts were 0 up, 0 down, 54 unchecked. The page was behaving correctly;
+it was simply reporting that nothing had ever been checked.
 
-This is the page behaving correctly — unchecked is its own state and is never
-counted as working — but it makes the page useless until the job exists.
+The cause was a missing scheduled service, not the page. Rather than depend on
+a second paid service that nobody remembers to create, the schedule now runs
+inside the web process — `apps/web/src/lib/maintenance/scheduler.ts`, started
+from `instrumentation.ts`. One pass a tick: the link check (which already
+selects only sources last checked over six days ago, and empties the
+thirty-day deleted bin), then a blocklist refresh if the newest sync is over a
+week old. First pass 60 seconds after boot, then every six hours.
 
-**The cause is the missing weekly service**, not the page. The same job also
-fills listing screenshots and empties the thirty-day deleted bin, which are
-likewise empty. `docs/DEPLOYMENT.md` has the five-field setup.
+Set `MAINTENANCE_IN_PROCESS=false` to turn it off and go back to an external
+schedule; the same work stays one command, `npm run maintenance`.
 
-**The fix, if the cron keeps not happening:** do what the blocklists now do and
-run the check from `instrumentation.ts` in the background when nothing has
-ever been checked. Started and then abandoned, deliberately: unlike a
-blocklist, link health goes stale within days, so a boot-time check gives one
-good snapshot and then quietly rots unless deploys are frequent. A staleness
-window (re-check when the newest result is over a week old) would make deploys
-refresh it, at the cost of 54 outbound requests per deploy. Worth doing only
-if the scheduled service is genuinely never going to exist.
+**The honest trade:** a schedule inside the web server stops when the web
+server stops. For link health that is acceptable — the one moment nobody is
+reading the status page is while the site is down — and it is why the flag
+exists.
+
+**Preview capture is deliberately still a command.** It drives a real browser,
+which is hundreds of megabytes the web container has no other reason to carry,
+and the screenshots only feed a queue a moderator looks at by hand. Run
+`npm run capture:previews` when listings need pictures.
+
+#### The bug this nearly shipped with, worth not repeating
+
+The first version took its advisory lock through the ordinary query helper.
+That helper borrows a pooled connection per statement and hands it straight
+back, and `pg_try_advisory_lock` is held by the *session* — so the lock and the
+unlock landed on different connections. The unlock returned false, nothing
+said so, and the lock stayed held by whichever connection took it. The
+scheduler would have run exactly one pass and then skipped every later one
+while logging `pass_skipped_locked`, which reads like a deliberate decision.
+
+It now checks one client out of the pool and holds it for the pass, and
+destroys that connection if the unlock is ever refused. Both the broken
+behaviour and the fix are pinned in `tests/integration/maintenance-lock.test.ts`
+so the shorter version cannot come back.
+
+#### The page now reports on the schedule itself
+
+Migration `0026_maintenance_runs` adds a row per job per pass. "The schedule
+has never run" and "the schedule runs and fails every time" used to render the
+identical page, so a job that stopped working was invisible. The board now
+says which it is, and quotes the failure when there is one. Silent when
+healthy. Covered by `tests/unit/live-status.test.ts`.
+
+### One missed check no longer reads as "down"
+
+**Resolved.** A single failed check used to paint a source red. One failure
+from our server is about as likely to be our DNS, our network or a host that
+dislikes our user agent that minute as it is to be a dead website, and telling
+every visitor that a working site is broken is the kind of confidently wrong
+answer that makes a tool worth less than no tool.
+
+There are now four states: answering, **missed one check** (amber, "That may
+well have been us"), not answering (two or more in a row — the same evidence
+the moderator queue waits for), and not checked yet. Covered by
+`tests/unit/live-status.test.ts`.
 
 ### KissAnime is listed at `kissanime.tv.in`
 

@@ -119,7 +119,16 @@ export function SourceRow({
           {source.shouldAvoid ? <AvoidWarning reason={source.avoidReason} /> : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+        {/*
+          * Wraps rather than refusing to shrink.
+          *
+          * These are tap targets, so they cannot get narrower without
+          * becoming hard to hit. With `shrink-0` they instead pushed the
+          * whole row past the edge of a small phone once the reader turned
+          * their text size up. Wrapping onto a second line keeps every
+          * target its full size and keeps the row on screen.
+          */}
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-0.5 sm:flex-nowrap sm:gap-1.5">
           <VisitLink id={source.id} name={source.name} domain={source.domain} homepageUrl={source.homepageUrl} />
 
           <SourceRowActions

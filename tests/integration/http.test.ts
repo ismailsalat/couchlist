@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { createDatabase, type Database } from '@couchlist/db';
+import { USABLE_TOOLS, UPCOMING_TOOLS } from '@couchlist/shared';
 import { reset } from '../../packages/db/src/scripts/reset';
 import { runMigrations } from '../../packages/db/src/migrate';
 
@@ -262,15 +263,27 @@ describe('public browsing needs no account', () => {
     expect(html.indexOf('id="tools-heading"')).toBeLessThan(html.indexOf('id="guides-heading"'));
   });
 
-  it('serves each ready tool, and a coming-soon screen for the rest', async () => {
-    const ready = await fetch(`${BASE_URL}/tools/download-check`);
-    expect(ready.status).toBe(200);
-    expect(await ready.text()).toContain('Download safety check');
+  // Driven off the catalog rather than hardcoded names, so renaming a tool
+  // can't leave a stale assertion passing against a page that no longer says
+  // what the test claims.
+  it('serves every usable tool under its own name', async () => {
+    for (const tool of USABLE_TOOLS) {
+      const page = await fetch(`${BASE_URL}/tools/${tool.slug}`);
+      expect(page.status, tool.slug).toBe(200);
+      expect(await page.text(), tool.slug).toContain(tool.name);
+    }
+  });
 
-    const soon = await fetch(`${BASE_URL}/tools/video`);
-    expect(soon.status).toBe(200);
-    expect(await soon.text()).toContain('Coming soon');
+  it('serves a coming-soon screen for tools that are not built yet', async () => {
+    expect(UPCOMING_TOOLS.length).toBeGreaterThan(0);
+    for (const tool of UPCOMING_TOOLS) {
+      const page = await fetch(`${BASE_URL}/tools/${tool.slug}`);
+      expect(page.status, tool.slug).toBe(200);
+      expect(await page.text(), tool.slug).toContain('Coming soon');
+    }
+  });
 
+  it('404s on a tool slug that does not exist', async () => {
     const missing = await fetch(`${BASE_URL}/tools/not-a-tool`);
     expect(missing.status).toBe(404);
   });

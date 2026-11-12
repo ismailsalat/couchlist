@@ -12,8 +12,23 @@ import * as schema from './schema.js';
  */
 export type Database = NodePgDatabase<typeof schema>;
 
+/**
+ * A connection, plus the pool it came from.
+ *
+ * `drizzle()` exposes the pool as `$client` at runtime, but NodePgDatabase
+ * alone does not say so. Anything that has to hold ONE connection across
+ * several statements — a session-level advisory lock, say — needs to check a
+ * client out of that pool rather than use the usual query helper, which hands
+ * its connection straight back.
+ *
+ * Kept separate from `Database` on purpose: a transaction handle is a valid
+ * `Database` and has no pool of its own, so folding `$client` into that alias
+ * makes every repository method that accepts a transaction stop compiling.
+ */
+export type DatabaseWithPool = Database & { $client: pg.Pool };
+
 let pool: pg.Pool | undefined;
-let database: Database | undefined;
+let database: DatabaseWithPool | undefined;
 
 export interface DatabaseOptions {
   connectionString: string;
@@ -22,7 +37,7 @@ export interface DatabaseOptions {
   ssl?: boolean;
 }
 
-export function createDatabase(options: DatabaseOptions): Database {
+export function createDatabase(options: DatabaseOptions): DatabaseWithPool {
   const newPool = new pg.Pool({
     connectionString: options.connectionString,
     max: options.max ?? 10,
@@ -36,11 +51,11 @@ export function createDatabase(options: DatabaseOptions): Database {
     process.stderr.write(`postgres pool error: ${error.message}\n`);
   });
 
-  return drizzle(newPool, { schema });
+  return drizzle(newPool, { schema }) as DatabaseWithPool;
 }
 
 /** Shared instance, built from DATABASE_URL on first use. */
-export function getDatabase(connectionString?: string): Database {
+export function getDatabase(connectionString?: string): DatabaseWithPool {
   if (database) return database;
 
   const url = connectionString ?? process.env.DATABASE_URL;

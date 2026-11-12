@@ -33,6 +33,10 @@ export default defineConfig({
           // response, which is how the suite completes a signup.
           MAIL_TRANSPORT: 'log',
           ALLOW_DEV_LOGIN: 'false',
+          // The maintenance schedule would otherwise fire 60 seconds into a
+          // run and rewrite the health data the status tests assert on,
+          // which is a flaky suite waiting to happen.
+          MAINTENANCE_IN_PROCESS: 'false',
           // Every request comes from one address, so the production
           // per-address limits would reject the suite's own signups.
           RATE_LIMIT_SIGNUP_PER_MINUTE: '10000',

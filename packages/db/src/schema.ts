@@ -1471,3 +1471,30 @@ export const blocklistSyncs = pgTable(
     listIdx: index('blocklist_syncs_list_idx').on(table.list, table.startedAt),
   }),
 );
+
+/**
+ * One row per maintenance job per pass.
+ *
+ * Exists so the status page can tell "the schedule has never run" apart from
+ * "the schedule runs and keeps failing". Both leave every source unchecked,
+ * and without a record of the attempt they produce the identical page, which
+ * is how a job that quietly stopped goes unnoticed for weeks.
+ */
+export const maintenanceRuns = pgTable(
+  'maintenance_runs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => createId('mrn')),
+    /** Which job: 'link-check' or 'blocklists'. */
+    job: text('job').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ok: boolean('ok').notNull().default(false),
+    /** Why it failed, when it did. Shown to readers, so no stack traces. */
+    detail: text('detail'),
+  },
+  (table) => ({
+    jobIdx: index('maintenance_runs_job_idx').on(table.job, table.startedAt),
+  }),
+);

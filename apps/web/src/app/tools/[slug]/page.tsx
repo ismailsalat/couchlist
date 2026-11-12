@@ -8,7 +8,7 @@ import { SiteChecker } from '@/components/tools/site-checker';
 import { AdBlockerCheck } from '@/components/tools/ad-blocker-check';
 import { DownloadCheck } from '@/components/tools/download-check';
 import { SubtitleFixer } from '@/components/tools/subtitle-fixer';
-import { ComicBuilder } from '@/components/tools/comic-builder';
+import { MangaReader } from '@/components/tools/manga-reader';
 import { StatusBoard } from '@/components/tools/status-board';
 import { liveStatus } from '@/lib/tools/status';
 import { optionalUser } from '@/lib/api/guards';
@@ -56,7 +56,7 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
   return (
     <>
       <SiteHeader user={user} savedCount={savedCount} active="guides" />
-      <main className="mx-auto w-full max-w-3xl px-4 pb-16 pt-6">
+      <main className={`mx-auto w-full px-4 pb-16 pt-6 ${tool.slug === 'comics' ? 'max-w-5xl' : 'max-w-3xl'}`}>
         <Link
           href="/guides"
           className="text-[13px] font-semibold text-muted underline underline-offset-[3px] hover:text-text"
@@ -89,7 +89,7 @@ async function ToolBody({ slug }: { slug: string }) {
     case 'subtitles':
       return <SubtitleFixer />;
     case 'comics':
-      return <ComicBuilder />;
+      return <MangaReader />;
     case 'status':
       return <StatusBoard status={await liveStatus(repos())} />;
     default:

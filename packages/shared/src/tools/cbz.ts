@@ -216,3 +216,116 @@ export function chooseCuts(height: number, target: number, gutters: readonly num
 
   return cuts;
 }
+
+/* ------------------------------------------------------------------ reading */
+
+/**
+ * Reading an archive back.
+ *
+ * Writing one needed no compression; reading one does, because almost every
+ * .cbz in the wild was made by a tool that deflated the entries. The browser
+ * can inflate natively through `DecompressionStream('deflate-raw')`, so this
+ * still needs no library — which matters when the alternative is shipping a
+ * compression library to every phone that opens the reader.
+ *
+ * The central directory is parsed rather than the local headers, because an
+ * entry written with a streaming writer leaves its sizes as zero in the local
+ * header and fills them in afterwards. The directory is the authority.
+ */
+
+export interface ArchiveEntry {
+  name: string;
+  /** Offset of the local header, where the bytes begin. */
+  offset: number;
+  compressedSize: number;
+  uncompressedSize: number;
+  /** 0 stored, 8 deflated. Anything else we cannot read. */
+  method: number;
+}
+
+const SIGNATURE_END = 0x06054b50;
+const SIGNATURE_CENTRAL = 0x02014b50;
+
+/**
+ * Find the end-of-central-directory record.
+ *
+ * It sits at the very end unless the archive has a comment, so this scans
+ * backwards over the largest comment a zip can hold.
+ */
+function findEndRecord(view: DataView): number | null {
+  const start = Math.max(0, view.byteLength - 65_557);
+  for (let at = view.byteLength - 22; at >= start; at -= 1) {
+    if (view.getUint32(at, true) === SIGNATURE_END) return at;
+  }
+  return null;
+}
+
+/** List what is inside, without reading any of it. */
+export function readArchiveIndex(bytes: Uint8Array): ArchiveEntry[] {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const end = findEndRecord(view);
+  if (end === null) throw new Error('That does not look like a .cbz or .zip file.');
+
+  const count = view.getUint16(end + 10, true);
+  let at = view.getUint32(end + 16, true);
+
+  const decoder = new TextDecoder();
+  const entries: ArchiveEntry[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    if (at + 46 > bytes.length || view.getUint32(at, true) !== SIGNATURE_CENTRAL) break;
+
+    const method = view.getUint16(at + 10, true);
+    const compressedSize = view.getUint32(at + 20, true);
+    const uncompressedSize = view.getUint32(at + 24, true);
+    const nameLength = view.getUint16(at + 28, true);
+    const extraLength = view.getUint16(at + 30, true);
+    const commentLength = view.getUint16(at + 32, true);
+    const offset = view.getUint32(at + 42, true);
+
+    const name = decoder.decode(bytes.subarray(at + 46, at + 46 + nameLength));
+    at += 46 + nameLength + extraLength + commentLength;
+
+    // Directory markers and the junk some archivers add are not pages.
+    if (name.endsWith('/') || name.startsWith('__MACOSX/') || name.split('/').pop()?.startsWith('.')) {
+      continue;
+    }
+    entries.push({ name, offset, compressedSize, uncompressedSize, method });
+  }
+
+  return entries;
+}
+
+/** Where an entry's bytes actually start, after its local header. */
+export function entryDataOffset(bytes: Uint8Array, entry: ArchiveEntry): number {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const nameLength = view.getUint16(entry.offset + 26, true);
+  const extraLength = view.getUint16(entry.offset + 28, true);
+  return entry.offset + 30 + nameLength + extraLength;
+}
+
+/**
+ * Pull one entry out.
+ *
+ * Takes an inflate function so this file stays free of platform APIs: the
+ * browser passes one built on DecompressionStream, and a test passes zlib.
+ */
+export async function readArchiveEntry(
+  bytes: Uint8Array,
+  entry: ArchiveEntry,
+  inflateRaw: (input: Uint8Array) => Promise<Uint8Array>,
+): Promise<Uint8Array> {
+  const start = entryDataOffset(bytes, entry);
+  const slice = bytes.subarray(start, start + entry.compressedSize);
+
+  if (entry.method === 0) return slice;
+  if (entry.method === 8) return inflateRaw(slice);
+  throw new Error(`${entry.name} uses a compression method we cannot read.`);
+}
+
+/** Only the entries that are images, in reading order. */
+export function imageEntries(entries: readonly ArchiveEntry[]): ArchiveEntry[] {
+  const pictures = entries.filter((entry) => /\.(jpe?g|png|webp|avif|gif|bmp)$/iu.test(entry.name));
+  // Numeric collation, so page2 comes before page10 whatever the archiver did.
+  return pictures.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+}

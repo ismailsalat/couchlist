@@ -71,8 +71,8 @@ export const TOOLS: readonly ToolMeta[] = [
   },
   {
     slug: 'comics',
-    name: 'Make a .cbz',
-    blurb: 'Chapter images into one file your reader opens, in the right order.',
+    name: 'Read manga',
+    blurb: 'Import your chapters and read them with no ads. Nothing is uploaded.',
     tag: 'Reading',
     palette: 'teal',
     state: 'READY',
@@ -82,10 +82,10 @@ export const TOOLS: readonly ToolMeta[] = [
   {
     slug: 'download-check',
     name: 'Check a download',
-    blurb: 'Spots the .exe pretending to be a video, without uploading anything.',
+    blurb: 'Looks the file up by fingerprint against malware databases.',
     tag: 'Safety',
     palette: 'green',
-    state: 'READY',
+    state: 'TESTING',
     icon: 'download',
     runsInBrowser: true,
   },

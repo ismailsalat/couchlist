@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { blockedDomains, blocklistSyncs, domainReputation } from '../schema.js';
+import { blockedDomains, blocklistSyncs, domainReputation, maintenanceRuns } from '../schema.js';
 
 export interface BlocklistHit {
   list: string;
@@ -173,6 +173,56 @@ export class ToolsRepository {
       finishedAt: row.finishedAt,
       entryCount: row.entryCount,
       ok: row.ok,
+    }));
+  }
+
+  /** Record that a maintenance job has started. Returns its row id. */
+  async startMaintenanceRun(job: string): Promise<string> {
+    const [row] = await this.db.insert(maintenanceRuns).values({ job }).returning();
+    return row!.id;
+  }
+
+  async finishMaintenanceRun(
+    id: string,
+    input: { ok: boolean; detail?: string },
+  ): Promise<void> {
+    await this.db
+      .update(maintenanceRuns)
+      .set({
+        ok: input.ok,
+        // Trimmed: this is shown to readers, so it must stay a sentence
+        // rather than becoming a stack trace on a public page.
+        detail: input.detail ? input.detail.slice(0, 200) : null,
+        finishedAt: new Date(),
+      })
+      .where(eq(maintenanceRuns.id, id));
+  }
+
+  /**
+   * The most recent run of each maintenance job.
+   *
+   * Includes runs that started and never finished: a pass killed mid-flight
+   * (a redeploy, an out-of-memory kill) leaves `finishedAt` null, and that is
+   * exactly the state worth being able to see.
+   */
+  async lastMaintenanceRuns(): Promise<
+    Array<{ job: string; startedAt: Date; finishedAt: Date | null; ok: boolean; detail: string | null }>
+  > {
+    const rows = await this.db
+      .select()
+      .from(maintenanceRuns)
+      .orderBy(desc(maintenanceRuns.startedAt))
+      .limit(50);
+
+    const seen = new Map<string, (typeof rows)[number]>();
+    for (const row of rows) if (!seen.has(row.job)) seen.set(row.job, row);
+
+    return [...seen.values()].map((row) => ({
+      job: row.job,
+      startedAt: row.startedAt,
+      finishedAt: row.finishedAt,
+      ok: row.ok,
+      detail: row.detail,
     }));
   }
 

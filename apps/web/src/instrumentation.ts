@@ -54,4 +54,15 @@ export async function register(): Promise<void> {
     const { bootstrapBlocklists } = await import('@/lib/tools/bootstrap-blocklists');
     bootstrapBlocklists();
   }
+
+  /*
+   * Keep the scheduled work running without a second service.
+   *
+   * Also not awaited, and skipped under test so a suite never starts checking
+   * 54 real websites in the background while it runs.
+   */
+  if (config.ENVIRONMENT !== 'test' && config.MAINTENANCE_IN_PROCESS) {
+    const { startMaintenanceSchedule } = await import('@/lib/maintenance/scheduler');
+    startMaintenanceSchedule();
+  }
 }

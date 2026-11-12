@@ -12,12 +12,20 @@
  * be identified.
  */
 
+/*
+ * Sizes.
+ *
+ * All of these were a step smaller, which made a picture somebody chose
+ * read as a decoration beside their name rather than as them. Having an
+ * account should feel like something, and the avatar is most of that feeling,
+ * so each step up is deliberate rather than incidental.
+ */
 const SIZES = {
-  sm: 'h-5 w-5 text-[10px]',
-  md: 'h-7 w-7 text-xs',
-  lg: 'h-11 w-11 text-base',
+  sm: 'h-6 w-6 text-[11px]',
+  md: 'h-9 w-9 text-sm',
+  lg: 'h-14 w-14 text-lg',
   /** The profile page. Big enough to actually look like a person's picture. */
-  xl: 'h-24 w-24 text-3xl',
+  xl: 'h-32 w-32 text-4xl',
 } as const;
 
 export function Avatar({

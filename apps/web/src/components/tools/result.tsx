@@ -92,19 +92,32 @@ export function ToolResult({
       role="status"
       className="cl-rise mt-5 overflow-hidden rounded-2xl border border-pal-line bg-pal-bg"
     >
-      <div className="flex items-start gap-4 p-5">
-        <span
-          className="grid h-12 w-12 flex-none place-items-center rounded-full text-pal-text"
-          style={{ background: shown.ring }}
-        >
-          <StatusMark tone={tone} />
-        </span>
-        <div className="min-w-0 flex-1 pt-0.5">
-          <p className="m-0 text-[19px] font-bold leading-tight tracking-[-0.02em] text-pal-text">{title}</p>
-          {children ? <div className="mt-1.5 max-w-[60ch] text-[14px] leading-relaxed text-muted">{children}</div> : null}
+      {/*
+        The mark sits beside the *title* only, and the body runs full width
+        underneath.
+
+        It used to sit beside both, in a fixed 48px column that could not
+        shrink. On a narrow phone with the text size turned up, that column
+        ate the width and the paragraph collapsed to roughly one word a line.
+        A heading is short enough to share a row; a paragraph is not.
+      */}
+      <div className="p-4 sm:p-5">
+        <div className="flex items-center gap-3">
+          <span
+            className="grid h-10 w-10 flex-none place-items-center rounded-full text-pal-text sm:h-12 sm:w-12"
+            style={{ background: shown.ring }}
+          >
+            <StatusMark tone={tone} className="h-6 w-6 sm:h-7 sm:w-7" />
+          </span>
+          <p className="m-0 min-w-0 flex-1 text-[17px] font-bold leading-tight tracking-[-0.02em] text-pal-text sm:text-[19px]">
+            {title}
+          </p>
         </div>
+        {children ? (
+          <div className="mt-2.5 max-w-[60ch] text-[14px] leading-relaxed text-muted">{children}</div>
+        ) : null}
       </div>
-      {footer ? <div className="border-t border-pal-line/50 px-5 py-4">{footer}</div> : null}
+      {footer ? <div className="border-t border-pal-line/50 px-4 py-4 sm:px-5">{footer}</div> : null}
     </div>
   );
 }
@@ -132,15 +145,26 @@ export function SignalRow({
             ? 'text-muted/40'
             : 'text-muted/70';
 
+  /*
+   * Stacked on a phone, two columns from the small breakpoint up.
+   *
+   * An earlier version let the value wrap on its own, which meant it sat
+   * under the name only when the name happened to be long enough to wrap —
+   * so some rows stacked and others did not, in the same list. Switching on
+   * the breakpoint instead makes every row in a list agree with its
+   * neighbours, which is the whole point of a list.
+   */
   return (
-    <li className="flex items-center gap-3 py-[7px]">
-      <span className={`flex-none ${colour}`}>
+    <li className="flex gap-3 py-[7px]">
+      <span className={`mt-[2px] flex-none ${colour}`}>
         <StatusMark tone={tone} className="h-[17px] w-[17px]" />
       </span>
-      <span className="min-w-0 flex-1 text-[13.5px] font-semibold text-text">{name}</span>
-      <span className="text-right text-[13px] text-muted">
-        {detail}
-        {when ? <span className="ml-1.5 text-muted/60">· {when}</span> : null}
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+        <span className="text-[13.5px] font-semibold text-text">{name}</span>
+        <span className="text-[13px] text-muted sm:ml-auto sm:shrink-0 sm:text-right">
+          {detail}
+          {when ? <span className="ml-1.5 text-muted/60">· {when}</span> : null}
+        </span>
       </span>
     </li>
   );

@@ -117,7 +117,7 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
           spellCheck={false}
           inputMode="url"
           maxLength={260}
-          className="min-h-11 flex-1 basis-60 rounded-xl border border-line bg-bg px-3.5 text-[15px] text-text placeholder:text-muted/70"
+          className="min-h-11 w-full min-w-0 flex-1 basis-60 rounded-xl border border-line bg-bg px-3.5 text-[15px] text-text placeholder:text-muted/70"
         />
         <button
           type="submit"

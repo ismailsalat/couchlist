@@ -183,6 +183,13 @@
       "when": 1793110000000,
       "tag": "0025_reputation_review",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1793120000000,
+      "tag": "0026_maintenance_runs",
+      "breakpoints": true
     }
   ]
 }
