@@ -47,3 +47,9 @@ blob-report/
 .DS_Store
 Thumbs.db
 apps/web/next-env.d.ts
+
+# Built by `npm run build:extension`, which runs as part of `npm run build`.
+# Generated rather than committed so the download can never be older than the
+# source it was built from.
+apps/web/public/couchlist-reader-extension.zip
+apps/web/public/.extension-version
