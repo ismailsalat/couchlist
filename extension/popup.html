@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Couchlist Reader</title>
+<link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <h1>Couchlist</h1>
+  <p id="where" class="muted">Checking this tab…</p>
+
+  <button id="send" class="primary" disabled>Send chapter to Couchlist</button>
+  <button id="grant" hidden>Allow access to this site</button>
+
+  <p id="status" role="status" class="muted"></p>
+
+  <details>
+    <summary>Settings</summary>
+    <label for="site">Couchlist address</label>
+    <input id="site" type="url" spellcheck="false">
+    <p class="muted small">Change this only if you run Couchlist somewhere else.</p>
+  </details>
+
+  <p class="muted small">
+    Access is asked for one site at a time, and only when you press the button.
+    This does not sign you in anywhere, and cannot get past logins or CAPTCHAs.
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>

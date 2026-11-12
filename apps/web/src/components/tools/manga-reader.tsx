@@ -1,15 +1,20 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   spreadGroups,
   groupOfPage,
   classifyReaderLinks,
-  type ClassifiedLinks,
+  neighbours,
+  orderChapters,
+  handoverFromHash,
+  type ChapterLink,
   type ReaderSettings,
 } from '@couchlist/shared';
 import { useReaderSettings } from '@/lib/tools/use-reader-settings';
 import { ReaderSettingsPanel } from './reader-settings-panel';
+import { StatusMark, type Tone } from './result';
 import { buildCbz, pageName } from '@couchlist/shared';
 import {
   PageCache,
@@ -68,7 +73,75 @@ export function MangaReader() {
   const { settings, update, reset } = useReaderSettings();
   const { mode, direction, zoom } = settings;
 
+  /*
+   * Where a chapter came from, when it came from a source rather than a file.
+   * Held beside the chapter rather than inside it because a .cbz has no
+   * source, no neighbours and no chapter list, and most of the reader should
+   * not have to know the difference.
+   */
+  const [source, setSource] = useState<{
+    url: string;
+    chapters: ChapterLink[];
+    previous: string | null;
+    next: string | null;
+    guessed: boolean;
+  } | null>(null);
+  const [handoverProblem, setHandoverProblem] = useState<string | null>(null);
+
   const cache = useMemo(() => new PageCache(), []);
+
+  /*
+   * A chapter handed over by the extension arrives in the URL fragment,
+   * which never reaches a server. It is validated before anything is shown —
+   * anyone can craft a fragment, so every page link is re-checked exactly
+   * like a pasted one. The fragment is then cleared so a refresh does not
+   * silently re-import, and so the links do not sit in the address bar.
+   */
+  const acceptHandover = useCallback(() => {
+    const result = handoverFromHash(window.location.hash);
+    if (!result) return;
+    window.history.replaceState(null, '', window.location.pathname);
+
+    if (!result.chapter) {
+      setHandoverProblem(result.problem ?? 'That chapter could not be read.');
+      return;
+    }
+
+    const incoming = result.chapter;
+    const chapter: Chapter = {
+      id: `sent-${Date.now()}`,
+      name: incoming.title,
+      pages: incoming.pages.map((url) => ({ kind: 'remote' as const, url })),
+      order: incoming.pages.map((_, index) => index),
+    };
+
+    setChapters((current) => [...current, chapter]);
+    setSource({
+      url: incoming.sourceUrl ?? '',
+      chapters: orderChapters(incoming.chapters, incoming.sourceUrl ?? undefined),
+      previous: incoming.previous,
+      next: incoming.next,
+      guessed: incoming.guessed,
+    });
+    setOpenId(chapter.id);
+    setHandoverProblem(null);
+  }, []);
+
+  useEffect(() => {
+    /*
+     * Deferred by a tick rather than run in the effect body. The fragment is
+     * an external input being read in, not state derived from a render, and
+     * applying it synchronously here would run a second render pass before
+     * the first has been painted.
+     */
+    const timer = window.setTimeout(acceptHandover, 0);
+    // A second send while the reader is already open changes only the hash.
+    window.addEventListener('hashchange', acceptHandover);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener('hashchange', acceptHandover);
+    };
+  }, [acceptHandover]);
   useEffect(() => () => cache.clear(), [cache]);
 
   const chapter = chapters.find((entry) => entry.id === openId) ?? null;
@@ -268,9 +341,11 @@ export function MangaReader() {
           cache.clear();
         }}
         onLinkChapter={(linked) => {
+          setSource(null);
           setChapters((current) => [...current, linked]);
           setOpenId(linked.id);
         }}
+        handoverProblem={handoverProblem}
       />
     );
   }
@@ -329,6 +404,20 @@ export function MangaReader() {
         onPage={setPage}
         onThumbs={() => setShowThumbs((open) => !open)}
       />
+
+      {source ? (
+        <ChapterNav
+          current={source.url}
+          chapters={source.chapters}
+          published={{ previous: source.previous, next: source.next }}
+          complete={false}
+          onGo={(url) => {
+            // Opening another chapter needs the extension again: the reader
+            // cannot fetch a source page itself.
+            window.open(url, '_blank', 'noopener');
+          }}
+        />
+      ) : null}
 
       {showSettings ? (
         <ReaderSettingsPanel
@@ -401,6 +490,7 @@ function Library({
   onRemove,
   onClear,
   onLinkChapter,
+  handoverProblem,
 }: {
   chapters: Chapter[];
   rejected: Array<{ name: string; reason: string }>;
@@ -412,8 +502,9 @@ function Library({
   onRemove: (id: string) => void;
   onClear: () => void;
   onLinkChapter: (chapter: Chapter) => void;
+  /** Set when a chapter sent by the extension could not be used. */
+  handoverProblem: string | null;
 }) {
-  const [dragging, setDragging] = useState(false);
   const progress = typeof window === 'undefined' ? {} : loadProgress();
 
   return (
@@ -424,46 +515,28 @@ function Library({
         no account. Nothing is uploaded; the files stay on your device and are read in this page.
       </p>
 
-      <div
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          if (event.dataTransfer.files?.length) onPick(event.dataTransfer.files);
-        }}
-        onClick={() => inputRef.current?.click()}
-        className={`cursor-pointer rounded-xl border border-dashed p-6 text-center text-[13.5px] transition ${
-          dragging ? 'border-accent bg-hover text-text' : 'border-line text-muted'
-        }`}
-      >
-        {busy ? (
-          'Reading…'
-        ) : (
-          <>
-            <span className="font-semibold text-text">Add chapters</span>
-            <span className="mt-1 block text-[12.5px]">
-              Tap to pick from your phone or computer, or drop files here
-            </span>
-          </>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept=".cbz,.zip,image/*,application/zip,application/vnd.comicbook+zip"
-          className="hidden"
-          onChange={(event) => {
-            if (event.target.files?.length) onPick(event.target.files);
-            event.target.value = '';
-          }}
-        />
-      </div>
+      {/*
+        One box, not two. Previously a file dropzone sat above a separate
+        "read from a link" panel, and somebody with a link in their clipboard
+        had to work out which half of the page wanted it. This takes whatever
+        you have — a link, a drop, a file picker — and says what it is going
+        to do with it before you commit.
+      */}
+      {handoverProblem ? (
+        <p className="m-0 mb-3 flex items-start gap-2 text-[12.5px] text-[#ffb0b0]">
+          <span className="mt-[1px] flex-none">
+            <StatusMark tone="bad" className="h-[15px] w-[15px]" />
+          </span>
+          <span className="min-w-0 max-w-[58ch]">{handoverProblem}</span>
+        </p>
+      ) : null}
 
-      <LinkImport onChapter={onLinkChapter} />
+      <SmartImport
+        busy={busy}
+        inputRef={inputRef}
+        onPick={onPick}
+        onLinkChapter={onLinkChapter}
+      />
 
       {rejected.length > 0 ? (
         <ul className="m-0 mt-3 list-none p-0 text-[12.5px] text-warn-text">
@@ -1132,152 +1205,350 @@ function Sideways({
 }
 
 /**
- * Reading from pasted links.
+ * One input for everything you might want to read.
  *
- * Tagged "under testing" on purpose. The honest limits are stated in the
- * panel rather than buried: a direct image link works because a browser will
- * load an <img> cross-origin, and a link to a chapter *page* does not,
- * because reading one means parsing another site's HTML — which the browser
- * refuses, and which Couchlist will not do on its server, since that would
- * make it a proxy for other people's comics.
+ * The old layout had a file dropzone and, below it, a separate panel for
+ * links — so the page could not tell a link from a file and made you decide
+ * which half to use. This takes anything: paste a link, drop files, or
+ * browse. It works out what it has and says so *before* you commit, because
+ * the three cases behave very differently and silently guessing wrong is
+ * worse than asking.
  *
- * Lines that cannot be used are listed back with the reason instead of being
- * dropped, so a paste of thirty links that yields twenty pages says which ten
- * were skipped and why.
+ * The three cases:
+ *   - image links  → read straight away, nothing uploaded
+ *   - a chapter page link → needs the companion extension, and says why
+ *   - .cbz / .zip / images → read from your device, exportable
  */
-function LinkImport({ onChapter }: { onChapter: (chapter: Chapter) => void }) {
-  const [open, setOpen] = useState(false);
+function SmartImport({
+  busy,
+  inputRef,
+  onPick,
+  onLinkChapter,
+}: {
+  busy: boolean;
+  inputRef: React.RefObject<HTMLInputElement | null>;
+  onPick: (files: FileList | File[]) => void;
+  onLinkChapter: (chapter: Chapter) => void;
+}) {
+  const [dragging, setDragging] = useState(false);
   const [text, setText] = useState('');
-  const [assumeImage, setAssumeImage] = useState(false);
-  const [result, setResult] = useState<ClassifiedLinks | null>(null);
+  const [note, setNote] = useState<{ tone: Tone; message: string } | null>(null);
+
+  const trimmed = text.trim();
+  const multiline = trimmed.includes('\n');
+
+  /*
+   * Read continuously as they type so the hint under the box is live. Cheap:
+   * it is a URL parse, not a network call.
+   */
+  const preview = trimmed ? classifyReaderLinks(text, false) : null;
+  const linkCount = preview?.images.length ?? 0;
+  const chapterPages = preview?.needsExtension.length ?? 0;
 
   function read() {
-    const classified = classifyReaderLinks(text, assumeImage);
-    setResult(classified);
-    if (classified.images.length === 0) return;
+    // Re-classified on submit with the extension hint turned off, then, if
+    // nothing matched by file extension, retried assuming image endpoints —
+    // plenty of CDNs serve images from /render?id=8 with no suffix.
+    let result = classifyReaderLinks(text, false);
+    if (result.images.length === 0 && result.needsExtension.length > 0) {
+      const retried = classifyReaderLinks(text, true);
+      // Only accept the retry when every line came through as an image. If
+      // even one is unusable, the paste probably was a chapter page and
+      // should still be reported as needing the extension.
+      if (retried.needsExtension.length === 0 && retried.rejected.length === 0) {
+        result = retried;
+      }
+    }
 
-    onChapter({
+    if (result.images.length === 0) {
+      setNote({
+        tone: chapterPages > 0 ? 'warn' : 'bad',
+        message:
+          chapterPages > 0
+            ? 'That looks like a chapter page. Reading one needs the Couchlist extension, because the page has to be opened in your own browser.'
+            : 'No usable image links there. Paste direct links to the images themselves, one per line.',
+      });
+      return;
+    }
+
+    onLinkChapter({
       id: `link-${Date.now()}`,
-      name:
-        classified.images.length === 1
-          ? 'Linked page'
-          : `${classified.images.length} linked pages`,
-      pages: classified.images.map((url) => ({ kind: 'remote' as const, url })),
-      order: classified.images.map((_, index) => index),
+      name: result.images.length === 1 ? 'Linked page' : `${result.images.length} linked pages`,
+      pages: result.images.map((url) => ({ kind: 'remote' as const, url })),
+      order: result.images.map((_, index) => index),
     });
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="mt-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3 text-left text-[13px] text-muted hover:border-muted/50 hover:text-text"
-      >
-        <span className="font-semibold text-text">Read from a link</span>
-        <span className="rounded-pill border border-[#f6ba7b]/35 bg-[#f6ba7b]/12 px-2 py-[1px] text-[11px] font-semibold text-[#f6ba7b]">
-          Under testing
-        </span>
-      </button>
-    );
+    setText('');
+    setNote(null);
   }
 
   return (
-    <section
-      aria-label="Read from a link"
-      className="mt-3 rounded-xl border border-line bg-bg/50 p-4"
+    <div
+      onDragOver={(event) => {
+        event.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (event.dataTransfer.files?.length) onPick(event.dataTransfer.files);
+      }}
+      className={`rounded-xl border border-dashed p-4 transition ${
+        dragging ? 'border-accent bg-hover' : 'border-line'
+      }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="m-0 text-[14px] font-bold">Read from a link</h3>
-        <span className="rounded-pill border border-[#f6ba7b]/35 bg-[#f6ba7b]/12 px-2 py-[1px] text-[11px] font-semibold text-[#f6ba7b]">
-          Under testing
-        </span>
+      <label className="block">
+        <span className="sr-only">Paste a link to read</span>
+        {multiline ? (
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            rows={4}
+            spellCheck={false}
+            placeholder="https://example.com/page-01.webp"
+            className="w-full min-w-0 rounded-xl border border-line bg-bg p-3 font-mono text-[12.5px] text-text placeholder:text-muted/60"
+          />
+        ) : (
+          <input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && trimmed) {
+                event.preventDefault();
+                read();
+              }
+            }}
+            spellCheck={false}
+            placeholder="Paste a link, or drop files below"
+            className="min-h-11 w-full min-w-0 rounded-xl border border-line bg-bg px-3.5 text-[14px] text-text placeholder:text-muted/70"
+          />
+        )}
+      </label>
+
+      {/* What it thinks you gave it, before anything happens. */}
+      {trimmed ? (
+        <p className="m-0 mt-2 flex items-start gap-2 text-[12.5px]">
+          <span className={`mt-[1px] flex-none ${linkCount > 0 ? 'text-[#8fc9c2]' : 'text-[#f6ba7b]'}`}>
+            <StatusMark tone={linkCount > 0 ? 'good' : 'warn'} className="h-[15px] w-[15px]" />
+          </span>
+          <span className="min-w-0 text-muted">
+            {linkCount > 0
+              ? `${linkCount} image link${linkCount === 1 ? '' : 's'} — press Enter to read`
+              : chapterPages > 0
+                ? 'Looks like a chapter page, which needs the extension'
+                : 'Not a usable link yet'}
+          </span>
+        </p>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => setOpen(false)}
-          className="cl-touch cl-pill ml-auto rounded-pill border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+          onClick={read}
+          disabled={!trimmed || busy}
+          className="cl-touch rounded-pill bg-selected px-4 py-2 text-[13px] font-semibold text-selected-fg disabled:opacity-40"
         >
-          Close
+          Read link
         </button>
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="cl-touch rounded-pill border border-line px-4 py-2 text-[13px] font-semibold text-muted hover:text-text disabled:opacity-40"
+        >
+          {busy ? 'Reading…' : 'Choose files'}
+        </button>
+        <button
+          type="button"
+          onClick={() => setText((value) => (value.includes('\n') ? value : `${value}\n`))}
+          className="cl-touch rounded-pill border border-line px-3 py-2 text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          Add more links
+        </button>
+        <Link
+          href="/tools/reader-extension"
+          className="ml-auto text-[12px] text-muted/75 underline underline-offset-2 hover:text-text"
+        >
+          Reading from a site? Get the extension
+        </Link>
       </div>
 
-      <p className="m-0 mt-2 max-w-[62ch] text-[12.5px] text-muted">
-        Paste <strong className="text-text">direct image links</strong>, one per line, in reading
-        order. A link to a chapter <em>page</em> cannot be read here — that needs the companion
-        extension, because the page has to be opened in your own browser session.
-      </p>
-
-      <label className="mt-3 block">
-        <span className="sr-only">Image links, one per line</span>
-        <textarea
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          rows={5}
-          spellCheck={false}
-          placeholder={'https://example.com/page-01.webp\nhttps://example.com/page-02.webp'}
-          className="w-full min-w-0 rounded-xl border border-line bg-bg p-3 font-mono text-[12.5px] text-text placeholder:text-muted/60"
-        />
-      </label>
-
-      <label className="mt-2 flex items-start gap-2.5">
-        <input
-          type="checkbox"
-          checked={assumeImage}
-          onChange={(event) => setAssumeImage(event.target.checked)}
-          className="mt-[3px] h-4 w-4 flex-none accent-[var(--reader-accent,#e4575f)]"
-        />
-        <span className="flex min-w-0 flex-col">
-          <span className="text-[13px] font-semibold">These are all image links</span>
-          <span className="text-[12px] text-muted/80">
-            Tick this when the links have no .jpg or .webp on the end
+      {note ? (
+        <p
+          className={`m-0 mt-3 flex items-start gap-2 text-[12.5px] ${
+            note.tone === 'bad' ? 'text-[#ffb0b0]' : 'text-[#f6ba7b]'
+          }`}
+        >
+          <span className="mt-[1px] flex-none">
+            <StatusMark tone={note.tone} className="h-[15px] w-[15px]" />
           </span>
+          <span className="min-w-0 max-w-[58ch]">{note.message}</span>
+        </p>
+      ) : null}
+
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept=".cbz,.zip,image/*,application/zip,application/vnd.comicbook+zip"
+        className="hidden"
+        onChange={(event) => {
+          if (event.target.files?.length) onPick(event.target.files);
+          event.target.value = '';
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * Moving between chapters of a series.
+ *
+ * Shown only for a chapter that came from a source — a .cbz on your disk has
+ * no "next". Every destination here was published by the source; nothing is
+ * constructed by adding one to a number in a URL, because plenty of those
+ * numbers are database IDs.
+ *
+ * The important case is the one at the end of the list. "We could not find
+ * the next chapter" and "this series is finished" are different statements,
+ * and only the source can make the second one. So an unknown next offers a
+ * box to paste the link into rather than declaring an ending.
+ */
+export function ChapterNav({
+  current,
+  chapters,
+  published,
+  complete,
+  onGo,
+}: {
+  current: string;
+  chapters: ChapterLink[];
+  published?: { previous?: string | null; next?: string | null };
+  /** False when the source may have more chapters than we collected. */
+  complete: boolean;
+  onGo: (url: string) => void;
+}) {
+  const [filter, setFilter] = useState('');
+  const [pasting, setPasting] = useState(false);
+  const [pasted, setPasted] = useState('');
+
+  const where = neighbours(current, chapters, published);
+  const needle = filter.trim().toLowerCase();
+  const shown = needle
+    ? chapters.filter((entry) => entry.label.toLowerCase().includes(needle))
+    : chapters;
+
+  return (
+    <section
+      aria-label="Chapters"
+      className="cl-reader-chrome border-b border-line bg-bg/50 px-4 py-3 sm:px-5"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={!where.previous.url}
+          onClick={() => where.previous.url && onGo(where.previous.url)}
+          className="cl-touch rounded-pill border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text disabled:opacity-40"
+        >
+          ← Previous
+        </button>
+        <button
+          type="button"
+          disabled={!where.next.url}
+          onClick={() => where.next.url && onGo(where.next.url)}
+          className="cl-touch rounded-pill border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text disabled:opacity-40"
+        >
+          Next →
+        </button>
+
+        <span className="ml-auto text-[12px] text-muted/80">
+          {chapters.length} chapter{chapters.length === 1 ? '' : 's'}
+          {complete ? '' : ' · list may be incomplete'}
         </span>
-      </label>
+      </div>
 
-      <button
-        type="button"
-        onClick={read}
-        disabled={!text.trim()}
-        className="cl-touch mt-3 rounded-pill bg-selected px-4 py-2 text-[13px] font-semibold text-selected-fg disabled:opacity-50"
-      >
-        Read these
-      </button>
-
-      {result ? (
-        <div className="mt-3 flex flex-col gap-1.5 text-[12.5px]">
-          {result.images.length > 0 ? (
-            <p className="m-0 text-[#8fc9c2]">
-              {result.images.length} page{result.images.length === 1 ? '' : 's'} opened.
-            </p>
+      {/*
+        The end of what we know is not the end of the story. Saying so, and
+        offering somewhere to paste the next link, is the whole point.
+      */}
+      {where.next.kind === 'unknown' ? (
+        <div className="mt-2.5 rounded-xl border border-[#f6ba7b]/30 bg-[#f6ba7b]/10 px-3.5 py-2.5">
+          <p className="m-0 flex items-start gap-2 text-[12.5px] text-[#f6ba7b]">
+            <span className="mt-[1px] flex-none">
+              <StatusMark tone="warn" className="h-[15px] w-[15px]" />
+            </span>
+            <span className="min-w-0 max-w-[58ch]">
+              We could not find the next chapter. That does not mean the series has ended — the
+              source may simply not link to it from here.
+            </span>
+          </p>
+          {pasting ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <input
+                value={pasted}
+                onChange={(event) => setPasted(event.target.value)}
+                placeholder="Paste the next chapter's link"
+                className="min-h-10 min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 text-[13px] text-text placeholder:text-muted/70"
+              />
+              <button
+                type="button"
+                disabled={!pasted.trim()}
+                onClick={() => {
+                  onGo(pasted.trim());
+                  setPasted('');
+                  setPasting(false);
+                }}
+                className="cl-touch rounded-pill bg-selected px-3.5 py-2 text-[12.5px] font-semibold text-selected-fg disabled:opacity-40"
+              >
+                Open
+              </button>
+            </div>
           ) : (
-            <p className="m-0 text-[#ffb0b0]">No usable image links in that list.</p>
+            <button
+              type="button"
+              onClick={() => setPasting(true)}
+              className="cl-touch mt-2 rounded-pill border border-[#f6ba7b]/40 px-3 py-1.5 text-[12.5px] font-semibold text-[#f6ba7b]"
+            >
+              Paste a link instead
+            </button>
           )}
-          {result.needsExtension.length > 0 ? (
-            <p className="m-0 text-[#f6ba7b]">
-              {result.needsExtension.length} look like chapter pages, which need the extension.
-            </p>
-          ) : null}
-          {result.rejected.length > 0 ? (
-            <details>
-              <summary className="cursor-pointer text-muted">
-                {result.rejected.length} could not be used
-              </summary>
-              <ul className="m-0 mt-1 list-none p-0 text-muted">
-                {result.rejected.slice(0, 8).map((entry) => (
-                  <li key={entry.raw} className="truncate">
-                    {entry.raw} — {entry.reason}
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
         </div>
       ) : null}
 
-      <p className="m-0 mt-3 text-[12px] text-muted/75">
-        Linked pages are loaded straight from their own server by your browser. Couchlist never
-        fetches, stores or proxies them, so they cannot be saved as a .cbz.
-      </p>
+      {chapters.length > 1 ? (
+        <div className="mt-2.5">
+          <label className="block">
+            <span className="sr-only">Find a chapter</span>
+            <input
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Find a chapter…"
+              className="min-h-10 w-full min-w-0 rounded-lg border border-line bg-bg px-3 text-[13px] text-text placeholder:text-muted/70"
+            />
+          </label>
+          <ul className="m-0 mt-1.5 max-h-44 list-none overflow-y-auto p-0">
+            {shown.map((entry) => (
+              <li key={entry.url}>
+                <button
+                  type="button"
+                  onClick={() => onGo(entry.url)}
+                  aria-current={entry.url === current ? 'true' : undefined}
+                  className={`w-full rounded-lg px-2.5 py-1.5 text-left text-[13px] ${
+                    entry.url === current
+                      ? 'bg-selected font-semibold text-selected-fg'
+                      : 'text-muted hover:bg-hover hover:text-text'
+                  }`}
+                >
+                  {entry.label}
+                </button>
+              </li>
+            ))}
+            {shown.length === 0 ? (
+              <li className="px-2.5 py-1.5 text-[12.5px] text-muted">No chapter matches that.</li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
     </section>
   );
 }
