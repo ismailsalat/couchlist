@@ -156,7 +156,7 @@ export function SiteChecker({ initialQuery = '' }: { initialQuery?: string }) {
                   {verdict.alternatives.map((entry) => (
                     <li key={entry.id} className="flex items-center gap-3 py-[7px]">
                       <Link
-                        href={`/source/${entry.id}`}
+                        href={`/sources/${entry.id}`}
                         className="text-[13.5px] font-semibold text-text underline underline-offset-[3px]"
                       >
                         {entry.name}

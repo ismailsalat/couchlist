@@ -442,3 +442,41 @@ h3 {
     to { opacity: 1; transform: none; }
   }
 }
+
+/* ---------------------------------------------------------------------------
+ * Reader
+ *
+ * The reader is the one place somebody stares at a screen for an hour, so it
+ * gets its own background rather than inheriting the site's. Each theme sets
+ * --reader-bg; the custom theme has it set inline from the saved colour.
+ *
+ * Kept as CSS variables rather than Tailwind classes because width, gap,
+ * margin, brightness and contrast are free-moving numbers — no utility class
+ * can cover every value, and rebuilding a class string on every slider frame
+ * would thrash the stylesheet.
+ * ------------------------------------------------------------------------ */
+.cl-reader { --reader-bg: #15161a; }
+.cl-reader[data-reader-theme='light'] { --reader-bg: #f4f1ea; }
+.cl-reader[data-reader-theme='sepia'] { --reader-bg: #efe2c9; }
+
+/* Long strip and single pages read in a column of the chosen width. */
+.cl-reader .cl-reader-column {
+  max-width: var(--reader-width);
+  margin-inline: auto;
+  padding: var(--reader-margin);
+  display: flex;
+  flex-direction: column;
+  gap: var(--reader-gap);
+}
+
+/*
+ * Focus mode hides the chrome without unmounting it, so scroll position,
+ * decoded pages and the lazy-loading observers all survive toggling it. The
+ * toolbar stays, because losing the way out of focus mode is a trap.
+ */
+.cl-reader-focus { border-color: transparent; }
+.cl-reader-focus .cl-reader-chrome { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-reader * { scroll-behavior: auto !important; }
+}

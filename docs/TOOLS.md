@@ -259,3 +259,60 @@ everything, and a banner repeating it is noise.
 A run that is killed mid-pass — a redeploy, an out-of-memory kill — leaves
 `finished_at` null, which is why the started/finished pair is written rather
 than one row at the end.
+
+## The manga reader
+
+Local files first: .cbz, .zip and loose images, read with no account and no
+upload. That part has no dependency on anyone else's website, which is why it
+is the only part marked Ready.
+
+### Customization
+
+Settings live in one persisted object (`packages/shared/src/tools/reader-settings.ts`)
+rather than in loose component state, so adding a control is one field instead
+of another piece of state to remember to save, restore and validate.
+
+| Group | Controls |
+| --- | --- |
+| Reading | Fit (width/height/original), two-page spreads, cover alone, reduce motion |
+| Size | Page width, zoom, gap between pages, space around pages |
+| Appearance | Dark / light / sepia / custom theme, accent colour, brightness, contrast |
+| Hands-free | Auto-scroll speed |
+
+Three modes: long strip (webtoons), paged, and sideways. Right-to-left applies
+to paged and sideways. **It reverses placement, never the artwork** — the row
+is `flex-row-reverse`, no image is ever mirrored. There is a browser test
+asserting the computed transform stays `none`.
+
+Every value is clamped by `normalizeReaderSettings` on the way in *and* out.
+That matters because settings come back from localStorage, which anybody can
+edit and which outlives the version that wrote it, and because the two colours
+are interpolated into CSS custom properties — so only a plain hex literal is
+accepted. An empty string is treated as "no value" rather than zero, since a
+cleared number input sends `''` and clamping that would silently shrink the
+reader to its narrowest width.
+
+Settings are read through `useSyncExternalStore`, not copied into state in an
+effect: the server render uses the defaults so the markup matches, the first
+client render already has the stored value instead of flashing defaults, and a
+change in another tab arrives on its own.
+
+### Reading from a link — under testing
+
+Paste direct image links, one per line, in reading order. They render straight
+from their own server; Couchlist never fetches, stores or proxies them, which
+is also why a linked chapter cannot be saved as a .cbz and why that button is
+disabled for one.
+
+**A link to a chapter *page* does not work here, and cannot.** Reading one
+means parsing another website's HTML, which the browser refuses cross-origin,
+and doing it on our server would make Couchlist a proxy for other people's
+comics — which the footer promises it is not. The tool says so plainly instead
+of failing with a network error nobody can act on.
+
+Every pasted link goes through `parseExternalUrl`, the same check the safety
+tool uses, so a private address, a loopback host, a `data:` URL or a
+`javascript:` scheme is refused before it can reach an `<img>` tag. The
+"these are all image links" tick box relaxes the *file-extension* guess only —
+never the host checks. Lines that cannot be used are listed back with a reason
+rather than dropped.

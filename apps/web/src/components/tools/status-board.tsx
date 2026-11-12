@@ -21,6 +21,35 @@ const STATE_TONE: Record<StatusEntry['state'], Tone> = {
   unchecked: 'off',
 };
 
+/*
+ * The marks draw with `fill="currentColor"`, so without an explicit colour
+ * they inherit the row's text colour and every one of them comes out white.
+ * That is exactly what shipped: a board of white check marks where the whole
+ * point is telling green from amber from red at a glance.
+ */
+const TONE_COLOUR: Record<Tone, string> = {
+  good: 'text-[#8fc9c2]',
+  warn: 'text-[#f6ba7b]',
+  bad: 'text-[#ffb0b0]',
+  neutral: 'text-muted/70',
+  off: 'text-muted/40',
+};
+
+/** Short, scannable label. The sentence underneath explains it. */
+const STATE_LABEL: Record<StatusEntry['state'], string> = {
+  up: 'Working',
+  wobbly: 'Missed a check',
+  down: 'Not answering',
+  unchecked: 'Not checked',
+};
+
+const CHIP: Record<StatusEntry['state'], string> = {
+  up: 'border-[#8fc9c2]/30 bg-[#8fc9c2]/10 text-[#8fc9c2]',
+  wobbly: 'border-[#f6ba7b]/35 bg-[#f6ba7b]/12 text-[#f6ba7b]',
+  down: 'border-[#ffb0b0]/35 bg-[#ffb0b0]/12 text-[#ffb0b0]',
+  unchecked: 'border-line bg-hover text-muted',
+};
+
 export function StatusBoard({ status }: { status: LiveStatus }) {
   const { counts } = status;
 
@@ -40,7 +69,7 @@ export function StatusBoard({ status }: { status: LiveStatus }) {
           className="flex items-start gap-2.5 rounded-xl border border-pal-line bg-pal-bg/40 px-4 py-3"
         >
           <span className="mt-[1px] flex-none">
-            <StatusMark tone="warn" className="h-[18px] w-[18px]" />
+            <StatusMark tone="warn" className="h-[18px] w-[18px] text-[#f6ba7b]" />
           </span>
           <p className="m-0 min-w-0 max-w-[62ch] text-[13px] text-pal-text">
             {status.maintenance.note}
@@ -65,7 +94,7 @@ export function StatusBoard({ status }: { status: LiveStatus }) {
       <ul className="m-0 flex list-none flex-col rounded-2xl border border-line bg-surface p-0 px-4">
         {status.entries.map((entry) => (
           <li key={entry.id} className="flex gap-3 border-t border-line py-3 first:border-t-0">
-            <span className="mt-[1px] flex-none">
+            <span className={`mt-[1px] flex-none ${TONE_COLOUR[STATE_TONE[entry.state]]}`}>
               <StatusMark tone={STATE_TONE[entry.state]} className="h-[18px] w-[18px]" />
             </span>
             {/*
@@ -77,15 +106,25 @@ export function StatusBoard({ status }: { status: LiveStatus }) {
             <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
               <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
                 <Link
-                  href={`/source/${entry.id}`}
+                  href={`/sources/${entry.id}`}
                   className="text-[14px] font-semibold hover:underline"
                 >
                   {entry.name}
                 </Link>
                 <span className="text-[12.5px] text-muted/80">{entry.domain}</span>
               </span>
-              <span className="text-[12.5px] text-muted sm:ml-auto sm:shrink-0 sm:text-right">
-                {entry.detail}
+              {/*
+                A short coloured chip rather than another grey sentence. With
+                55 rows, identical grey text everywhere means the one row that
+                needs attention looks like all the others.
+              */}
+              <span className="flex min-w-0 items-center gap-2 sm:ml-auto sm:shrink-0">
+                <span
+                  className={`inline-flex flex-none items-center rounded-pill border px-2 py-[2px] text-[11.5px] font-semibold ${CHIP[entry.state]}`}
+                >
+                  {STATE_LABEL[entry.state]}
+                </span>
+                <span className="min-w-0 text-[12.5px] text-muted sm:text-right">{entry.detail}</span>
               </span>
             </div>
           </li>

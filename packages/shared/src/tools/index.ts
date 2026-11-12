@@ -4,3 +4,5 @@ export * from './download-safety.js';
 export * from './catalog.js';
 export * from './subtitles.js';
 export * from './cbz.js';
+export * from './reader-settings.js';
+export * from './reader-links.js';

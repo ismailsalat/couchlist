@@ -159,7 +159,7 @@ export async function checkSite(input: SiteCheckInput): Promise<SiteVerdict> {
 
   if (row) {
     const viaMirror = !listed;
-    verdictSource = { id: row.id, name: row.name, slugPath: `/source/${row.id}` };
+    verdictSource = { id: row.id, name: row.name, slugPath: `/sources/${row.id}` };
 
     if (row.deletedAt) {
       level = 'REMOVED';

@@ -192,3 +192,34 @@ an image from another site and hand you the bytes; the same-origin policy
 stops it, and routing it through our server is exactly the request-forgery
 surface the safety tool is built to avoid. The version that works is
 drop-the-image-in, like every other tool here.
+
+## Extension distribution — decided 2026-11-11
+
+**Couchlist-hosted and account-gated.** Signed-in members download the
+extension .zip from a Couchlist page and load it unpacked. Not the Chrome Web
+Store.
+
+Why: the store would very likely challenge the `https://*/*` optional host
+permission a chapter importer needs, review is slow, and a store listing is
+public to everyone rather than to members. Self-hosting costs the user a
+Developer-mode toggle and loses auto-update, which is the honest trade.
+
+**The reader itself stays open to everyone.** Reading your own .cbz needs no
+account. Only pairing the extension does.
+
+### Why not a desktop app instead
+
+An app cannot replace the extension. The import works *because* it runs inside
+the browser, in the session the reader is already signed into. An app would
+have to fetch the pages itself, which puts it straight into Cloudflare
+challenges, logins and hotlink protection — and turns a reader into a scraper.
+It would also cost code signing (Apple $99/year, a Windows certificate),
+auto-update infrastructure, antivirus false positives and three OS builds,
+while helping nobody on a phone.
+
+### Still to build
+
+- The extension tab inside Couchlist: pairing, connection state, permission
+  help, destination choice.
+- A pairing token tied to an account.
+- Measured success rates per source before the importer leaves "under testing".

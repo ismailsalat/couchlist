@@ -1,6 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  spreadGroups,
+  groupOfPage,
+  classifyReaderLinks,
+  type ClassifiedLinks,
+  type ReaderSettings,
+} from '@couchlist/shared';
+import { useReaderSettings } from '@/lib/tools/use-reader-settings';
+import { ReaderSettingsPanel } from './reader-settings-panel';
 import { buildCbz, pageName } from '@couchlist/shared';
 import {
   PageCache,
@@ -30,20 +39,34 @@ import {
  *     is ever held.
  */
 
-type Mode = 'strip' | 'page';
-type Direction = 'ltr' | 'rtl';
+/*
+ * Re-exported from the shared settings model so the component and the stored
+ * settings cannot drift apart. 'horizontal' reads like a printed book turned
+ * sideways; 'strip' is the long webtoon scroll.
+ */
+type Mode = ReaderSettings['mode'];
+type Direction = ReaderSettings['direction'];
 
 export function MangaReader() {
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [rejected, setRejected] = useState<Array<{ name: string; reason: string }>>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [page, setPage] = useState(0);
-  const [mode, setMode] = useState<Mode>('strip');
-  const [direction, setDirection] = useState<Direction>('ltr');
-  const [zoom, setZoom] = useState(100);
   const [showThumbs, setShowThumbs] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [focus, setFocus] = useState(false);
+  const [autoScrolling, setAutoScrolling] = useState(false);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  /*
+   * Appearance lives in one persisted object rather than in loose useStates,
+   * so a new control is one field rather than another piece of state to
+   * remember to save, restore and validate.
+   */
+  const { settings, update, reset } = useReaderSettings();
+  const { mode, direction, zoom } = settings;
 
   const cache = useMemo(() => new PageCache(), []);
   useEffect(() => () => cache.clear(), [cache]);
@@ -97,16 +120,93 @@ export function MangaReader() {
   useEffect(() => {
     if (!chapter) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === 'Escape') setOpenId(null);
-      if (mode !== 'page') return;
+      // Never steal a key from someone typing in the chapter list filter.
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/u.test(target.tagName)) return;
+
+      if (event.key === 'Escape') {
+        if (focus) {
+          setFocus(false);
+          return;
+        }
+        setAutoScrolling(false);
+        setOpenId(null);
+        return;
+      }
+      if (event.key.toLowerCase() === 'f') {
+        setFocus((on) => !on);
+        return;
+      }
+      if (event.key === ' ' && mode === 'strip') {
+        event.preventDefault();
+        setAutoScrolling((on) => !on);
+        return;
+      }
+      if (mode === 'strip') return;
+
+      // In a spread, one press moves a whole spread, not half of one.
+      const groups = spreadGroups(total, settings);
+      const step = (delta: number) =>
+        setPage((current) => {
+          const next = groupOfPage(current, groups) + delta;
+          if (next < 0 || next >= groups.length) return current;
+          return groups[next]![0]!;
+        });
+
       const back = direction === 'rtl' ? 'ArrowRight' : 'ArrowLeft';
       const forward = direction === 'rtl' ? 'ArrowLeft' : 'ArrowRight';
-      if (event.key === back) setPage((p) => Math.max(0, p - 1));
-      if (event.key === forward) setPage((p) => Math.min(total - 1, p + 1));
+      if (event.key === back || event.key === 'PageUp') step(-1);
+      if (event.key === forward || event.key === 'PageDown') step(1);
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [chapter, mode, direction, total]);
+  }, [chapter, mode, direction, total, settings, focus]);
+
+  /* ---------------------------------------------------------- auto-scroll */
+
+  /*
+   * Driven by requestAnimationFrame with the real frame delta rather than a
+   * fixed step per tick, so the speed means the same thing on a 60Hz and a
+   * 120Hz screen. Capped at 50ms so returning to a backgrounded tab does not
+   * jump the page halfway down the chapter.
+   */
+  useEffect(() => {
+    if (!autoScrolling || mode !== 'strip' || !chapter) return;
+
+    let frame = 0;
+    let last = 0;
+    const tick = (now: number) => {
+      if (last) {
+        const seconds = Math.min(now - last, 50) / 1000;
+        const before = window.scrollY;
+        window.scrollBy(0, settings.autoScrollSpeed * seconds);
+        // Stop at the end instead of grinding against the bottom forever.
+        if (window.scrollY === before && before > 0) {
+          setAutoScrolling(false);
+          return;
+        }
+      }
+      last = now;
+      frame = window.requestAnimationFrame(tick);
+    };
+    frame = window.requestAnimationFrame(tick);
+
+    const pause = () => {
+      if (document.hidden) setAutoScrolling(false);
+    };
+    document.addEventListener('visibilitychange', pause);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener('visibilitychange', pause);
+    };
+  }, [autoScrolling, mode, chapter, settings.autoScrollSpeed]);
+
+  /*
+   * Auto-scroll is stopped where the change happens — in the mode switch and
+   * in the back button — rather than in an effect watching for it. An effect
+   * that calls setState synchronously runs a second render for something the
+   * handler already knew, and React flags it for exactly that reason.
+   */
 
   /* -------------------------------------------------------------- export */
 
@@ -167,12 +267,40 @@ export function MangaReader() {
           setRejected([]);
           cache.clear();
         }}
+        onLinkChapter={(linked) => {
+          setChapters((current) => [...current, linked]);
+          setOpenId(linked.id);
+        }}
       />
     );
   }
 
+  /*
+   * Appearance is handed to CSS as custom properties rather than rebuilt into
+   * class names, because four of these are free-moving numbers and one is a
+   * colour. Tailwind cannot generate a class per value, and a filter rebuilt
+   * on every slider frame would thrash the stylesheet.
+   *
+   * The colours are safe to interpolate because normalizeReaderSettings only
+   * ever lets a plain hex literal through.
+   */
+  const shell: React.CSSProperties & Record<string, string> = {
+    '--reader-width': `${settings.width}px`,
+    '--reader-gap': `${settings.gap}px`,
+    '--reader-margin': `${settings.margin}px`,
+    '--reader-accent': settings.accent,
+    '--reader-filter': `brightness(${settings.brightness}%) contrast(${settings.contrast}%)`,
+    ...(settings.theme === 'custom' ? { '--reader-bg': settings.background } : {}),
+  };
+
   return (
-    <div className="rounded-2xl border border-line bg-surface">
+    <div
+      data-reader-theme={settings.theme}
+      style={shell}
+      className={`cl-reader rounded-2xl border border-line bg-[var(--reader-bg)] ${
+        focus ? 'cl-reader-focus' : ''
+      }`}
+    >
       <ReaderBar
         chapter={chapter}
         page={page}
@@ -182,14 +310,34 @@ export function MangaReader() {
         zoom={zoom}
         showThumbs={showThumbs}
         onBack={() => {
+          setAutoScrolling(false);
           cache.clear();
           setOpenId(null);
         }}
-        onMode={setMode}
-        onDirection={setDirection}
-        onZoom={setZoom}
+        onMode={(next) => {
+          if (next !== 'strip') setAutoScrolling(false);
+          update({ mode: next });
+        }}
+        onDirection={(next) => update({ direction: next })}
+        onZoom={(next) => update({ zoom: next })}
+        focus={focus}
+        onFocus={() => setFocus((on) => !on)}
+        autoScrolling={autoScrolling}
+        onAutoScroll={() => setAutoScrolling((on) => !on)}
+        showSettings={showSettings}
+        onSettings={() => setShowSettings((open) => !open)}
+        onPage={setPage}
         onThumbs={() => setShowThumbs((open) => !open)}
       />
+
+      {showSettings ? (
+        <ReaderSettingsPanel
+          settings={settings}
+          onChange={update}
+          onReset={reset}
+          onClose={() => setShowSettings(false)}
+        />
+      ) : null}
 
       {showThumbs ? (
         <Thumbnails
@@ -204,19 +352,31 @@ export function MangaReader() {
         />
       ) : null}
 
-      {mode === 'strip' ? (
-        <Strip chapter={chapter} total={total} cache={cache} zoom={zoom} onPage={setPage} />
-      ) : (
-        <Paged
-          chapter={chapter}
-          page={page}
-          total={total}
-          cache={cache}
-          zoom={zoom}
-          direction={direction}
-          onPage={setPage}
-        />
-      )}
+      <div ref={stageRef}>
+        {mode === 'strip' ? (
+          <Strip chapter={chapter} total={total} cache={cache} zoom={zoom} onPage={setPage} />
+        ) : mode === 'horizontal' ? (
+          <Sideways
+            chapter={chapter}
+            total={total}
+            cache={cache}
+            zoom={zoom}
+            direction={direction}
+            onPage={setPage}
+          />
+        ) : (
+          <Paged
+            chapter={chapter}
+            page={page}
+            total={total}
+            cache={cache}
+            zoom={zoom}
+            direction={direction}
+            settings={settings}
+            onPage={setPage}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -240,6 +400,7 @@ function Library({
   onExport,
   onRemove,
   onClear,
+  onLinkChapter,
 }: {
   chapters: Chapter[];
   rejected: Array<{ name: string; reason: string }>;
@@ -250,6 +411,7 @@ function Library({
   onExport: (chapter: Chapter) => void;
   onRemove: (id: string) => void;
   onClear: () => void;
+  onLinkChapter: (chapter: Chapter) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const progress = typeof window === 'undefined' ? {} : loadProgress();
@@ -301,6 +463,8 @@ function Library({
         />
       </div>
 
+      <LinkImport onChapter={onLinkChapter} />
+
       {rejected.length > 0 ? (
         <ul className="m-0 mt-3 list-none p-0 text-[12.5px] text-warn-text">
           {rejected.slice(0, 5).map((entry) => (
@@ -343,10 +507,21 @@ function Library({
                       {at > 0 && at < count - 1 ? ` · you were on page ${at + 1}` : ''}
                     </span>
                   </button>
+                  {/*
+                    A linked chapter has no bytes on this device — the browser
+                    renders each page straight from its own server — so there
+                    is nothing to put in a .cbz. Hiding the button is clearer
+                    than offering one that always fails.
+                  */}
                   <button
                     type="button"
                     onClick={() => onExport(chapter)}
-                    disabled={busy}
+                    disabled={busy || PageCache.isRemote(chapter)}
+                    title={
+                      PageCache.isRemote(chapter)
+                        ? 'Linked pages stay on their own server, so there is no file to save.'
+                        : undefined
+                    }
                     className="cl-touch min-h-9 rounded-pill border border-line px-3 text-[12.5px] font-semibold text-muted hover:text-text disabled:opacity-50"
                   >
                     Save .cbz
@@ -384,6 +559,13 @@ function ReaderBar({
   onDirection,
   onZoom,
   onThumbs,
+  focus,
+  onFocus,
+  autoScrolling,
+  onAutoScroll,
+  showSettings,
+  onSettings,
+  onPage,
 }: {
   chapter: Chapter;
   page: number;
@@ -397,9 +579,16 @@ function ReaderBar({
   onDirection: (direction: Direction) => void;
   onZoom: (zoom: number) => void;
   onThumbs: () => void;
+  focus: boolean;
+  onFocus: () => void;
+  autoScrolling: boolean;
+  onAutoScroll: () => void;
+  showSettings: boolean;
+  onSettings: () => void;
+  onPage: (page: number) => void;
 }) {
   return (
-    <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-surface/95 p-3 backdrop-blur">
+    <div className="cl-reader-bar sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-line bg-surface/95 p-3 backdrop-blur">
       <button
         type="button"
         onClick={onBack}
@@ -419,10 +608,11 @@ function ReaderBar({
           options={[
             { value: 'strip', label: 'Scroll' },
             { value: 'page', label: 'Pages' },
+            { value: 'horizontal', label: 'Sideways' },
           ]}
           onChange={(value) => onMode(value as Mode)}
         />
-        {mode === 'page' ? (
+        {mode === 'page' || mode === 'horizontal' ? (
           <Segmented
             value={direction}
             options={[
@@ -453,6 +643,21 @@ function ReaderBar({
           </button>
         </div>
 
+        {mode === 'strip' ? (
+          <button
+            type="button"
+            onClick={onAutoScroll}
+            aria-pressed={autoScrolling}
+            className={`cl-touch min-h-9 rounded-pill border px-3 text-[12.5px] font-semibold ${
+              autoScrolling
+                ? 'border-selected bg-selected text-selected-fg'
+                : 'border-line text-muted hover:text-text'
+            }`}
+          >
+            {autoScrolling ? 'Stop' : 'Auto-scroll'}
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={onThumbs}
@@ -463,7 +668,52 @@ function ReaderBar({
         >
           Thumbnails
         </button>
+
+        <button
+          type="button"
+          onClick={onSettings}
+          aria-pressed={showSettings}
+          className={`cl-touch min-h-9 rounded-pill border px-3 text-[12.5px] font-semibold ${
+            showSettings ? 'border-selected bg-selected text-selected-fg' : 'border-line text-muted hover:text-text'
+          }`}
+        >
+          Customize
+        </button>
+
+        <button
+          type="button"
+          onClick={onFocus}
+          aria-pressed={focus}
+          title="Hide everything but the pages (F)"
+          className={`cl-touch min-h-9 rounded-pill border px-3 text-[12.5px] font-semibold ${
+            focus ? 'border-selected bg-selected text-selected-fg' : 'border-line text-muted hover:text-text'
+          }`}
+        >
+          Focus
+        </button>
       </div>
+
+      {/*
+        Full-width on its own line: a slider squeezed into the button row has
+        almost no travel on a phone, which makes it useless for the one thing
+        it is for — crossing a 200-page chapter quickly.
+      */}
+      {total > 1 ? (
+        <label className="flex w-full min-w-0 items-center gap-2.5">
+          <span className="sr-only">Jump to page</span>
+          <input
+            type="range"
+            min={1}
+            max={total}
+            value={page + 1}
+            onChange={(event) => onPage(Number(event.target.value) - 1)}
+            className="w-full min-w-0 accent-[var(--reader-accent)]"
+          />
+          <span className="w-16 flex-none text-right text-[12px] tabular-nums text-muted">
+            {page + 1}/{total}
+          </span>
+        </label>
+      ) : null}
     </div>
   );
 }
@@ -505,6 +755,7 @@ function Page({
   cache,
   zoom,
   eager,
+  fill,
   onVisible,
 }: {
   chapter: Chapter;
@@ -512,6 +763,8 @@ function Page({
   cache: PageCache;
   zoom: number;
   eager?: boolean;
+  /** Size to the row's height rather than its width, for sideways reading. */
+  fill?: boolean;
   onVisible?: (index: number) => void;
 }) {
   const [url, setUrl] = useState<string | undefined>(() => cache.peek(chapter.id, index));
@@ -560,21 +813,34 @@ function Page({
   }, [chapter, index, cache, eager, onVisible]);
 
   return (
-    <div ref={holder} className="flex justify-center">
+    <div ref={holder} className={`flex justify-center ${fill ? 'h-full' : ''}`}>
       {failed ? (
         <p className="py-10 text-[13px] text-danger-text">Page {index + 1} could not be read.</p>
       ) : url ? (
+        /*
+         * The brightness/contrast filter is applied to the page itself rather
+         * than the whole reader, so the toolbar and controls stay legible
+         * while somebody dims the art to read in the dark.
+         */
         /* eslint-disable-next-line @next/next/no-img-element */
         <img
           src={url}
           alt={`Page ${index + 1}`}
           loading="lazy"
           decoding="async"
-          style={{ width: `${zoom}%` }}
-          className="block h-auto max-w-full"
+          style={
+            fill
+              ? { height: '100%', width: 'auto', filter: 'var(--reader-filter)' }
+              : { width: `${zoom}%`, filter: 'var(--reader-filter)' }
+          }
+          className={fill ? 'block max-w-none' : 'block h-auto max-w-full'}
         />
       ) : (
-        <div className="grid h-[70vh] w-full place-items-center text-[13px] text-muted">
+        <div
+          className={`grid place-items-center text-[13px] text-muted ${
+            fill ? 'h-full w-[60vw] max-w-[420px]' : 'h-[70vh] w-full'
+          }`}
+        >
           Page {index + 1}
         </div>
       )}
@@ -596,7 +862,8 @@ function Strip({
   onPage: (index: number) => void;
 }) {
   return (
-    <div className="flex flex-col items-center gap-1 bg-bg p-2">
+    <div className="bg-[var(--reader-bg)]">
+      <div className="cl-reader-column items-center">
       {Array.from({ length: total }, (_, index) => (
         <Page
           key={`${chapter.id}-${index}`}
@@ -608,6 +875,7 @@ function Strip({
           onVisible={onPage}
         />
       ))}
+      </div>
     </div>
   );
 }
@@ -619,6 +887,7 @@ function Paged({
   cache,
   zoom,
   direction,
+  settings,
   onPage,
 }: {
   chapter: Chapter;
@@ -627,16 +896,44 @@ function Paged({
   cache: PageCache;
   zoom: number;
   direction: Direction;
+  settings: ReaderSettings;
   onPage: (index: number) => void;
 }) {
+  const groups = spreadGroups(total, settings);
+  const current = groupOfPage(page, groups);
+  const shown = groups[current] ?? [page];
+
+  /*
+   * Moving by group, not by page: with spreads on, a press has to advance
+   * both pages or the two halves of a double-page spread drift apart.
+   */
+  const go = (delta: number) => {
+    const next = current + delta;
+    if (next < 0 || next >= groups.length) return;
+    onPage(groups[next]![0]!);
+  };
   // Reading right to left, the "next" page lives on the left of the screen.
-  const back = () => onPage(Math.max(0, page - 1));
-  const forward = () => onPage(Math.min(total - 1, page + 1));
+  const back = () => go(-1);
+  const forward = () => go(1);
 
   return (
-    <div className="bg-bg">
-      <div className="relative">
-        <Page chapter={chapter} index={page} cache={cache} zoom={zoom} eager />
+    <div className="bg-[var(--reader-bg)]">
+      <div className="relative cl-reader-column">
+        {/*
+          Right-to-left reverses which side each page of a spread sits on.
+          The row is reversed rather than the image, so the art is never
+          mirrored — only its placement changes.
+        */}
+        <div
+          className={`flex items-start justify-center ${
+            shown.length > 1 && direction === 'rtl' ? 'flex-row-reverse' : 'flex-row'
+          }`}
+          style={{ gap: 'var(--reader-gap)' }}
+        >
+          {shown.map((index) => (
+            <Page key={index} chapter={chapter} index={index} cache={cache} zoom={zoom} eager />
+          ))}
+        </div>
 
         <button
           type="button"
@@ -776,5 +1073,211 @@ function Thumb({ chapter, index, cache }: { chapter: Chapter; index: number; cac
         <img src={url} alt="" className="h-24 w-full object-cover" loading="lazy" decoding="async" />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Sideways reading: one long horizontal row, swiped or scrolled across.
+ *
+ * This is the shape a printed book has when you flip through it, and it suits
+ * wide double-page art better than a vertical strip does. `flex-row-reverse`
+ * handles right-to-left, so the pages sit in the right order without any
+ * image being mirrored.
+ *
+ * Scroll snapping makes each page settle in place instead of stopping
+ * halfway, which on a touchpad is the difference between reading and fighting.
+ */
+function Sideways({
+  chapter,
+  total,
+  cache,
+  zoom,
+  direction,
+  onPage,
+}: {
+  chapter: Chapter;
+  total: number;
+  cache: PageCache;
+  zoom: number;
+  direction: Direction;
+  onPage: (index: number) => void;
+}) {
+  const indices = Array.from({ length: total }, (_, i) => i);
+
+  return (
+    <div
+      className={`flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain bg-[var(--reader-bg)] ${
+        direction === 'rtl' ? 'flex-row-reverse' : 'flex-row'
+      }`}
+      style={{ gap: 'var(--reader-gap)', padding: 'var(--reader-margin)' }}
+    >
+      {indices.map((index) => (
+        <div
+          key={index}
+          className="h-[78vh] flex-none snap-center"
+          onFocus={() => onPage(index)}
+        >
+          <Page
+            chapter={chapter}
+            index={index}
+            cache={cache}
+            zoom={zoom}
+            eager={index < 3}
+            fill
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Reading from pasted links.
+ *
+ * Tagged "under testing" on purpose. The honest limits are stated in the
+ * panel rather than buried: a direct image link works because a browser will
+ * load an <img> cross-origin, and a link to a chapter *page* does not,
+ * because reading one means parsing another site's HTML — which the browser
+ * refuses, and which Couchlist will not do on its server, since that would
+ * make it a proxy for other people's comics.
+ *
+ * Lines that cannot be used are listed back with the reason instead of being
+ * dropped, so a paste of thirty links that yields twenty pages says which ten
+ * were skipped and why.
+ */
+function LinkImport({ onChapter }: { onChapter: (chapter: Chapter) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [assumeImage, setAssumeImage] = useState(false);
+  const [result, setResult] = useState<ClassifiedLinks | null>(null);
+
+  function read() {
+    const classified = classifyReaderLinks(text, assumeImage);
+    setResult(classified);
+    if (classified.images.length === 0) return;
+
+    onChapter({
+      id: `link-${Date.now()}`,
+      name:
+        classified.images.length === 1
+          ? 'Linked page'
+          : `${classified.images.length} linked pages`,
+      pages: classified.images.map((url) => ({ kind: 'remote' as const, url })),
+      order: classified.images.map((_, index) => index),
+    });
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="mt-3 flex w-full items-center gap-2 rounded-xl border border-dashed border-line px-4 py-3 text-left text-[13px] text-muted hover:border-muted/50 hover:text-text"
+      >
+        <span className="font-semibold text-text">Read from a link</span>
+        <span className="rounded-pill border border-[#f6ba7b]/35 bg-[#f6ba7b]/12 px-2 py-[1px] text-[11px] font-semibold text-[#f6ba7b]">
+          Under testing
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <section
+      aria-label="Read from a link"
+      className="mt-3 rounded-xl border border-line bg-bg/50 p-4"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="m-0 text-[14px] font-bold">Read from a link</h3>
+        <span className="rounded-pill border border-[#f6ba7b]/35 bg-[#f6ba7b]/12 px-2 py-[1px] text-[11px] font-semibold text-[#f6ba7b]">
+          Under testing
+        </span>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="cl-touch cl-pill ml-auto rounded-pill border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+        >
+          Close
+        </button>
+      </div>
+
+      <p className="m-0 mt-2 max-w-[62ch] text-[12.5px] text-muted">
+        Paste <strong className="text-text">direct image links</strong>, one per line, in reading
+        order. A link to a chapter <em>page</em> cannot be read here — that needs the companion
+        extension, because the page has to be opened in your own browser session.
+      </p>
+
+      <label className="mt-3 block">
+        <span className="sr-only">Image links, one per line</span>
+        <textarea
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          rows={5}
+          spellCheck={false}
+          placeholder={'https://example.com/page-01.webp\nhttps://example.com/page-02.webp'}
+          className="w-full min-w-0 rounded-xl border border-line bg-bg p-3 font-mono text-[12.5px] text-text placeholder:text-muted/60"
+        />
+      </label>
+
+      <label className="mt-2 flex items-start gap-2.5">
+        <input
+          type="checkbox"
+          checked={assumeImage}
+          onChange={(event) => setAssumeImage(event.target.checked)}
+          className="mt-[3px] h-4 w-4 flex-none accent-[var(--reader-accent,#e4575f)]"
+        />
+        <span className="flex min-w-0 flex-col">
+          <span className="text-[13px] font-semibold">These are all image links</span>
+          <span className="text-[12px] text-muted/80">
+            Tick this when the links have no .jpg or .webp on the end
+          </span>
+        </span>
+      </label>
+
+      <button
+        type="button"
+        onClick={read}
+        disabled={!text.trim()}
+        className="cl-touch mt-3 rounded-pill bg-selected px-4 py-2 text-[13px] font-semibold text-selected-fg disabled:opacity-50"
+      >
+        Read these
+      </button>
+
+      {result ? (
+        <div className="mt-3 flex flex-col gap-1.5 text-[12.5px]">
+          {result.images.length > 0 ? (
+            <p className="m-0 text-[#8fc9c2]">
+              {result.images.length} page{result.images.length === 1 ? '' : 's'} opened.
+            </p>
+          ) : (
+            <p className="m-0 text-[#ffb0b0]">No usable image links in that list.</p>
+          )}
+          {result.needsExtension.length > 0 ? (
+            <p className="m-0 text-[#f6ba7b]">
+              {result.needsExtension.length} look like chapter pages, which need the extension.
+            </p>
+          ) : null}
+          {result.rejected.length > 0 ? (
+            <details>
+              <summary className="cursor-pointer text-muted">
+                {result.rejected.length} could not be used
+              </summary>
+              <ul className="m-0 mt-1 list-none p-0 text-muted">
+                {result.rejected.slice(0, 8).map((entry) => (
+                  <li key={entry.raw} className="truncate">
+                    {entry.raw} — {entry.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+
+      <p className="m-0 mt-3 text-[12px] text-muted/75">
+        Linked pages are loaded straight from their own server by your browser. Couchlist never
+        fetches, stores or proxies them, so they cannot be saved as a .cbz.
+      </p>
+    </section>
   );
 }

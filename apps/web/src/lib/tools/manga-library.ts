@@ -20,7 +20,17 @@ import {
 
 export type PageSource =
   | { kind: 'archive'; entry: ArchiveEntry }
-  | { kind: 'loose'; bytes: Uint8Array };
+  | { kind: 'loose'; bytes: Uint8Array }
+  /**
+   * A page that lives on somebody else's server.
+   *
+   * The browser fetches it as an ordinary image, which is why this works at
+   * all without a proxy: an <img> may load cross-origin even where fetch()
+   * would be refused. The consequence is that we never hold its bytes, so a
+   * remote chapter cannot be exported to .cbz and its URL is handed to the
+   * cache as-is rather than becoming an object URL to revoke.
+   */
+  | { kind: 'remote'; url: string };
 
 export interface Chapter {
   id: string;
@@ -48,6 +58,10 @@ export function chapterPageCount(chapter: Chapter): number {
 export async function pageBytes(chapter: Chapter, index: number): Promise<Uint8Array> {
   const source = chapter.pages[chapter.order[index] ?? index];
   if (!source) throw new Error('No such page.');
+  if (source.kind === 'remote') {
+    // Reading one works (the <img> loads it); having its bytes does not.
+    throw new Error('That page is a web link, so its file is not on your device.');
+  }
   if (source.kind === 'loose') return source.bytes;
   if (!chapter.bytes) throw new Error('That chapter is missing its file.');
   return readArchiveEntry(chapter.bytes, source.entry, inflateRaw);
@@ -74,6 +88,11 @@ export class PageCache {
     return this.urls.get(this.key(chapterId, index));
   }
 
+  /** Whether any page of this chapter is a web link rather than a file. */
+  static isRemote(chapter: Chapter): boolean {
+    return chapter.pages.some((page) => page.kind === 'remote');
+  }
+
   async get(chapter: Chapter, index: number): Promise<string> {
     const key = this.key(chapter.id, index);
 
@@ -84,6 +103,14 @@ export class PageCache {
       this.urls.set(key, existing);
       return existing;
     }
+
+    /*
+     * A remote page is already a URL. Returning it directly keeps it out of
+     * the object-URL map entirely, so eviction never tries to revoke a link
+     * it does not own — and a remote chapter costs no memory to hold open.
+     */
+    const source = chapter.pages[chapter.order[index] ?? index];
+    if (source?.kind === 'remote') return source.url;
 
     const inFlight = this.pending.get(key);
     if (inFlight) return inFlight;
