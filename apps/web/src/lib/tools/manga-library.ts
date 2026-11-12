@@ -30,7 +30,16 @@ export type PageSource =
    * remote chapter cannot be exported to .cbz and its URL is handed to the
    * cache as-is rather than becoming an object URL to revoke.
    */
-  | { kind: 'remote'; url: string };
+  | { kind: 'remote'; url: string }
+  /**
+   * A page from a source site, fetched by the extension.
+   *
+   * Separate from `remote` because it cannot be loaded directly: these CDNs
+   * refuse any request whose Referer is not their own site, so an <img>
+   * pointing at one returns 403 and renders as a broken page. The extension
+   * fetches it with the right Referer and hands back a data URL.
+   */
+  | { kind: 'sourced'; url: string; referer: string };
 
 export interface Chapter {
   id: string;
@@ -58,8 +67,8 @@ export function chapterPageCount(chapter: Chapter): number {
 export async function pageBytes(chapter: Chapter, index: number): Promise<Uint8Array> {
   const source = chapter.pages[chapter.order[index] ?? index];
   if (!source) throw new Error('No such page.');
-  if (source.kind === 'remote') {
-    // Reading one works (the <img> loads it); having its bytes does not.
+  if (source.kind === 'remote' || source.kind === 'sourced') {
+    // Reading one works; having its bytes does not.
     throw new Error('That page is a web link, so its file is not on your device.');
   }
   if (source.kind === 'loose') return source.bytes;
@@ -90,7 +99,7 @@ export class PageCache {
 
   /** Whether any page of this chapter is a web link rather than a file. */
   static isRemote(chapter: Chapter): boolean {
-    return chapter.pages.some((page) => page.kind === 'remote');
+    return chapter.pages.some((page) => page.kind === 'remote' || page.kind === 'sourced');
   }
 
   async get(chapter: Chapter, index: number): Promise<string> {
@@ -112,6 +121,31 @@ export class PageCache {
     const source = chapter.pages[chapter.order[index] ?? index];
     if (source?.kind === 'remote') return source.url;
 
+    /*
+     * Routed through the extension, and cached like any other page so a
+     * reread does not fetch it twice. The data URL is not an object URL, so
+     * eviction has nothing to revoke — it is simply dropped.
+     */
+    if (source?.kind === 'sourced') {
+      const pending = this.pending.get(key);
+      if (pending) return pending;
+
+      const work = (async () => {
+        const { fetchPageThroughExtension } = await import('./reader-bridge');
+        const dataUrl = await fetchPageThroughExtension(source.url, source.referer);
+        this.urls.set(key, dataUrl);
+        this.evict();
+        return dataUrl;
+      })();
+
+      this.pending.set(key, work);
+      try {
+        return await work;
+      } finally {
+        this.pending.delete(key);
+      }
+    }
+
     const inFlight = this.pending.get(key);
     if (inFlight) return inFlight;
 
@@ -128,18 +162,28 @@ export class PageCache {
     return work;
   }
 
+  /*
+   * Only an object URL has anything to release. A data URL from the
+   * extension is an ordinary string, and handing one to revokeObjectURL is
+   * at best a no-op — so the check is about saying what we mean, and about
+   * not pretending to free memory we never allocated.
+   */
+  private static release(url: string | undefined): void {
+    if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
+  }
+
   private evict(): void {
     while (this.urls.size > this.limit) {
       const oldest = this.urls.keys().next().value as string | undefined;
       if (!oldest) break;
       const url = this.urls.get(oldest);
       this.urls.delete(oldest);
-      if (url) URL.revokeObjectURL(url);
+      PageCache.release(url);
     }
   }
 
   clear(): void {
-    for (const url of this.urls.values()) URL.revokeObjectURL(url);
+    for (const url of this.urls.values()) PageCache.release(url);
     this.urls.clear();
     this.pending.clear();
   }

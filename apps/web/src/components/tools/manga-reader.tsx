@@ -9,6 +9,7 @@ import {
   neighbours,
   orderChapters,
   handoverFromHash,
+  parseHandover,
   type ChapterLink,
   type ReaderSettings,
 } from '@couchlist/shared';
@@ -97,21 +98,47 @@ export function MangaReader() {
    * like a pasted one. The fragment is then cleared so a refresh does not
    * silently re-import, and so the links do not sit in the address bar.
    */
-  const acceptHandover = useCallback(() => {
-    const result = handoverFromHash(window.location.hash);
-    if (!result) return;
+  const acceptHandover = useCallback(async () => {
+    const key = /(?:^#|&)sent=([A-Za-z0-9-]+)/u.exec(window.location.hash)?.[1];
+    const inline = handoverFromHash(window.location.hash);
+    if (!key && !inline) return;
     window.history.replaceState(null, '', window.location.pathname);
 
+    /*
+     * Two ways a chapter arrives. The extension stores it and passes a key,
+     * because a 200-page chapter does not fit in a URL. The older inline
+     * form is still read so a link someone saved keeps working.
+     */
+    let result = inline;
+    if (key) {
+      const { takeChapter } = await import('@/lib/tools/reader-bridge');
+      const raw = await takeChapter(key);
+      result = raw
+        ? parseHandover(raw)
+        : {
+            chapter: null,
+            problem:
+              'That chapter was not waiting in the extension. Send it again from the source tab.',
+          };
+    }
+
+    if (!result) return;
     if (!result.chapter) {
       setHandoverProblem(result.problem ?? 'That chapter could not be read.');
       return;
     }
 
     const incoming = result.chapter;
+    const referer = incoming.sourceUrl ?? '';
     const chapter: Chapter = {
       id: `sent-${Date.now()}`,
       name: incoming.title,
-      pages: incoming.pages.map((url) => ({ kind: 'remote' as const, url })),
+      /*
+       * Marked `sourced`, not `remote`: these have to be fetched by the
+       * extension. Loading them directly gets a 403 from the CDN, which is
+       * what turned a working chapter into a column of broken images.
+       */
+      pages: incoming.pages.map((url) => ({ kind: 'sourced' as const, url, referer })),
       order: incoming.pages.map((_, index) => index),
     };
 
@@ -134,12 +161,13 @@ export function MangaReader() {
      * applying it synchronously here would run a second render pass before
      * the first has been painted.
      */
-    const timer = window.setTimeout(acceptHandover, 0);
+    const timer = window.setTimeout(() => void acceptHandover(), 0);
     // A second send while the reader is already open changes only the hash.
-    window.addEventListener('hashchange', acceptHandover);
+    const onHash = () => void acceptHandover();
+    window.addEventListener('hashchange', onHash);
     return () => {
       window.clearTimeout(timer);
-      window.removeEventListener('hashchange', acceptHandover);
+      window.removeEventListener('hashchange', onHash);
     };
   }, [acceptHandover]);
   useEffect(() => () => cache.clear(), [cache]);
@@ -841,7 +869,14 @@ function Page({
   onVisible?: (index: number) => void;
 }) {
   const [url, setUrl] = useState<string | undefined>(() => cache.peek(chapter.id, index));
-  const [failed, setFailed] = useState(false);
+  /*
+   * The reason, not just the fact. "Broken image" is the least useful thing
+   * a reader can say: a 403 from the source, a page that needs you signed
+   * in, and a missing extension all look identical, and each needs a
+   * different thing from the person.
+   */
+  const [failed, setFailed] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const holder = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -855,8 +890,8 @@ function Page({
         .then((next) => {
           if (alive) setUrl(next);
         })
-        .catch(() => {
-          if (alive) setFailed(true);
+        .catch((error: unknown) => {
+          if (alive) setFailed((error as Error)?.message || 'That page could not be loaded.');
         });
     };
 
@@ -883,12 +918,28 @@ function Page({
       alive = false;
       observer.disconnect();
     };
-  }, [chapter, index, cache, eager, onVisible]);
+  }, [chapter, index, cache, eager, onVisible, attempt]);
 
   return (
     <div ref={holder} className={`flex justify-center ${fill ? 'h-full' : ''}`}>
       {failed ? (
-        <p className="py-10 text-[13px] text-danger-text">Page {index + 1} could not be read.</p>
+        <div className="flex flex-col items-center gap-2 py-10 text-center">
+          <p className="m-0 max-w-[46ch] text-[13px] text-danger-text">
+            Page {index + 1}: {failed}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setFailed(null);
+              // One page failing is usually transient, so retry just this
+              // one rather than making them reload the whole chapter.
+              setAttempt((count) => count + 1);
+            }}
+            className="cl-touch rounded-pill border border-line px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+          >
+            Try this page again
+          </button>
+        </div>
       ) : url ? (
         /*
          * The brightness/contrast filter is applied to the page itself rather
@@ -901,6 +952,13 @@ function Page({
           alt={`Page ${index + 1}`}
           loading="lazy"
           decoding="async"
+          /*
+           * Plenty of image hosts reject a Referer from another site but
+           * accept none at all, so sending none gives a pasted link its best
+           * chance. Pages fetched through the extension are already data
+           * URLs by this point and are unaffected.
+           */
+          referrerPolicy="no-referrer"
           style={
             fill
               ? { height: '100%', width: 'auto', filter: 'var(--reader-filter)' }

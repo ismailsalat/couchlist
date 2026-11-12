@@ -36,13 +36,15 @@ describe('packaging the extension', () => {
     const names = entries.map((entry) => entry.name).sort();
 
     expect(names).toEqual([
+      'background.js',
+      'bridge.js',
       'collect.js',
       'icon128.png',
       'manifest.json',
       'popup.css',
-      'popup.html',
       'popup.js',
-    ]);
+      'popup.html',
+    ].sort());
   });
 
   it('round-trips the manifest, so the compression is actually correct', async () => {
@@ -62,7 +64,10 @@ describe('packaging the extension', () => {
 
     expect(manifest.manifest_version).toBe(3);
     // The permission promises on the extension page have to stay true.
+    // The extension page promises site access is asked for one site at a
+    // time, so nothing may be granted up front.
     expect(manifest.permissions).not.toContain('tabs');
+    expect(manifest).not.toHaveProperty('host_permissions');
     expect(manifest.optional_host_permissions).toEqual(['https://*/*']);
   });
 });

@@ -171,3 +171,43 @@ package.json
 package-lock.json
 railway.json
 ```
+
+## Why the images were broken, and why the worker exists
+
+The first build of this extension had no background worker. The reader
+received image URLs and loaded them with ordinary `<img>` tags, which is
+simpler and does not work: nearly every manga CDN refuses a request whose
+Referer is not its own site. The reader showed a column of broken pages while
+the extension itself was working perfectly — 78 pages and 238 chapters
+collected correctly.
+
+Two things are needed to get a page, and only a background worker can do
+both:
+
+1. **Fetch cross-origin without CORS.** A content script cannot. Since Chrome
+   85 its requests are subject to the page's CORS rules, and these CDNs send
+   no `Access-Control-Allow-Origin`.
+2. **Set a Referer.** `fetch` options cannot override it; it takes a
+   `declarativeNetRequest` header rule.
+
+So pages go: reader → `bridge.js` (content script on the reader page) →
+background worker → fetch with the source's Referer → data URL back. One page
+at a time, on demand, so a 200-page chapter never sits in memory at once.
+
+The header rule is as narrow as the API allows — one host, our own extension
+as initiator, `xmlhttprequest` only — and is removed in a `finally`, so a
+failed fetch cannot leave it behind.
+
+`tests/e2e/extension.spec.ts` loads the real extension into real Chromium and
+points it at a server that behaves like those CDNs: 403 unless the Referer is
+its own. It asserts the browser's own fetch fails, that the extension
+succeeds, and that the server actually saw the spoofed Referer. A unit test
+cannot cover this — the mechanism is Chrome's, and the thing worth proving is
+that Chrome applies the rule.
+
+### What the reader shows when a page fails
+
+Not "broken image". The worker distinguishes a 403 refusal, a response that is
+HTML rather than an image (you are signed out), an empty body, and a timeout.
+The reader prints that sentence under the page number with a **Try this page
+again** button, so one transient failure does not cost the whole chapter.

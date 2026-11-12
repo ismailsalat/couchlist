@@ -4,9 +4,39 @@
   "description": "Send a chapter you already have open to your Couchlist reader.",
   "version": "0.1.0",
   "minimum_chrome_version": "120",
-  "permissions": ["activeTab", "scripting", "storage"],
-  "optional_host_permissions": ["https://*/*"],
-  "action": { "default_popup": "popup.html", "default_title": "Send to Couchlist" },
-  "icons": { "128": "icon128.png" },
-  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'" }
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Send to Couchlist"
+  },
+  "icons": {
+    "128": "icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none'"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://couchlist.io/tools/*",
+        "https://www.couchlist.io/tools/*",
+        "http://localhost/tools/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
 }

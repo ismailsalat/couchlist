@@ -18,7 +18,16 @@ export default defineConfig({
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      /*
+       * The extension spec launches its own browser with the extension
+       * loaded, so a phone profile would neither change what it tests nor
+       * be able to run it — Chrome extensions are desktop only.
+       */
+      testIgnore: /extension\.spec\.ts/u,
+    },
   ],
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined

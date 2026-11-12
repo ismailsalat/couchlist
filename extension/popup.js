@@ -84,16 +84,15 @@ $('send').addEventListener('click', async () => {
     }
 
     /*
-     * Handed over in the URL fragment. A fragment is never sent to the
-     * server, so the chapter stays between the two pages in your browser.
+     * Handed to the worker under a one-time key, and the key goes in the URL
+     * fragment. The chapter itself used to travel in the fragment, which
+     * capped it at what a URL can hold; a key is a dozen characters however
+     * long the chapter is, and a fragment still never reaches a server.
      */
     const base = await site();
-    const payload = encodeURIComponent(JSON.stringify(chapter));
-    if (payload.length > 1_800_000) {
-      say('That chapter is too large to hand over. Try one with fewer pages.');
-      return;
-    }
-    await chrome.tabs.create({ url: `${base}/tools/comics#chapter=${payload}` });
+    const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    await chrome.runtime.sendMessage({ type: 'store-chapter', key, chapter });
+    await chrome.tabs.create({ url: `${base}/tools/comics#sent=${key}` });
     window.close();
   } catch (error) {
     say(error?.message || 'Something went wrong reading that page.');
