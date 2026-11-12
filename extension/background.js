@@ -103,6 +103,21 @@ async function fetchPage(url, referer) {
     throw new Error('That page link is not a web address.');
   }
 
+  /*
+   * Checked before fetching, because without it the only symptom is a bare
+   * "Failed to fetch" — which is what a service worker throws when it has no
+   * permission for a host, and is indistinguishable from the network being
+   * down. Naming the host turns an unactionable message into an obvious one.
+   */
+  const allowed = await chrome.permissions.contains({
+    origins: [`${target.protocol}//${target.hostname}/*`],
+  });
+  if (!allowed) {
+    throw new Error(
+      `Couchlist has no access to ${target.hostname}, where this chapter's images are stored. Open the extension on the source tab and allow that server.`,
+    );
+  }
+
   const origin = referer ? new URL(referer).origin + '/' : undefined;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
@@ -142,6 +157,18 @@ async function fetchPage(url, referer) {
 
     const type = response.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
     return toDataUrl(bytes, type.startsWith('image/') ? type : 'image/jpeg');
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`${target.hostname} did not answer in time for this page.`);
+    }
+    // "Failed to fetch" is what fetch throws for every network-level
+    // problem, and on its own it tells a reader nothing at all.
+    if (error instanceof TypeError) {
+      throw new Error(
+        `Could not reach ${target.hostname} for this page. The image server may be blocking us, or Couchlist may not have access to it.`,
+      );
+    }
+    throw error;
   } finally {
     clearTimeout(timer);
   }

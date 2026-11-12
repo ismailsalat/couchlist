@@ -217,14 +217,12 @@ export function handoverFromHash(hash: string): HandoverResult | null {
  *
  * Raised whenever the reader starts depending on something the extension did
  * not do before. 0.2.0 is where page images began coming back through the
- * extension; before that the reader loaded them directly, which a source's
- * CDN refuses.
  *
  * Without this check the two failures are indistinguishable — an old
  * extension and no extension both simply never answer — and the reader can
  * only say "no reply", which tells somebody nothing about what to do.
  */
-export const EXTENSION_MIN_VERSION = '0.2.0';
+export const EXTENSION_MIN_VERSION = '0.3.0';
 
 /** True when `version` is at least `minimum`. Non-numeric parts sort low. */
 export function versionAtLeast(version: string, minimum = EXTENSION_MIN_VERSION): boolean {

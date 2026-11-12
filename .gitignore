@@ -52,4 +52,4 @@ apps/web/next-env.d.ts
 # Generated rather than committed so the download can never be older than the
 # source it was built from.
 apps/web/public/couchlist-reader-extension.zip
-apps/web/public/.extension-version
+apps/web/public/extension-version.txt

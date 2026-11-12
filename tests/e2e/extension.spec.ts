@@ -53,7 +53,13 @@ test.beforeAll(async () => {
     host_permissions?: string[];
     content_scripts: Array<{ matches: string[] }>;
   };
-  manifest.host_permissions = ['http://127.0.0.1/*', 'http://localhost/*'];
+  /*
+   * Only one of the two hosts, deliberately: in real use the chapter page
+   * and its images are on different servers, and granting both here would
+   * hide exactly the failure that shipped — every page returning the bare
+   * "Failed to fetch" a worker throws when it lacks permission.
+   */
+  manifest.host_permissions = ['http://localhost/*'];
   manifest.content_scripts[0]!.matches.push('http://127.0.0.1/tools/*');
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
@@ -100,7 +106,7 @@ async function askExtension(page: import('@playwright/test').Page, request: Reco
 test.describe('reader extension', () => {
   test('announces itself to the reader page', async () => {
     const page = await context.newPage();
-    await page.goto('http://127.0.0.1:3000/tools/comics');
+    await page.goto('http://localhost:3000/tools/comics');
     const reply = await askExtension(page, { type: 'ping' });
     expect(reply.ok).toBe(true);
     await page.close();
@@ -108,11 +114,11 @@ test.describe('reader extension', () => {
 
   test('fetches a page the source refuses to serve us directly', async () => {
     const page = await context.newPage();
-    await page.goto('http://127.0.0.1:3000/tools/comics');
+    await page.goto('http://localhost:3000/tools/comics');
 
     // Proof the server really does block us: the browser's own fetch fails.
     const direct = await page.evaluate(async () => {
-      const response = await fetch('http://127.0.0.1:8899/page-01.png').catch(() => null);
+      const response = await fetch('http://localhost:8899/page-01.png').catch(() => null);
       return response?.status ?? 0;
     });
     expect(direct).not.toBe(200);
@@ -120,7 +126,7 @@ test.describe('reader extension', () => {
     hits = [];
     const reply = await askExtension(page, {
       type: 'page',
-      url: 'http://127.0.0.1:8899/page-01.png',
+      url: 'http://localhost:8899/page-01.png',
       referer: 'http://source.local/ch/1',
     });
 
@@ -133,11 +139,11 @@ test.describe('reader extension', () => {
 
   test('explains a refusal instead of returning a broken page', async () => {
     const page = await context.newPage();
-    await page.goto('http://127.0.0.1:3000/tools/comics');
+    await page.goto('http://localhost:3000/tools/comics');
 
     const reply = await askExtension(page, {
       type: 'page',
-      url: 'http://127.0.0.1:8899/page-01.png',
+      url: 'http://localhost:8899/page-01.png',
       referer: 'http://wrong.local/ch/1',
     });
 
@@ -159,7 +165,7 @@ test.describe('reader extension', () => {
  */
 test('reports a version the reader can compare', async () => {
   const page = await context.newPage();
-  await page.goto('http://127.0.0.1:3000/tools/comics');
+  await page.goto('http://localhost:3000/tools/comics');
 
   const reply = await askExtension(page, { type: 'ping' });
   expect(reply.ok).toBe(true);
@@ -168,5 +174,36 @@ test('reports a version the reader can compare', async () => {
   // Must be at least the version the reader requires for page relaying.
   const [major, minor] = String(reply.version).split('.').map(Number);
   expect(major! > 0 || minor! >= 2).toBe(true);
+  await page.close();
+});
+
+/**
+ * Images on a different host from the page — the normal case, and the one
+ * that broke.
+ *
+ * The popup used to ask for access to the chapter page only. Manga sites
+ * nearly all serve their images from a separate CDN domain, so the page came
+ * through perfectly and then every single image failed with "Failed to
+ * fetch", which is what a service worker throws when it has no permission
+ * for a host. The symptom looks like a network fault and is not one.
+ */
+test('says which host it lacks access to, rather than "Failed to fetch"', async () => {
+  const page = await context.newPage();
+  await page.goto('http://localhost:3000/tools/comics');
+
+  // 127.0.0.1 is a different host to Chrome than localhost, and this build
+  // was granted only localhost — the same shape as page-host-only access.
+  const reply = await askExtension(page, {
+    type: 'page',
+    url: 'http://127.0.0.1:8899/page-01.png',
+    referer: 'http://source.local/ch/1',
+  });
+
+  expect(reply.ok).toBe(false);
+  const message = String(reply.error);
+  expect(message).not.toMatch(/failed to fetch/iu);
+  // It has to name the host, or there is nothing for anyone to act on.
+  expect(message).toMatch(/127\.0\.0\.1/u);
+  expect(message).toMatch(/access/iu);
   await page.close();
 });

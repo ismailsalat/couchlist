@@ -3,20 +3,24 @@
 /*
  * The whole extension, in one file.
  *
- * It does exactly one thing: read the chapter in the tab you are looking at
- * and hand it to your Couchlist reader. There is no background worker, no
- * stored session and no fetching of images by the extension — the reader
- * loads those itself, straight from their own server.
+ * It does one thing: read the chapter in the tab you are looking at and hand
+ * it to your Couchlist reader. No background session, no stored history; the
+ * worker exists only to fetch page images, which a web page is not allowed to
+ * do for itself.
  *
- * Access is requested per site, from a real click, because Chrome only allows
- * it from a user gesture and because asking for every website up front is how
- * a reading tool ends up with more power than it needs.
+ * Access is asked for per site, from a real click. Note that a chapter almost
+ * always needs TWO sites: the page itself, and whichever server its images
+ * are on. Manga sites nearly all serve pages from a separate CDN domain, and
+ * asking only for the page — which this did at first — gets the page fine and
+ * then fails every single image with "Failed to fetch".
  */
 
 const DEFAULT_SITE = 'https://couchlist.io';
 const $ = (id) => document.getElementById(id);
 
 let tab = null;
+/** Set once a chapter is collected and still needs image-host access. */
+let pending = null;
 
 function say(message) {
   $('status').textContent = message;
@@ -25,6 +29,29 @@ function say(message) {
 async function site() {
   const stored = await chrome.storage.local.get('site');
   return stored.site || DEFAULT_SITE;
+}
+
+/** The distinct https origins a list of URLs needs permission for. */
+function originsOf(urls) {
+  const origins = new Set();
+  for (const url of urls) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:') origins.add(`https://${parsed.hostname}/*`);
+    } catch {
+      /* skip anything unparseable */
+    }
+  }
+  return [...origins];
+}
+
+async function missingOrigins(origins) {
+  const missing = [];
+  for (const origin of origins) {
+    // Checked one at a time so the list we show names exactly what is needed.
+    if (!(await chrome.permissions.contains({ origins: [origin] }))) missing.push(origin);
+  }
+  return missing;
 }
 
 (async () => {
@@ -36,13 +63,8 @@ async function site() {
     return;
   }
 
-  const host = new URL(tab.url).hostname;
-  $('where').textContent = host;
+  $('where').textContent = new URL(tab.url).hostname;
   $('send').disabled = false;
-
-  // Tell them up front whether a permission prompt is coming.
-  const granted = await chrome.permissions.contains({ origins: [`https://${host}/*`] });
-  if (!granted) say('You will be asked to allow access to this site.');
 })();
 
 $('site').addEventListener('change', () => {
@@ -59,12 +81,20 @@ $('site').addEventListener('change', () => {
   }
 });
 
+/** Put the chapter where the reader can collect it, and open the reader. */
+async function handOver(chapter) {
+  const base = await site();
+  const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  await chrome.runtime.sendMessage({ type: 'store-chapter', key, chapter });
+  await chrome.tabs.create({ url: `${base}/tools/comics#sent=${key}` });
+  window.close();
+}
+
 $('send').addEventListener('click', async () => {
   $('send').disabled = true;
   try {
     const host = new URL(tab.url).hostname;
-    const granted = await chrome.permissions.request({ origins: [`https://${host}/*`] });
-    if (!granted) {
+    if (!(await chrome.permissions.request({ origins: [`https://${host}/*`] }))) {
       say('Access was not granted, so this chapter cannot be read.');
       return;
     }
@@ -84,19 +114,46 @@ $('send').addEventListener('click', async () => {
     }
 
     /*
-     * Handed to the worker under a one-time key, and the key goes in the URL
-     * fragment. The chapter itself used to travel in the fragment, which
-     * capped it at what a URL can hold; a key is a dozen characters however
-     * long the chapter is, and a fragment still never reaches a server.
+     * The images usually live somewhere else. Permission for those hosts has
+     * to be asked for separately, and it cannot be requested here: the click
+     * that opened this was spent on the request above, and Chrome only grants
+     * permissions during a gesture. So the hosts are named and a second
+     * button asks for them — which is also the honest way round, since now
+     * we can say exactly which servers are involved instead of guessing
+     * before we have looked.
      */
-    const base = await site();
-    const key = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    await chrome.runtime.sendMessage({ type: 'store-chapter', key, chapter });
-    await chrome.tabs.create({ url: `${base}/tools/comics#sent=${key}` });
-    window.close();
+    const needed = await missingOrigins(originsOf(chapter.pages.map((page) => page.url)));
+    if (needed.length === 0) {
+      await handOver(chapter);
+      return;
+    }
+
+    pending = { chapter, origins: needed };
+    const names = needed.map((origin) => origin.replace(/^https:\/\//, '').replace(/\/\*$/, ''));
+    $('where').textContent = `${chapter.pages.length} pages · images from ${names.join(', ')}`;
+    say('These pages are stored on another server. Allow it to finish.');
+    $('grant').hidden = false;
+    $('grant').textContent = `Allow ${names.length === 1 ? names[0] : `${names.length} image servers`}`;
+    $('send').hidden = true;
   } catch (error) {
     say(error?.message || 'Something went wrong reading that page.');
   } finally {
     $('send').disabled = false;
+  }
+});
+
+$('grant').addEventListener('click', async () => {
+  if (!pending) return;
+  $('grant').disabled = true;
+  try {
+    if (!(await chrome.permissions.request({ origins: pending.origins }))) {
+      say('Without access to the image server the pages cannot be loaded.');
+      return;
+    }
+    await handOver(pending.chapter);
+  } catch (error) {
+    say(error?.message || 'Something went wrong.');
+  } finally {
+    $('grant').disabled = false;
   }
 });

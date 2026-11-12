@@ -122,7 +122,12 @@ const entries = await Promise.all(
 
 await mkdir(path.dirname(target), { recursive: true });
 await writeFile(target, zip(entries));
-await writeFile(path.join(root, 'apps/web/public/.extension-version'), `${manifest.version}\n`);
+/*
+ * Not a dotfile: a leading dot is treated as hidden by enough hosts that the
+ * version became impossible to check from outside, which is exactly when
+ * somebody is trying to work out whether their copy is stale.
+ */
+await writeFile(path.join(root, 'apps/web/public/extension-version.txt'), `${manifest.version}\n`);
 
 process.stdout.write(
   `Extension ${manifest.version} packaged: ${entries.length} files -> ${path.relative(root, target)}\n`,

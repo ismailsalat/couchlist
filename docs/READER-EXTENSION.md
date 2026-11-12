@@ -211,3 +211,34 @@ Not "broken image". The worker distinguishes a 403 refusal, a response that is
 HTML rather than an image (you are signed out), an empty body, and a timeout.
 The reader prints that sentence under the page number with a **Try this page
 again** button, so one transient failure does not cost the whole chapter.
+
+## Permissions: the page and the images are two different servers
+
+This is the single most important thing about how the extension works, and
+getting it wrong produced a failure that looked like something else entirely.
+
+The first build asked for access to the chapter page's host and nothing more.
+That reads sensibly and is wrong: manga sites almost always serve their page
+images from a separate CDN domain. The chapter came through perfectly — title,
+78 pages, 238 chapter links — and then every image failed with **"Failed to
+fetch"**, which is what a service worker throws when it has no permission for
+a host. It looks like a network fault. It is a permission fault.
+
+So the flow is two steps, and has to be:
+
+1. Click **Send chapter** → Chrome asks for the chapter page's host → the
+   collector runs and returns the image URLs.
+2. The popup works out which hosts those images are on, names them, and a
+   second button asks for those.
+
+It cannot be one step. Chrome only grants permissions during a user gesture,
+and the first click is spent on the first request. It is also the more honest
+order: after looking at the page we can say *which* servers are involved
+instead of guessing beforehand.
+
+The worker checks permission before fetching, so the message names the host
+that is missing rather than reporting a bare network error.
+
+`tests/e2e/extension.spec.ts` grants the test build **only** the page host,
+mirroring the broken case, and asserts the error names the image host and
+never says "Failed to fetch".

@@ -3,6 +3,25 @@ import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
 import { requireUserOrLogin } from '@/lib/auth/require-page-user';
 import { savedCountFor } from '@/lib/directory/page-data';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+
+/**
+ * The version of the archive this site is actually serving.
+ *
+ * Written by the build beside the zip. Shown because the common confusion is
+ * not "how do I install this" but "is the copy I already have the current
+ * one" — and without a number on the page there is no way to tell.
+ */
+async function servedVersion(): Promise<string | null> {
+  try {
+    const file = path.join(process.cwd(), 'apps/web/public/extension-version.txt');
+    return (await readFile(file, 'utf8')).trim() || null;
+  } catch {
+    // Missing only means the build did not write it; the download still works.
+    return null;
+  }
+}
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
@@ -26,6 +45,7 @@ export const metadata: Metadata = {
 export default async function ReaderExtensionPage() {
   const user = await requireUserOrLogin('/tools/reader-extension');
   const savedCount = await savedCountFor(user);
+  const version = await servedVersion();
 
   return (
     <>
@@ -58,8 +78,16 @@ export default async function ReaderExtensionPage() {
             download
             className="cl-touch mt-4 inline-flex items-center rounded-pill bg-selected px-4 py-2.5 text-[13.5px] font-semibold text-selected-fg no-underline hover:bg-selected-hover"
           >
-            Download the extension
+            Download the extension{version ? ` (${version})` : ''}
           </a>
+          {version ? (
+            <p className="m-0 mt-2 text-[12.5px] text-muted">
+              Check this against your own copy in{' '}
+              <code className="rounded bg-bg px-1 py-0.5 text-[12px]">chrome://extensions</code>. If
+              yours is older, <strong className="text-text">remove it and load this one</strong> —
+              reloading will not add the files it is missing.
+            </p>
+          ) : null}
           <p className="m-0 mt-2 text-[12px] text-muted/80">
             Chrome, Edge, Brave and Opera on desktop. Not Firefox, and not Safari or any phone
             browser — they do not support this kind of extension.
