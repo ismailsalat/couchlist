@@ -158,7 +158,13 @@ export function MangaReader() {
        * extension. Loading them directly gets a 403 from the CDN, which is
        * what turned a working chapter into a column of broken images.
        */
-      pages: incoming.pages.map((url) => ({ kind: 'sourced' as const, url, referer })),
+      // Each page keeps the Referer its own tag asked for; `referer` is only
+      // the fallback for a page that named none.
+      pages: incoming.pages.map((page) => ({
+        kind: 'sourced' as const,
+        url: page.url,
+        referer: page.referer === '' ? '' : page.referer || referer,
+      })),
       order: incoming.pages.map((_, index) => index),
     };
 
@@ -1372,6 +1378,7 @@ function SmartImport({
   const [dragging, setDragging] = useState(false);
   const [text, setText] = useState('');
   const [note, setNote] = useState<{ tone: Tone; message: string } | null>(null);
+  const [busyLink, setBusyLink] = useState(false);
 
   const trimmed = text.trim();
   const multiline = trimmed.includes('\n');
@@ -1384,40 +1391,77 @@ function SmartImport({
   const linkCount = preview?.images.length ?? 0;
   const chapterPages = preview?.needsExtension.length ?? 0;
 
-  function read() {
-    // Re-classified on submit with the extension hint turned off, then, if
-    // nothing matched by file extension, retried assuming image endpoints —
-    // plenty of CDNs serve images from /render?id=8 with no suffix.
-    let result = classifyReaderLinks(text, false);
-    if (result.images.length === 0 && result.needsExtension.length > 0) {
-      const retried = classifyReaderLinks(text, true);
-      // Only accept the retry when every line came through as an image. If
-      // even one is unusable, the paste probably was a chapter page and
-      // should still be reported as needing the extension.
-      if (retried.needsExtension.length === 0 && retried.rejected.length === 0) {
-        result = retried;
-      }
-    }
+  async function read() {
+    const result = classifyReaderLinks(text, false);
 
-    if (result.images.length === 0) {
-      setNote({
-        tone: chapterPages > 0 ? 'warn' : 'bad',
-        message:
-          chapterPages > 0
-            ? 'That looks like a chapter page. Reading one needs the Couchlist extension, because the page has to be opened in your own browser.'
-            : 'No usable image links there. Paste direct links to the images themselves, one per line.',
+    // Direct image links: nothing to fetch, open them now.
+    if (result.images.length > 0) {
+      onLinkChapter({
+        id: `link-${Date.now()}`,
+        name: result.images.length === 1 ? 'Linked page' : `${result.images.length} linked pages`,
+        pages: result.images.map((url) => ({ kind: 'remote' as const, url })),
+        order: result.images.map((_, index) => index),
       });
+      setText('');
+      setNote(null);
       return;
     }
 
-    onLinkChapter({
-      id: `link-${Date.now()}`,
-      name: result.images.length === 1 ? 'Linked page' : `${result.images.length} linked pages`,
-      pages: result.images.map((url) => ({ kind: 'remote' as const, url })),
-      order: result.images.map((_, index) => index),
-    });
-    setText('');
-    setNote(null);
+    if (chapterPages === 0) {
+      setNote({ tone: 'bad', message: 'That is not a link this can read.' });
+      return;
+    }
+
+    /*
+     * A chapter page. A browser may not read another site's HTML, so the
+     * server reads it and returns the page addresses — only the addresses.
+     * The images are still loaded by the browser straight from their own
+     * server, so Couchlist never receives or re-serves anybody's comic.
+     */
+    setBusyLink(true);
+    setNote({ tone: 'neutral', message: 'Reading that chapter…' });
+    try {
+      const response = await fetch('/api/tools/chapter', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: trimmed }),
+      });
+      const payload = (await response.json()) as {
+        title?: string;
+        pages?: Array<{ url: string; referer: string }>;
+        needsExtension?: boolean;
+        error?: { message?: string };
+      };
+
+      if (!response.ok || !payload.pages?.length) {
+        setNote({
+          tone: 'bad',
+          message: payload.error?.message ?? 'That chapter could not be read.',
+        });
+        return;
+      }
+
+      onLinkChapter({
+        id: `read-${Date.now()}`,
+        name: payload.title ?? 'Chapter',
+        pages: payload.pages.map((page) => ({ kind: 'remote' as const, url: page.url })),
+        order: payload.pages.map((_, index) => index),
+      });
+      setText('');
+      setNote(
+        payload.needsExtension
+          ? {
+              tone: 'warn',
+              message:
+                'Opened — but this source asks for its own address on each image, so some pages may not load here. The extension reads them properly.',
+            }
+          : null,
+      );
+    } catch {
+      setNote({ tone: 'bad', message: 'Could not reach that chapter.' });
+    } finally {
+      setBusyLink(false);
+    }
   }
 
   return (
@@ -1454,7 +1498,7 @@ function SmartImport({
             onKeyDown={(event) => {
               if (event.key === 'Enter' && trimmed) {
                 event.preventDefault();
-                read();
+                void read();
               }
             }}
             spellCheck={false}
@@ -1468,13 +1512,16 @@ function SmartImport({
       {trimmed ? (
         <p className="m-0 mt-2 flex items-start gap-2 text-[12.5px]">
           <span className={`mt-[1px] flex-none ${linkCount > 0 ? 'text-[#8fc9c2]' : 'text-[#f6ba7b]'}`}>
-            <StatusMark tone={linkCount > 0 ? 'good' : 'warn'} className="h-[15px] w-[15px]" />
+            <StatusMark
+              tone={linkCount > 0 || chapterPages > 0 ? 'good' : 'warn'}
+              className="h-[15px] w-[15px]"
+            />
           </span>
           <span className="min-w-0 text-muted">
             {linkCount > 0
               ? `${linkCount} image link${linkCount === 1 ? '' : 's'} — press Enter to read`
               : chapterPages > 0
-                ? 'Looks like a chapter page, which needs the extension'
+                ? 'Looks like a chapter page — press Enter and Couchlist will read it'
                 : 'Not a usable link yet'}
           </span>
         </p>
@@ -1483,11 +1530,11 @@ function SmartImport({
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={read}
-          disabled={!trimmed || busy}
+          onClick={() => void read()}
+          disabled={!trimmed || busy || busyLink}
           className="cl-touch rounded-pill bg-selected px-4 py-2 text-[13px] font-semibold text-selected-fg disabled:opacity-40"
         >
-          Read link
+          {busyLink ? 'Reading…' : 'Read link'}
         </button>
         <button
           type="button"

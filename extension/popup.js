@@ -19,8 +19,6 @@ const DEFAULT_SITE = 'https://couchlist.io';
 const $ = (id) => document.getElementById(id);
 
 let tab = null;
-/** Set once a chapter is collected and still needs image-host access. */
-let pending = null;
 
 function say(message) {
   $('status').textContent = message;
@@ -93,12 +91,18 @@ async function handOver(chapter) {
 $('send').addEventListener('click', async () => {
   $('send').disabled = true;
   try {
-    const host = new URL(tab.url).hostname;
-    if (!(await chrome.permissions.request({ origins: [`https://${host}/*`] }))) {
-      say('Access was not granted, so this chapter cannot be read.');
-      return;
-    }
-
+    /*
+     * No permission prompt to read the page.
+     *
+     * `activeTab` already grants access to the tab you are looking at for as
+     * long as it takes to answer your click — that is exactly what it is
+     * for. Asking for the page host as well produced two dialogs for one
+     * action, which is bewildering and buys nothing.
+     *
+     * The images are the part that genuinely needs asking about, because
+     * they are nearly always on a different server, and only now — having
+     * read the page — can we say which one.
+     */
     say('Reading the page…');
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -113,47 +117,26 @@ $('send').addEventListener('click', async () => {
       return;
     }
 
-    /*
-     * The images usually live somewhere else. Permission for those hosts has
-     * to be asked for separately, and it cannot be requested here: the click
-     * that opened this was spent on the request above, and Chrome only grants
-     * permissions during a gesture. So the hosts are named and a second
-     * button asks for them — which is also the honest way round, since now
-     * we can say exactly which servers are involved instead of guessing
-     * before we have looked.
-     */
     const needed = await missingOrigins(originsOf(chapter.pages.map((page) => page.url)));
     if (needed.length === 0) {
       await handOver(chapter);
       return;
     }
 
-    pending = { chapter, origins: needed };
+    /*
+     * Asked for in one prompt covering every image host at once, rather than
+     * one dialog per server.
+     */
     const names = needed.map((origin) => origin.replace(/^https:\/\//, '').replace(/\/\*$/, ''));
-    $('where').textContent = `${chapter.pages.length} pages · images from ${names.join(', ')}`;
-    say('These pages are stored on another server. Allow it to finish.');
-    $('grant').hidden = false;
-    $('grant').textContent = `Allow ${names.length === 1 ? names[0] : `${names.length} image servers`}`;
-    $('send').hidden = true;
+    say(`Allow Couchlist to read the ${chapter.pages.length} pages from ${names.join(', ')}.`);
+    if (!(await chrome.permissions.request({ origins: needed }))) {
+      say('Without access to the image server the pages cannot be loaded.');
+      return;
+    }
+    await handOver(chapter);
   } catch (error) {
     say(error?.message || 'Something went wrong reading that page.');
   } finally {
     $('send').disabled = false;
-  }
-});
-
-$('grant').addEventListener('click', async () => {
-  if (!pending) return;
-  $('grant').disabled = true;
-  try {
-    if (!(await chrome.permissions.request({ origins: pending.origins }))) {
-      say('Without access to the image server the pages cannot be loaded.');
-      return;
-    }
-    await handOver(pending.chapter);
-  } catch (error) {
-    say(error?.message || 'Something went wrong.');
-  } finally {
-    $('grant').disabled = false;
   }
 });

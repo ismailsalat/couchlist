@@ -7,3 +7,4 @@ export * from './cbz.js';
 export * from './reader-settings.js';
 export * from './reader-links.js';
 export * from './chapter-links.js';
+export * from './chapter-html.js';

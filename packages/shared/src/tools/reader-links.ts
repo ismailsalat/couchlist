@@ -115,10 +115,23 @@ export function classifyReaderLinks(input: string, assumeImage = false): Classif
  * reported, not partially applied.
  * ---------------------------------------------------------------------- */
 
+export interface HandoverPage {
+  url: string;
+  /**
+   * The Referer this image expects, taken from its own referrerpolicy.
+   *
+   * Three meaningful values and they are not interchangeable: the full
+   * chapter URL, the bare origin, or an empty string for no Referer at all.
+   * A CDN that serves only on `origin` answers 403 to the full URL, so the
+   * page's own instruction is carried through rather than guessed at.
+   */
+  referer: string;
+}
+
 export interface HandoverChapter {
   title: string;
   sourceUrl: string | null;
-  pages: string[];
+  pages: HandoverPage[];
   chapters: Array<{ url: string; label: string }>;
   previous: string | null;
   next: string | null;
@@ -157,16 +170,26 @@ export function parseHandover(raw: unknown): HandoverResult {
   const rawPages = Array.isArray(input.pages) ? input.pages : [];
   if (rawPages.length === 0) return { chapter: null, problem: 'That chapter had no pages in it.' };
 
-  const pages: string[] = [];
+  const pages: HandoverPage[] = [];
   const seen = new Set<string>();
   for (const entry of rawPages.slice(0, MAX_HANDOVER_PAGES)) {
-    const value = typeof entry === 'string' ? entry : (entry as { url?: unknown } | null)?.url;
+    const item = entry as { url?: unknown; referer?: unknown } | null;
+    const value = typeof entry === 'string' ? entry : item?.url;
     const url = safeUrl(value, sourceUrl ?? undefined);
-    // Order is reading order, so a duplicate is dropped rather than moved.
-    if (url && !seen.has(url)) {
-      seen.add(url);
-      pages.push(url);
-    }
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+
+    /*
+     * An empty string is a real instruction ("send no Referer"), so it has
+     * to survive, while anything that is not a usable URL falls back to the
+     * chapter's own address. A referer is also a URL we hand to the network,
+     * so it gets the same validation as a page link.
+     */
+    const asked = item?.referer;
+    const referer =
+      asked === '' ? '' : (safeUrl(asked, sourceUrl ?? undefined) ?? sourceUrl ?? '');
+
+    pages.push({ url, referer });
   }
   if (pages.length === 0) {
     return { chapter: null, problem: 'None of that chapter’s image links could be used.' };

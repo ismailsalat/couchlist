@@ -199,3 +199,28 @@ Two consequences while it stays listed:
 
 Same question applies to `kuoranime.com`, listed as **KuroAnime** — the
 spelling in the domain is not the spelling in the name.
+
+## Making the deploy faster
+
+The build itself is around 20 seconds; nearly all of a slow deploy is
+install. Two settings on the host account for most of it, and both are
+dashboard changes rather than code:
+
+**1. `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`** as a build variable.
+
+Playwright is a test dependency and its browser download is roughly 150 MB.
+Nothing in a deploy needs it: the only thing that drives a browser is preview
+capture, which is a command run by hand. This is deliberately *not* set in
+`.npmrc`, because that file is shared with everyone — a fresh clone needs the
+browsers for `npx playwright test`, and silently skipping them there turns a
+working test suite into a confusing failure.
+
+**2. Watch paths must cover the whole build.**
+
+Listed in `docs/READER-EXTENSION.md`. A host watching only `/apps/web/**`
+silently skips a commit that changes `scripts/` or `packages/`, reporting "no
+deployment needed" rather than failing — which is far harder to notice than a
+broken build, and cost most of an evening once already.
+
+Beyond that, the remaining time is `npm ci` and the Next.js build, both of
+which are roughly what they should be for a project this size.

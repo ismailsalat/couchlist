@@ -107,6 +107,25 @@
     return { previous, next, candidates: out };
   }
 
+  /*
+   * Which Referer this particular image expects.
+   *
+   * Not a detail. A CDN that wants its own site as the Referer will answer
+   * 403 to the wrong form of it, and the two forms are not interchangeable:
+   * `referrerpolicy="origin"` means the image is served only when the
+   * Referer is the bare origin, and sending the full chapter URL instead
+   * fails. The page already states what it needs on each tag, so read it
+   * rather than guessing one value for the whole chapter.
+   */
+  function refererFor(img) {
+    const policy = (img.getAttribute('referrerpolicy') || '').toLowerCase();
+    if (policy === 'no-referrer') return '';
+    if (policy === 'origin' || policy === 'strict-origin' || policy === 'origin-when-cross-origin') {
+      return location.origin + '/';
+    }
+    return location.href;
+  }
+
   const scan = images();
   const pages = [];
   const seen = new Set();
@@ -114,7 +133,11 @@
     const url = sourceOf(img);
     if (!url || seen.has(url)) continue;
     seen.add(url);
-    pages.push({ url, label: img.alt || `Page ${pages.length + 1}` });
+    pages.push({
+      url,
+      label: img.alt || `Page ${pages.length + 1}`,
+      referer: refererFor(img),
+    });
   }
 
   return {

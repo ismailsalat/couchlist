@@ -35,7 +35,7 @@ describe('chapter handover', () => {
         'data:image/png;base64,AAAA',
       ],
     });
-    expect(chapter?.pages).toEqual(['https://cdn.test/1.jpg']);
+    expect(chapter?.pages.map((page) => page.url)).toEqual(['https://cdn.test/1.jpg']);
   });
 
   it('refuses a chapter whose pages are all unusable', () => {
@@ -65,7 +65,10 @@ describe('chapter handover', () => {
       ...good,
       pages: ['https://cdn.test/3.jpg', 'https://cdn.test/1.jpg', 'https://cdn.test/3.jpg'],
     });
-    expect(chapter?.pages).toEqual(['https://cdn.test/3.jpg', 'https://cdn.test/1.jpg']);
+    expect(chapter?.pages.map((page) => page.url)).toEqual([
+      'https://cdn.test/3.jpg',
+      'https://cdn.test/1.jpg',
+    ]);
   });
 
   it('carries the guessed flag through so the reader can warn', () => {
@@ -78,5 +81,32 @@ describe('chapter handover', () => {
     expect(handoverFromHash(hash).chapter?.pages).toHaveLength(2);
     expect(handoverFromHash('#chapter=not-json')?.chapter).toBeNull();
     expect(handoverFromHash('#nothing-here')).toBeNull();
+  });
+
+  it('keeps the Referer each page asked for', () => {
+    // An empty string is an instruction ("send none"), not a missing value,
+    // so it must survive rather than falling back to the chapter URL.
+    const { chapter } = parseHandover({
+      ...good,
+      pages: [
+        { url: 'https://cdn.test/1.jpg', referer: 'https://site.test/' },
+        { url: 'https://cdn.test/2.jpg', referer: '' },
+        { url: 'https://cdn.test/3.jpg' },
+      ],
+    });
+
+    expect(chapter?.pages[0]!.referer).toBe('https://site.test/');
+    expect(chapter?.pages[1]!.referer).toBe('');
+    // No instruction: fall back to the chapter's own address.
+    expect(chapter?.pages[2]!.referer).toBe('https://site.test/m/t/c50');
+  });
+
+  it('refuses a dangerous referer the same way it refuses a page', () => {
+    const { chapter } = parseHandover({
+      ...good,
+      pages: [{ url: 'https://cdn.test/1.jpg', referer: 'javascript:alert(1)' }],
+    });
+    // Falls back to the chapter URL rather than passing that to the network.
+    expect(chapter?.pages[0]!.referer).toBe('https://site.test/m/t/c50');
   });
 });

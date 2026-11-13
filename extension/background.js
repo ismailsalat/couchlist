@@ -118,12 +118,23 @@ async function fetchPage(url, referer) {
     );
   }
 
-  const origin = referer ? new URL(referer).origin + '/' : undefined;
+  /*
+   * `referer` is whatever the page's own <img> tag asked for — the full
+   * chapter URL, the bare origin, or nothing at all when the tag says
+   * no-referrer. It is used exactly as given: collapsing the three to one
+   * guess is what produced 403s on sites that specify origin-only, because
+   * the full URL is not an acceptable substitute for it.
+   */
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 25_000);
 
   try {
-    const response = await withReferer(target.hostname, origin ?? target.origin + '/', () =>
+    // No Referer at all when the page said no-referrer: the rule is skipped
+    // rather than set to something invented.
+    const send = (body) =>
+      referer === '' ? body() : withReferer(target.hostname, referer || target.origin + '/', body);
+
+    const response = await send(() =>
       fetch(target.toString(), {
         // No cookies: the page is public or it is not ours to read.
         credentials: 'omit',
