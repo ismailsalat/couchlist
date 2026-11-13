@@ -139,6 +139,33 @@ export default async function ReaderExtensionPage() {
         </section>
 
         <section className="mt-4 rounded-2xl border border-line bg-surface p-5">
+          <h2 className="m-0 text-[16px] font-bold">When a chapter will not open</h2>
+          <p className="mb-0 mt-2 max-w-[62ch] text-[13.5px] text-muted">
+            Every source lays its pages out differently, and some do it in ways nothing can read.
+            Rather than guess, you can send a report of what the page actually contains:
+          </p>
+          <ol className="mb-0 mt-3 flex list-decimal flex-col gap-1.5 pl-5 text-[13.5px] text-muted">
+            <li>Open the chapter that failed and scroll down it once.</li>
+            <li>
+              Press <kbd className="rounded bg-bg px-1.5 py-0.5 text-[12px]">F12</kbd> and choose{' '}
+              <strong className="text-text">Console</strong>.
+            </li>
+            <li>
+              Paste the contents of{' '}
+              <a href="/couchlist-debug.js" className="underline">
+                couchlist-debug.js
+              </a>{' '}
+              and press Enter.
+            </li>
+            <li>It copies a report to your clipboard. Send that.</li>
+          </ol>
+          <p className="m-0 mt-2 max-w-[62ch] text-[12.5px] text-muted/80">
+            The report lists hostnames and tag shapes, never full image addresses, and it is not
+            sent anywhere by itself.
+          </p>
+        </section>
+
+        <section className="mt-4 rounded-2xl border border-line bg-surface p-5">
           <h2 className="m-0 text-[16px] font-bold">Which sources work</h2>
           <p className="mb-0 mt-2 max-w-[62ch] text-[13.5px] text-muted">
             Honest answer: <strong className="text-text">we do not know yet.</strong> The reading

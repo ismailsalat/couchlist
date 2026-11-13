@@ -1441,19 +1441,38 @@ function SmartImport({
         return;
       }
 
+      /*
+       * Who fetches these pages.
+       *
+       * The server has just read the chapter and knows every page address,
+       * including the Referer each one wants. When those pages need a
+       * Referer the browser cannot send, they have to go through the
+       * extension — and the extension does not need to understand this
+       * site to do that, because it is being handed the addresses rather
+       * than finding them. That matters: a site whose reader the collector
+       * cannot read still works this way.
+       */
+      const { extensionState } = await import('@/lib/tools/reader-bridge');
+      const haveExtension = payload.needsExtension ? await extensionState() : 'ready';
+      const relay = payload.needsExtension && haveExtension === 'ready';
+
       onLinkChapter({
         id: `read-${Date.now()}`,
         name: payload.title ?? 'Chapter',
-        pages: payload.pages.map((page) => ({ kind: 'remote' as const, url: page.url })),
+        pages: payload.pages.map((page) =>
+          relay
+            ? { kind: 'sourced' as const, url: page.url, referer: page.referer }
+            : { kind: 'remote' as const, url: page.url },
+        ),
         order: payload.pages.map((_, index) => index),
       });
       setText('');
       setNote(
-        payload.needsExtension
+        payload.needsExtension && !relay
           ? {
               tone: 'warn',
               message:
-                'Opened — but this source asks for its own address on each image, so some pages may not load here. The extension reads them properly.',
+                'Opened, but this source only serves its images to its own site, so some pages will not load here. Installing the Couchlist extension lets them through.',
             }
           : null,
       );

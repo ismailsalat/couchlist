@@ -204,6 +204,8 @@ test('says which host it lacks access to, rather than "Failed to fetch"', async 
   expect(message).not.toMatch(/failed to fetch/iu);
   // It has to name the host, or there is nothing for anyone to act on.
   expect(message).toMatch(/127\.0\.0\.1/u);
-  expect(message).toMatch(/access/iu);
+  // And say what to do about it, since the reader page cannot ask for
+  // permissions itself — only the popup can.
+  expect(message).toMatch(/click|allow/iu);
   await page.close();
 });

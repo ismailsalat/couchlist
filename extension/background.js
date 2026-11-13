@@ -26,6 +26,15 @@ const RULE_ID = 9001;
 /** Where each reader tab's chapter lives, keyed by the tab that asked. */
 const chapters = new Map();
 
+/**
+ * Image hosts a page needed and we had no permission for.
+ *
+ * A reader page cannot ask for permissions — only an extension page can, and
+ * only during a click. So the refusal is recorded here and the popup offers
+ * it the next time it is opened, which turns a dead end into one button.
+ */
+const pendingHosts = new Set();
+
 chrome.runtime.onStartup.addListener(clearRules);
 chrome.runtime.onInstalled.addListener(clearRules);
 
@@ -113,8 +122,9 @@ async function fetchPage(url, referer) {
     origins: [`${target.protocol}//${target.hostname}/*`],
   });
   if (!allowed) {
+    pendingHosts.add(target.hostname);
     throw new Error(
-      `Couchlist has no access to ${target.hostname}, where this chapter's images are stored. Open the extension on the source tab and allow that server.`,
+      `Couchlist cannot read images from ${target.hostname} yet. Click the Couchlist icon in your toolbar and press Allow.`,
     );
   }
 
@@ -202,6 +212,17 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     // Handed over once: the reader keeps it from here.
     chapters.delete(message.key);
     respond({ ok: true, chapter });
+    return false;
+  }
+
+  if (message?.type === 'pending-hosts') {
+    respond({ ok: true, hosts: [...pendingHosts] });
+    return false;
+  }
+
+  if (message?.type === 'clear-pending') {
+    pendingHosts.clear();
+    respond({ ok: true });
     return false;
   }
 

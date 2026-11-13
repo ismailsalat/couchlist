@@ -63,6 +63,33 @@ async function missingOrigins(origins) {
 
   $('where').textContent = new URL(tab.url).hostname;
   $('send').disabled = false;
+
+  /*
+   * A chapter opened from a pasted link may be waiting on access to its
+   * image server. The reader cannot ask for that — only this popup can, and
+   * only from a click — so it is offered here.
+   */
+  chrome.runtime.sendMessage({ type: 'pending-hosts' }, (reply) => {
+    if (chrome.runtime.lastError || !reply?.hosts?.length) return;
+    const hosts = reply.hosts;
+    $('grant').hidden = false;
+    $('grant').textContent = `Allow images from ${hosts.length === 1 ? hosts[0] : `${hosts.length} servers`}`;
+    $('grant').onclick = async () => {
+      $('grant').disabled = true;
+      try {
+        const origins = hosts.map((host) => `https://${host}/*`);
+        if (await chrome.permissions.request({ origins })) {
+          chrome.runtime.sendMessage({ type: 'clear-pending' });
+          say('Allowed. Go back to the reader tab and press Try this page again.');
+          $('grant').hidden = true;
+        } else {
+          say('Those pages cannot load without access to that server.');
+        }
+      } finally {
+        $('grant').disabled = false;
+      }
+    };
+  });
 })();
 
 $('site').addEventListener('change', () => {

@@ -11,6 +11,7 @@
     'weebcentral.com': ['section[id*="image"] img', 'img[alt*="Page"]'],
     'asurascans.com': ['img[alt^="Page "]'],
     'mangafire.to': ['[class*="reader"] img', 'img[alt*="Page"]'],
+    'manhwaz.cc': ['.reading-content img', '#readerarea img', '.entry-content img'],
   };
   // Tried after a site-specific rule, before falling back to image size.
   const GENERIC = [
@@ -19,6 +20,13 @@
     '.chapter-content img',
     '.chapter-images img',
     '#imgs img',
+    '#readerarea img',
+    '#chapter_imgs img',
+    '.container-chapter-reader img',
+    '.page-break img',
+    '.entry-content img',
+    '[class*="reader"] img',
+    '[id*="reader"] img',
   ];
 
   const host = location.hostname.replace(/^www\./, '');
@@ -62,13 +70,26 @@
      * the furniture. Reported as guessed so the reader can warn that the
      * order may be wrong and unrelated images may have come along.
      */
+    /*
+     * Last resort, and it must not judge by rendered size alone.
+     *
+     * A chapter you have not scrolled through yet has every page still
+     * lazy-loaded: `naturalWidth` is 0 because no image has been fetched,
+     * so a size test rejects the entire chapter and the extension reports
+     * finding nothing on a page visibly full of pages. An image that names
+     * a real address in a lazy attribute is a page whether or not the
+     * browser has got round to loading it.
+     */
+    const lazy = ['data-src', 'data-lazy-src', 'data-original', 'data-url', 'data-image'];
     return {
-      nodes: [...document.images].filter(
-        (img) =>
-          img.naturalWidth >= 400 &&
-          img.naturalHeight >= 500 &&
-          !img.closest('header,footer,nav,aside,[class*="ad"],[class*="banner"]'),
-      ),
+      nodes: [...document.images].filter((img) => {
+        if (img.closest('header,footer,nav,aside,[class*="ad"],[class*="banner"]')) return false;
+        if (lazy.some((name) => (img.getAttribute(name) || '').trim().length > 1)) return true;
+        // Fall back to the declared size when nothing has rendered yet.
+        const width = img.naturalWidth || Number(img.getAttribute('width')) || 0;
+        const height = img.naturalHeight || Number(img.getAttribute('height')) || 0;
+        return width >= 400 && height >= 500;
+      }),
       guessed: true,
     };
   }
