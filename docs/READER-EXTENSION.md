@@ -301,3 +301,57 @@ also puts the referrer policy and alt text there. The script list is only
 consulted when no tag yields a usable address, and a list is only accepted
 when it holds at least three entries and is overwhelmingly image URLs — a
 site's navigation array is not a chapter.
+
+## Asking for permission: order matters
+
+Chrome grants a permission only while a click is still being handled, and the
+first `await` spends that click. So this fails, silently and completely:
+
+```js
+const chapter = await collect();          // the click is now spent
+await chrome.permissions.request({ ... }); // never shows a dialog
+```
+
+The dialog never appears, the request resolves false, and the reader later
+says it cannot read the images — with nothing having asked the person
+anything. It shipped that way once.
+
+The popup therefore asks for the **current site** before anything is awaited.
+That also settles the common case in one step, since most sources serve their
+pages from the same domain as the chapter. Only when the pages turn out to
+live somewhere else is a second button shown, because that genuinely needs a
+second click.
+
+## Surviving an extension reload
+
+Updating the extension orphans the content scripts already injected into open
+pages: their context is gone and every message throws *"Could not establish
+connection. Receiving end does not exist."* Chrome is describing its own
+plumbing; the person needs to be told to reload the page, which is the only
+thing that fixes it.
+
+The bridge detects it (`chrome.runtime.id` disappears, and the error text is
+recognisable) and reports `stale`, a state of its own. "Not responding" would
+send somebody off to reinstall an extension that is working perfectly.
+
+## Page shapes, and what each is read by
+
+Verified against a page of each shape:
+
+| Shape | Read |
+| --- | --- |
+| `<img src>` in a reader container | ✅ |
+| Lazy `data-src`, `data-cfsrc`, 8 other names | ✅ |
+| Pages only in a script array | ✅ |
+| `<picture><source srcset>` | ✅ |
+| CSS `background-image` on divs | ✅ |
+| `srcset` with several widths | ✅ picks the largest |
+| Painted into `<canvas>` | ❌ **impossible** |
+
+The fallbacks run in order of how deliberate each is — a script list is the
+site stating its pages outright, a `<picture>` is still real markup, a CSS
+background is the vaguest — and stop at the first that yields three or more.
+
+Canvas cannot be fixed by any extension: there is no address to read, only
+pixels already painted. The reader says so instead of showing an empty
+chapter.

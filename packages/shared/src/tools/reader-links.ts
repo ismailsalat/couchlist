@@ -265,4 +265,10 @@ export function versionAtLeast(version: string, minimum = EXTENSION_MIN_VERSION)
   return true;
 }
 
-export type ExtensionState = 'ready' | 'outdated' | 'missing';
+/**
+ * `stale` is its own state: the extension is installed and fine, but this
+ * page was loaded before it was updated and is holding a connection that no
+ * longer exists. Only reloading the page fixes it, and saying "not
+ * responding" sends people to reinstall something that is not broken.
+ */
+export type ExtensionState = 'ready' | 'outdated' | 'stale' | 'missing';

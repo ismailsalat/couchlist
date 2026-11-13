@@ -28,6 +28,8 @@ let nextId = 0;
 
 interface Reply {
   ok?: boolean;
+  /** The page outlived the extension copy it was talking to. */
+  stale?: boolean;
   error?: string;
   dataUrl?: string;
   chapter?: unknown;
@@ -75,6 +77,8 @@ function ask(request: Record<string, unknown>, timeoutMs = TIMEOUT_MS): Promise<
  */
 export async function extensionState(): Promise<ExtensionState> {
   const reply = await ask({ type: 'ping' }, 1_500);
+  // Installed, but this page is bound to a copy that has been replaced.
+  if ((reply as { stale?: boolean }).stale === true) return 'stale';
   if (reply.ok !== true) return 'missing';
   // An extension too old to report a version is certainly too old.
   if (!reply.version || !versionAtLeast(reply.version)) return 'outdated';

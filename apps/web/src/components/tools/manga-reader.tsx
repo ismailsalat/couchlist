@@ -495,7 +495,13 @@ export function MangaReader() {
               <StatusMark tone="bad" className="h-[16px] w-[16px]" />
             </span>
             <span className="min-w-0 max-w-[62ch]">
-              {extension === 'outdated' ? (
+              {extension === 'stale' ? (
+                <>
+                  <strong>The Couchlist extension was just updated.</strong> This page is still
+                  talking to the old copy, which no longer exists. Reload this page and the chapter
+                  will load.
+                </>
+              ) : extension === 'outdated' ? (
                 <>
                   <strong>Your Couchlist extension is out of date</strong> — it is version 0.1,
                   which cannot load page images. Reloading it is not enough, because the newer

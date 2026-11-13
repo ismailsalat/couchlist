@@ -19,6 +19,8 @@ const DEFAULT_SITE = 'https://couchlist.io';
 const $ = (id) => document.getElementById(id);
 
 let tab = null;
+/** Set when a chapter is collected but its image server is not allowed yet. */
+let pending = null;
 
 function say(message) {
   $('status').textContent = message;
@@ -119,17 +121,27 @@ $('send').addEventListener('click', async () => {
   $('send').disabled = true;
   try {
     /*
-     * No permission prompt to read the page.
+     * Ask for this site FIRST, before anything is awaited.
      *
-     * `activeTab` already grants access to the tab you are looking at for as
-     * long as it takes to answer your click — that is exactly what it is
-     * for. Asking for the page host as well produced two dialogs for one
-     * action, which is bewildering and buys nothing.
+     * Chrome only grants permissions while a click is still being handled,
+     * and the first `await` spends it. Reading the page and then asking
+     * therefore fails silently — the dialog never appears, and the reader
+     * later reports that it cannot read the images, with nothing having
+     * asked the person anything. That is the bug this ordering exists to
+     * avoid, so nothing may be awaited above this line.
      *
-     * The images are the part that genuinely needs asking about, because
-     * they are nearly always on a different server, and only now — having
-     * read the page — can we say which one.
+     * It also covers the common case in one step: most sources serve their
+     * pages from the same domain as the chapter.
      */
+    const host = new URL(tab.url).hostname;
+    const origin = `https://${host}/*`;
+    if (!(await chrome.permissions.contains({ origins: [origin] }))) {
+      if (!(await chrome.permissions.request({ origins: [origin] }))) {
+        say('Couchlist needs access to this site to read the chapter.');
+        return;
+      }
+    }
+
     say('Looking for pages…');
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -151,15 +163,28 @@ $('send').addEventListener('click', async () => {
     }
 
     /*
-     * Asked for in one prompt covering every image host at once, rather than
-     * one dialog per server.
+     * The pages are on another server. Asking for it needs a fresh click,
+     * because the one that opened this has been spent — hence a button
+     * rather than another dialog straight away.
      */
-    say(`Found ${chapter.pages.length} pages. Your browser will ask about the image server — say yes.`);
-    if (!(await chrome.permissions.request({ origins: needed }))) {
-      say('Pages cannot load without that. Click Read this chapter to try again.');
-      return;
-    }
-    await handOver(chapter);
+    pending = { chapter, origins: needed };
+    const names = needed.map((o) => o.replace(/^https:\/\//, '').replace(/\/\*$/, ''));
+    say(`Found ${chapter.pages.length} pages, stored on ${names.join(', ')}.`);
+    $('grant').hidden = false;
+    $('grant').textContent = `Allow ${names.length === 1 ? names[0] : `${names.length} servers`}`;
+    $('grant').onclick = async () => {
+      $('grant').disabled = true;
+      try {
+        if (await chrome.permissions.request({ origins: pending.origins })) {
+          await handOver(pending.chapter);
+        } else {
+          say('Those pages cannot load without that.');
+        }
+      } finally {
+        $('grant').disabled = false;
+      }
+    };
+    $('send').hidden = true;
   } catch (error) {
     say(error?.message || 'Something went wrong. Try again.');
   } finally {

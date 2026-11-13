@@ -59,15 +59,36 @@
     }
   }
 
-  /* Lazy-loaded images keep the real URL in a data- attribute until shown. */
+  /*
+   * Lazy-loaded pages keep the real address in a data attribute until shown.
+   * The list is long because every lazy-loading library picked its own name,
+   * and a page whose attribute is not listed reads as an empty chapter.
+   */
+  const LAZY_ATTRIBUTES = [
+    'data-src',
+    'data-lazy-src',
+    'data-original',
+    'data-url',
+    'data-image',
+    'data-echo',
+    'data-full',
+    'data-large',
+    'data-cfsrc',
+    'data-aload',
+  ];
+
   function sourceOf(img) {
-    for (const value of [
-      img.currentSrc,
-      img.getAttribute('data-src'),
-      img.getAttribute('data-lazy-src'),
-      img.getAttribute('data-original'),
-      img.getAttribute('src'),
-    ]) {
+    const candidates = [img.currentSrc];
+    for (const name of LAZY_ATTRIBUTES) candidates.push(img.getAttribute(name));
+    candidates.push(img.getAttribute('src'));
+
+    // A srcset lists widths; the last entry is the largest.
+    for (const name of ['data-srcset', 'srcset']) {
+      const set = img.getAttribute(name);
+      if (set) candidates.push(set.split(',').pop().trim().split(/\s+/)[0]);
+    }
+
+    for (const value of candidates) {
       const found = absolute(value);
       if (found && !/placeholder|loading\.gif|spinner/i.test(found)) return found;
     }
@@ -200,6 +221,34 @@
     return best;
   }
 
+  /*
+   * Readers that do not use <img> at all.
+   *
+   * Some paint pages as CSS backgrounds on divs, and some wrap them in
+   * <picture> with the real address only on a <source>. Neither appears in
+   * document.images, so without these a chapter looks empty.
+   */
+  function fromBackgrounds() {
+    const found = [];
+    for (const node of document.querySelectorAll('[style*="background"]')) {
+      const match = /url\(\s*['"]?([^'")]+)['"]?\s*\)/i.exec(node.getAttribute('style') || '');
+      const url = match && absolute(match[1]);
+      if (url && !found.includes(url)) found.push(url);
+    }
+    return found;
+  }
+
+  function fromPictures() {
+    const found = [];
+    for (const source of document.querySelectorAll('picture source[srcset], picture source[data-srcset]')) {
+      const set = source.getAttribute('data-srcset') || source.getAttribute('srcset') || '';
+      const first = set.split(',').pop().trim().split(/\s+/)[0];
+      const url = absolute(first);
+      if (url && !found.includes(url)) found.push(url);
+    }
+    return found;
+  }
+
   const scan = images();
   const pages = [];
   const seen = new Set();
@@ -211,7 +260,18 @@
    */
   const usable = scan.nodes.filter(sourceOf).length;
   if (usable === 0) {
-    for (const url of fromScripts()) {
+    /*
+     * Tried in order of how deliberate each is: a script list is the site
+     * stating its pages outright, a <picture> is still real markup, and a
+     * CSS background is the vaguest of the three.
+     */
+    let fallback = [];
+    for (const strategy of [fromScripts, fromPictures, fromBackgrounds]) {
+      fallback = strategy();
+      if (fallback.length >= 3) break;
+    }
+
+    for (const url of fallback) {
       pages.push({ url, label: `Page ${pages.length + 1}`, referer: location.href });
     }
   }
