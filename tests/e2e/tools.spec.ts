@@ -286,3 +286,34 @@ test.describe('download check', () => {
     await expect(result).toContainText('Pretends to be .mp4');
   });
 });
+
+/**
+ * The reader may show images from other sites; nothing else may.
+ *
+ * This is worth a test because the failure is invisible from the code: every
+ * page of a pasted chapter came back refused by our *own* `img-src` header,
+ * which in the console reads exactly like the source blocking us. It sent
+ * the hunt in the wrong direction twice.
+ */
+test.describe('image policy', () => {
+  test('lets the reader load remote pages, and no other page', async ({ request }) => {
+    const reader = await request.get('/tools/read-manga');
+    const policy = reader.headers()['content-security-policy'] ?? '';
+    expect(policy).toMatch(/img-src[^;]*https:/u);
+
+    const elsewhere = await request.get('/guides');
+    const strict = elsewhere.headers()['content-security-policy'] ?? '';
+    expect(strict).toMatch(/img-src/u);
+    // Widened for the reader only: everywhere else stays shut.
+    expect(strict).not.toMatch(/img-src[^;]*https:/u);
+
+    // Scripts stay locked down even on the reader.
+    expect(policy).not.toMatch(/script-src[^;]*https:/u);
+  });
+
+  test('keeps the old reader address working', async ({ request }) => {
+    const moved = await request.get('/tools/comics', { maxRedirects: 0 });
+    expect(moved.status()).toBe(308);
+    expect(moved.headers()['location']).toContain('/tools/read-manga');
+  });
+});

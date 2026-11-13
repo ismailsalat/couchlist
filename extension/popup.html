@@ -2,29 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Couchlist Reader</title>
+<title>Couchlist</title>
 <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <h1>Couchlist</h1>
-  <p id="where" class="muted">Checking this tab…</p>
+  <div class="head">
+    <img src="icon128.png" alt="" class="mark">
+    <div>
+      <h1>Couchlist</h1>
+      <p id="where" class="muted small">Checking this tab…</p>
+    </div>
+  </div>
 
-  <button id="send" class="primary" disabled>Send chapter to Couchlist</button>
+  <button id="send" class="primary" disabled>Read this chapter</button>
   <button id="grant" hidden>Allow images</button>
 
-  <p id="status" role="status" class="muted"></p>
+  <p id="status" role="status"></p>
 
-  <details>
-    <summary>Settings</summary>
+  <details id="help">
+    <summary>How this works</summary>
+    <ol>
+      <li>Open a chapter on any manga site.</li>
+      <li>Click <b>Read this chapter</b>.</li>
+      <li>Say yes when your browser asks about the image server.</li>
+      <li>It opens in Couchlist — no ads, your own settings.</li>
+    </ol>
+    <p class="muted small">
+      Your browser asks once per image server, then remembers. Couchlist never sees
+      the pages, and this cannot get past a login or a CAPTCHA.
+    </p>
     <label for="site">Couchlist address</label>
     <input id="site" type="url" spellcheck="false">
-    <p class="muted small">Change this only if you run Couchlist somewhere else.</p>
   </details>
-
-  <p class="muted small">
-    Access is asked for one site at a time, and only when you press the button.
-    This does not sign you in anywhere, and cannot get past logins or CAPTCHAs.
-  </p>
 
   <script src="popup.js"></script>
 </body>

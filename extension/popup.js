@@ -80,10 +80,10 @@ async function missingOrigins(origins) {
         const origins = hosts.map((host) => `https://${host}/*`);
         if (await chrome.permissions.request({ origins })) {
           chrome.runtime.sendMessage({ type: 'clear-pending' });
-          say('Allowed. Go back to the reader tab and press Try this page again.');
+          say('Done. Go back to Couchlist and press Try this page again.');
           $('grant').hidden = true;
         } else {
-          say('Those pages cannot load without access to that server.');
+          say('Those pages cannot load without that.');
         }
       } finally {
         $('grant').disabled = false;
@@ -130,7 +130,7 @@ $('send').addEventListener('click', async () => {
      * they are nearly always on a different server, and only now — having
      * read the page — can we say which one.
      */
-    say('Reading the page…');
+    say('Looking for pages…');
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['collect.js'],
@@ -139,7 +139,7 @@ $('send').addEventListener('click', async () => {
 
     if (!chapter || !chapter.pages?.length) {
       say(
-        'No chapter images found. Let the chapter finish loading in its tab and try again — some readers draw pages onto a canvas, which cannot be read this way.',
+        "Couldn't find any pages here. Scroll down the chapter once, then try again. A few sites draw their pages in a way nothing can read.",
       );
       return;
     }
@@ -154,15 +154,14 @@ $('send').addEventListener('click', async () => {
      * Asked for in one prompt covering every image host at once, rather than
      * one dialog per server.
      */
-    const names = needed.map((origin) => origin.replace(/^https:\/\//, '').replace(/\/\*$/, ''));
-    say(`Allow Couchlist to read the ${chapter.pages.length} pages from ${names.join(', ')}.`);
+    say(`Found ${chapter.pages.length} pages. Your browser will ask about the image server — say yes.`);
     if (!(await chrome.permissions.request({ origins: needed }))) {
-      say('Without access to the image server the pages cannot be loaded.');
+      say('Pages cannot load without that. Click Read this chapter to try again.');
       return;
     }
     await handOver(chapter);
   } catch (error) {
-    say(error?.message || 'Something went wrong reading that page.');
+    say(error?.message || 'Something went wrong. Try again.');
   } finally {
     $('send').disabled = false;
   }

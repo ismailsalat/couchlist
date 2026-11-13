@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Couchlist Reader",
   "description": "Send a chapter you already have open to your Couchlist reader.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "minimum_chrome_version": "120",
   "permissions": [
     "activeTab",
@@ -15,7 +15,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Send to Couchlist"
+    "default_title": "Read this chapter in Couchlist"
   },
   "icons": {
     "128": "icon128.png"

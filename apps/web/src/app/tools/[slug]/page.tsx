@@ -56,7 +56,7 @@ export default async function ToolPage({ params }: { params: Promise<{ slug: str
   return (
     <>
       <SiteHeader user={user} savedCount={savedCount} active="guides" />
-      <main className={`mx-auto w-full px-4 pb-16 pt-6 ${tool.slug === 'comics' ? 'max-w-5xl' : 'max-w-3xl'}`}>
+      <main className={`mx-auto w-full px-4 pb-16 pt-6 ${tool.slug === 'read-manga' ? 'max-w-5xl' : 'max-w-3xl'}`}>
         <Link
           href="/guides"
           className="text-[13px] font-semibold text-muted underline underline-offset-[3px] hover:text-text"
@@ -88,7 +88,7 @@ async function ToolBody({ slug }: { slug: string }) {
       return <DownloadCheck />;
     case 'subtitles':
       return <SubtitleFixer />;
-    case 'comics':
+    case 'read-manga':
       return <MangaReader />;
     case 'status':
       return <StatusBoard status={await liveStatus(repos())} />;

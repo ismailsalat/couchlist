@@ -70,9 +70,15 @@ export const TOOLS: readonly ToolMeta[] = [
     runsInBrowser: true,
   },
   {
-    slug: 'comics',
-    name: 'Read manga',
-    blurb: 'Import your chapters and read them with no ads. Nothing is uploaded.',
+    /*
+     * `comics` until the URL started contradicting the name. A link reads as
+     * a promise about where it goes, and /tools/comics for a thing called
+     * "Read manga and manhwa" is a small lie that makes the whole section
+     * feel arbitrary. The old address still redirects here.
+     */
+    slug: 'read-manga',
+    name: 'Read manga and manhwa',
+    blurb: 'Paste a chapter link or open your own files. No ads, no uploads.',
     tag: 'Reading',
     palette: 'teal',
     state: 'READY',
@@ -107,6 +113,22 @@ export const TOOLS: readonly ToolMeta[] = [
     palette: 'green',
     state: 'TESTING',
     icon: 'shield',
+    runsInBrowser: true,
+  },
+  {
+    /*
+     * Listed as a tool of its own because people were never going to find it
+     * buried inside the reader — and what it does (read a chapter from a
+     * site you already have open) is a different job from reading files you
+     * already have.
+     */
+    slug: 'reader-extension',
+    name: 'Browser extension',
+    blurb: 'Read a chapter straight from a site, in Couchlist, without its ads.',
+    tag: 'Reading',
+    palette: 'teal',
+    state: 'TESTING',
+    icon: 'book',
     runsInBrowser: true,
   },
   {

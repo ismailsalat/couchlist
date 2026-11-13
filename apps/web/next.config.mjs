@@ -84,6 +84,11 @@ const nextConfig = {
       { source: '/dev/:path*', destination: '/', permanent: false },
       // The profile page is now account settings.
       { source: '/profile', destination: '/account', permanent: true },
+      /*
+       * The reader was at /tools/comics, which did not say what it was.
+       * Links people already have keep working.
+       */
+      { source: '/tools/comics', destination: '/tools/read-manga', permanent: true },
     ];
   },
 };

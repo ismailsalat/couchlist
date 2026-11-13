@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { SiteHeader } from '@/components/site-header';
-import { requireUserOrLogin } from '@/lib/auth/require-page-user';
+import { optionalUser } from '@/lib/api/guards';
 import { savedCountFor } from '@/lib/directory/page-data';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -25,7 +25,7 @@ async function servedVersion(): Promise<string | null> {
 
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = {
-  title: 'Reader extension',
+  title: 'Browser extension',
   description: 'Send a chapter you already have open to your Couchlist reader.',
   robots: { index: false },
 };
@@ -43,7 +43,12 @@ export const metadata: Metadata = {
  * logins, and no source has been verified live yet.
  */
 export default async function ReaderExtensionPage() {
-  const user = await requireUserOrLogin('/tools/reader-extension');
+  /*
+   * Readable by anyone. Only the download itself is for members — somebody
+   * has to be able to find out what this is and whether it is worth an
+   * account before being asked for one.
+   */
+  const user = await optionalUser();
   const savedCount = await savedCountFor(user);
   const version = await servedVersion();
 
@@ -60,7 +65,7 @@ export default async function ReaderExtensionPage() {
 
         <div data-palette="purple" className="mt-4 rounded-2xl border border-line bg-surface p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="m-0 text-[20px] font-bold">Reader extension</h1>
+            <h1 className="m-0 text-[20px] font-bold">Browser extension</h1>
             <span className="rounded-pill border border-[#f6ba7b]/35 bg-[#f6ba7b]/12 px-2 py-[2px] text-[11.5px] font-semibold text-[#f6ba7b]">
               Under testing
             </span>
@@ -73,13 +78,22 @@ export default async function ReaderExtensionPage() {
             to Couchlist.
           </p>
 
-          <a
-            href="/couchlist-reader-extension.zip"
-            download
-            className="cl-touch mt-4 inline-flex items-center rounded-pill bg-selected px-4 py-2.5 text-[13.5px] font-semibold text-selected-fg no-underline hover:bg-selected-hover"
-          >
-            Download the extension{version ? ` (${version})` : ''}
-          </a>
+          {user ? (
+            <a
+              href="/couchlist-reader-extension.zip"
+              download
+              className="cl-touch mt-4 inline-flex items-center rounded-pill bg-selected px-4 py-2.5 text-[13.5px] font-semibold text-selected-fg no-underline hover:bg-selected-hover"
+            >
+              Download the extension{version ? ` (${version})` : ''}
+            </a>
+          ) : (
+            <Link
+              href="/login?next=/tools/reader-extension"
+              className="cl-touch mt-4 inline-flex items-center rounded-pill bg-selected px-4 py-2.5 text-[13.5px] font-semibold text-selected-fg no-underline hover:bg-selected-hover"
+            >
+              Sign in to download
+            </Link>
+          )}
           {version ? (
             <p className="m-0 mt-2 text-[12.5px] text-muted">
               Check this against your own copy in{' '}

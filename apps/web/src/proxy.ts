@@ -131,7 +131,7 @@ export function proxy(request: NextRequest): NextResponse {
    * the most care, so they are left alone.
    */
   if (!SERVES_UPLOADED_BYTES.test(path)) {
-    response.headers.set('Content-Security-Policy', contentSecurityPolicy());
+    response.headers.set('Content-Security-Policy', contentSecurityPolicy(path));
   }
   // Nothing here needs a camera, a microphone or a location.
   response.headers.set(
@@ -172,10 +172,25 @@ export function proxy(request: NextRequest): NextResponse {
  * own sandboxed policy. `object-src 'none'` closes the plugin route, which
  * `'unsafe-inline'` would otherwise leave open.
  */
-function contentSecurityPolicy(): string {
+function contentSecurityPolicy(pathname: string): string {
   const scriptSources = ["'self'", "'unsafe-inline'"];
   // Turbopack's dev client evaluates code it fetches; production never does.
   if (process.env.NODE_ENV !== 'production') scriptSources.push("'unsafe-eval'");
+
+  /*
+   * The reader, and only the reader, may show images from other sites.
+   *
+   * It exists to display pages that live on somebody else's server, so a
+   * policy of `img-src 'self'` blocks the entire feature — every page came
+   * back refused by our own header, which reads exactly like the source
+   * blocking us and sent this chase off in the wrong direction twice.
+   *
+   * Widened for images alone, on this one path. Scripts, styles, frames and
+   * connections stay locked to 'self' here as everywhere else, so a hostile
+   * image URL can still only ever be decoded as an image.
+   */
+  const isReader = pathname === '/tools/read-manga' || pathname === '/tools/comics';
+  const imageSources = isReader ? "'self' data: blob: https:" : "'self' data: blob:";
 
   return [
     "default-src 'self'",
@@ -183,7 +198,7 @@ function contentSecurityPolicy(): string {
     "style-src 'self' 'unsafe-inline'",
     // data: and blob: are for an icon the reader has only just chosen, before
     // it has been uploaded anywhere.
-    "img-src 'self' data: blob:",
+    `img-src ${imageSources}`,
     "font-src 'self' data:",
     // The app talks only to itself; ws: is the dev server's hot reload.
     process.env.NODE_ENV === 'production'
