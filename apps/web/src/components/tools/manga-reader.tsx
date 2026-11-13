@@ -1379,6 +1379,9 @@ function SmartImport({
   const [text, setText] = useState('');
   const [note, setNote] = useState<{ tone: Tone; message: string } | null>(null);
   const [busyLink, setBusyLink] = useState(false);
+  // Set when the extension itself explains the failure better than the
+  // server did — a missing permission, say, which has a clear remedy.
+  const [extensionNote, setExtensionNote] = useState<string | null>(null);
 
   const trimmed = text.trim();
   const multiline = trimmed.includes('\n');
@@ -1390,6 +1393,43 @@ function SmartImport({
   const preview = trimmed ? classifyReaderLinks(text, false) : null;
   const linkCount = preview?.images.length ?? 0;
   const chapterPages = preview?.needsExtension.length ?? 0;
+
+  /**
+   * Last resort: let the extension open and read the chapter.
+   *
+   * Returns a chapter, or null when the extension is absent or could not do
+   * it either — in which case it leaves the reason in `extensionNote`,
+   * because "needs your permission" is far more useful than whatever the
+   * server said about being refused.
+   */
+  async function readThroughExtension(url: string): Promise<Chapter | null> {
+    setExtensionNote(null);
+    try {
+      const { extensionState, readUrlThroughExtension } = await import('@/lib/tools/reader-bridge');
+      if ((await extensionState()) !== 'ready') return null;
+
+      setNote({ tone: 'neutral', message: 'Asking the Couchlist extension to open it…' });
+      const result = await readUrlThroughExtension(url);
+      if (!result.ok || !result.chapter) {
+        setExtensionNote(result.error ?? null);
+        return null;
+      }
+
+      const incoming = result.chapter;
+      return {
+        id: `ext-${Date.now()}`,
+        name: incoming.title,
+        pages: incoming.pages.map((page) => ({
+          kind: 'sourced' as const,
+          url: page.url,
+          referer: page.referer,
+        })),
+        order: incoming.pages.map((_, index) => index),
+      };
+    } catch {
+      return null;
+    }
+  }
 
   async function read() {
     const result = classifyReaderLinks(text, false);
@@ -1434,9 +1474,24 @@ function SmartImport({
       };
 
       if (!response.ok || !payload.pages?.length) {
+        /*
+         * The server could not read it. Plenty of sources refuse anything
+         * that is not a real browser, and from a server it never is — so
+         * fall back to the one real browser available: this one, through
+         * the extension. It opens the chapter out of sight, reads it, and
+         * closes it again.
+         */
+        const viaExtension = await readThroughExtension(trimmed);
+        if (viaExtension) {
+          onLinkChapter(viaExtension);
+          setText('');
+          setNote(null);
+          return;
+        }
+
         setNote({
           tone: 'bad',
-          message: payload.error?.message ?? 'That chapter could not be read.',
+          message: extensionNote ?? payload.error?.message ?? 'That chapter could not be read.',
         });
         return;
       }

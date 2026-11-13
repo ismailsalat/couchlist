@@ -33,6 +33,17 @@ test.beforeAll(async () => {
   cdn = createServer((request, response) => {
     const referer = request.headers.referer;
     hits.push(referer);
+    if (request.url?.startsWith('/chapter-')) {
+      // A chapter page whose images declare referrerpolicy="origin".
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(`<!doctype html><html><body><div class="reading-content">${[0, 1, 2]
+        .map(
+          (n) =>
+            `<img alt="Page ${n + 1}" referrerpolicy="origin" src="http://localhost:${PORT}/p${n}.png">`,
+        )
+        .join('')}</div></body></html>`);
+      return;
+    }
     if (!referer?.startsWith('http://source.local')) {
       response.writeHead(403, { 'content-type': 'text/plain' });
       response.end('Forbidden');
@@ -81,8 +92,12 @@ test.afterAll(async () => {
 });
 
 /** Speak to the extension exactly the way the reader does. */
-async function askExtension(page: import('@playwright/test').Page, request: Record<string, unknown>) {
-  return page.evaluate(async (req) => {
+async function askExtension(
+  page: import('@playwright/test').Page,
+  request: Record<string, unknown>,
+  timeout = 20_000,
+) {
+  return page.evaluate(async ({ req, timeout }) => {
     const TAG = 'couchlist-reader-extension';
     return new Promise<Record<string, unknown>>((resolve) => {
       const id = `t${Math.random()}`;
@@ -96,11 +111,11 @@ async function askExtension(page: import('@playwright/test').Page, request: Reco
         if (event.source !== window || event.origin !== location.origin) return;
         if (data?.tag === TAG && data.id === id && data.reply) finish(data);
       };
-      const timer = setTimeout(() => finish({ ok: false, error: 'no answer' }), 20_000);
+      const timer = setTimeout(() => finish({ ok: false, error: 'no answer' }), timeout);
       window.addEventListener('message', onMessage);
       window.postMessage({ tag: TAG, id, ...req }, location.origin);
     });
-  }, request);
+  }, { req: request, timeout });
 }
 
 test.describe('reader extension', () => {
@@ -207,5 +222,36 @@ test('says which host it lacks access to, rather than "Failed to fetch"', async 
   // And say what to do about it, since the reader page cannot ask for
   // permissions itself — only the popup can.
   expect(message).toMatch(/click|allow/iu);
+  await page.close();
+});
+
+/**
+ * Reading a chapter the server is not allowed to read.
+ *
+ * Many sources answer a browser and refuse anything else, so the server-side
+ * reader gets nothing while the page opens perfectly in the person's own
+ * browser. The extension can open it there, read it, and hand it back — and
+ * that is the only route that works for those sites.
+ */
+test('opens a chapter URL in a background tab and reads it', async () => {
+  const page = await context.newPage();
+  await page.goto('http://localhost:3000/tools/read-manga');
+
+  const before = context.pages().length;
+  const reply = await askExtension(
+    page,
+    { type: 'read-url', url: `http://localhost:${PORT}/chapter-8` },
+    40_000,
+  );
+
+  expect(reply.ok, String(reply.error)).toBe(true);
+  const chapter = reply.chapter as { pages: Array<{ url: string; referer: string }> };
+  expect(chapter.pages.length).toBe(3);
+  // Each page keeps the Referer its own tag asked for.
+  expect(chapter.pages[0]!.referer).toBe(`http://localhost:${PORT}/`);
+
+  // The tab it opened must not be left behind.
+  await page.waitForTimeout(500);
+  expect(context.pages().length).toBe(before);
   await page.close();
 });

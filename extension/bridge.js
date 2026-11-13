@@ -41,6 +41,17 @@ window.addEventListener('message', (event) => {
     return;
   }
 
+  if (request.type === 'read-url') {
+    chrome.runtime.sendMessage({ type: 'read-url', url: request.url }, (response) => {
+      reply(
+        chrome.runtime.lastError
+          ? { ok: false, error: 'The Couchlist extension is not responding.' }
+          : response,
+      );
+    });
+    return;
+  }
+
   if (request.type === 'page') {
     chrome.runtime.sendMessage(
       { type: 'page', url: request.url, referer: request.referer },

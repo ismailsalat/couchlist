@@ -242,3 +242,26 @@ that is missing rather than reporting a bare network error.
 `tests/e2e/extension.spec.ts` grants the test build **only** the page host,
 mirroring the broken case, and asserts the error names the image host and
 never says "Failed to fetch".
+
+## Pasting a link: three routes, in order
+
+1. **Direct image links** — read immediately, nothing fetched by anyone.
+2. **The server reads the chapter's HTML.** Only the HTML; the browser still
+   loads the images. Works on sources that answer an ordinary request.
+3. **The extension opens the chapter in a background tab and reads it.**
+
+Route 3 exists because route 2 cannot be made to work on a large share of
+sources. They answer a browser and refuse everything else, and from a server
+the request is never a browser — no user agent or header changes that, and
+trying to disguise one is both fragile and dishonest. The person's own
+browser, however, is a real browser, already signed in wherever they are
+signed in, and running the page's own scripts.
+
+The tab is opened inactive so it never steals focus, and closed in a
+`finally` so a failed read cannot leave one behind. Scripting it needs
+permission for that host; without it the reader says which host and points at
+the extension icon, since only the popup can ask.
+
+So "paste a link and read" works without the extension on sources that allow
+it, and with the extension almost everywhere else. The reader tries them in
+that order and never asks for the extension before needing it.

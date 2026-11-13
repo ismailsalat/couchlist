@@ -14,7 +14,12 @@
  * other page chatter is ignored.
  */
 
-import { versionAtLeast, type ExtensionState } from '@couchlist/shared';
+import {
+  parseHandover,
+  versionAtLeast,
+  type ExtensionState,
+  type HandoverChapter,
+} from '@couchlist/shared';
 
 const TAG = 'couchlist-reader-extension';
 const TIMEOUT_MS = 30_000;
@@ -96,4 +101,37 @@ export async function fetchPageThroughExtension(url: string, referer: string): P
     throw new Error(reply.error || 'That page could not be loaded.');
   }
   return reply.dataUrl;
+}
+
+/**
+ * Ask the extension to open a chapter URL and read it.
+ *
+ * The browser is the person's own, so it runs the page's scripts, loads its
+ * images and carries whatever sign-in they already have — all the things a
+ * server fetch cannot do, and the reason a source that refuses the server
+ * will usually answer this.
+ *
+ * Generous timeout: this opens a real page and waits for it to settle.
+ */
+export async function readUrlThroughExtension(url: string): Promise<{
+  ok: boolean;
+  chapter?: HandoverChapter;
+  error?: string;
+}> {
+  const reply = (await ask({ type: 'read-url', url }, 45_000)) as {
+    ok?: boolean;
+    error?: string;
+    chapter?: unknown;
+  };
+
+  if (!reply.ok || !reply.chapter) {
+    return { ok: false, error: reply.error };
+  }
+
+  // Validated exactly like a chapter sent from the popup: it came from
+  // another website's page, so none of it is trusted.
+  const parsed = parseHandover(reply.chapter);
+  return parsed.chapter
+    ? { ok: true, chapter: parsed.chapter }
+    : { ok: false, error: parsed.problem };
 }

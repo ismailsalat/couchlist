@@ -195,6 +195,62 @@ async function fetchPage(url, referer) {
   }
 }
 
+/**
+ * Open a chapter in a background tab, read it, and close the tab again.
+ *
+ * The tab is created inactive so it never steals focus, and it is closed in
+ * a `finally` — a tab left behind by a failed read would be both confusing
+ * and a slow leak. Scripting a tab needs permission for that host, which is
+ * checked first so the refusal names the site instead of surfacing as an
+ * opaque scripting error.
+ */
+async function readUrl(url) {
+  const target = new URL(url);
+  const origin = `${target.protocol}//${target.hostname}/*`;
+
+  if (!(await chrome.permissions.contains({ origins: [origin] }))) {
+    pendingHosts.add(target.hostname);
+    return {
+      ok: false,
+      needsPermission: target.hostname,
+      error: `Couchlist needs your permission to open ${target.hostname}. Click the Couchlist icon in your toolbar and press Allow.`,
+    };
+  }
+
+  const tab = await chrome.tabs.create({ url: target.toString(), active: false });
+  try {
+    // Wait for the page to finish loading, with a ceiling so a page that
+    // never settles cannot hang the reader forever.
+    await new Promise((resolve) => {
+      const done = () => {
+        chrome.tabs.onUpdated.removeListener(listener);
+        clearTimeout(timer);
+        resolve();
+      };
+      const listener = (id, info) => {
+        if (id === tab.id && info.status === 'complete') done();
+      };
+      const timer = setTimeout(done, 25_000);
+      chrome.tabs.onUpdated.addListener(listener);
+    });
+
+    // A moment for lazy images to register their real addresses.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ['collect.js'],
+    });
+    const chapter = result?.result;
+    if (!chapter?.pages?.length) {
+      return { ok: false, error: 'No pages could be found on that chapter.' };
+    }
+    return { ok: true, chapter };
+  } finally {
+    await chrome.tabs.remove(tab.id).catch(() => undefined);
+  }
+}
+
 /* ------------------------------------------------------------- messaging */
 
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -224,6 +280,22 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     pendingHosts.clear();
     respond({ ok: true });
     return false;
+  }
+
+  /*
+   * Read a chapter from a URL the reader was given.
+   *
+   * The server can usually do this itself, but plenty of sources refuse a
+   * request that does not come from a real browser — and from a server it
+   * never does. The browser here is real, is the person's own, and is
+   * already signed in wherever they are signed in, so the page it gets is
+   * the page they would see.
+   */
+  if (message?.type === 'read-url') {
+    readUrl(message.url)
+      .then((result) => respond(result))
+      .catch((error) => respond({ ok: false, error: error?.message || 'Could not read that chapter.' }));
+    return true;
   }
 
   if (message?.type === 'page') {
