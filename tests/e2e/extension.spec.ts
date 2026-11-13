@@ -33,6 +33,21 @@ test.beforeAll(async () => {
   cdn = createServer((request, response) => {
     const referer = request.headers.referer;
     hits.push(referer);
+    if (request.url?.startsWith('/katana-')) {
+      /*
+       * MangaKatana's shape: every tag is a placeholder and the real,
+       * ordered addresses are in a script. Reading only the markup finds
+       * nothing — and a placeholder of "#" resolves to the page itself, so
+       * a careless reader finds the page four times instead.
+       */
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(
+        `<!doctype html><html><body><div id="imgs">${'<img src="#" data-src="#">'.repeat(4)}</div>` +
+          `<script>var thzq=['http://localhost:${PORT}/k1.png','http://localhost:${PORT}/k2.png','http://localhost:${PORT}/k3.png','http://localhost:${PORT}/k4.png'];</script>` +
+          `</body></html>`,
+      );
+      return;
+    }
     if (request.url?.startsWith('/chapter-')) {
       // A chapter page whose images declare referrerpolicy="origin".
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
@@ -253,5 +268,24 @@ test('opens a chapter URL in a background tab and reads it', async () => {
   // The tab it opened must not be left behind.
   await page.waitForTimeout(500);
   expect(context.pages().length).toBe(before);
+  await page.close();
+});
+
+test('reads a chapter whose pages live only in a script', async () => {
+  const page = await context.newPage();
+  await page.goto('http://localhost:3000/tools/read-manga');
+
+  const reply = await askExtension(
+    page,
+    { type: 'read-url', url: `http://localhost:${PORT}/katana-c2` },
+    40_000,
+  );
+
+  expect(reply.ok, String(reply.error)).toBe(true);
+  const chapter = reply.chapter as { pages: Array<{ url: string }> };
+  // Four real pages, not four copies of the chapter's own address.
+  expect(chapter.pages).toHaveLength(4);
+  expect(chapter.pages[0]!.url).toContain('/k1.png');
+  expect(chapter.pages.every((p) => !p.url.includes('katana-c2'))).toBe(true);
   await page.close();
 });

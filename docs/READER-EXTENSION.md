@@ -265,3 +265,39 @@ the extension icon, since only the popup can ask.
 So "paste a link and read" works without the extension on sources that allow
 it, and with the extension almost everywhere else. The reader tries them in
 that order and never asks for the extension before needing it.
+
+## How manga sites differ, and the order we try
+
+Sites publish their pages in a handful of recognisable ways. Both readers —
+the server-side one and the extension's — try these in the same order, and
+fall through on failure rather than giving up at the first miss.
+
+| Shape | What it looks like | How we read it |
+| --- | --- | --- |
+| Plain markup | `<img src>` inside a reader container | Read the container |
+| Lazy markup | `<img data-src>`, `src` a placeholder | Read the data attributes |
+| **Script list** | tags are `src="#"`, real list in a JS array | Read the array by pattern |
+| Proxied | `api.site/…?url=…` wrapping a CDN address | Treated as an ordinary URL |
+| Canvas | pages painted into `<canvas>` | **Cannot be read.** Said plainly |
+
+The script list is the one that bites, because the markup looks present and
+is entirely empty. MangaKatana is the clearest example: four `<img>` tags
+carrying `data-src="#"`, and `var thzq = [...]` holding the real addresses.
+
+Two traps in reading it:
+
+**Never execute the script.** The array is matched by pattern and each entry
+revalidated as if it came from an `<img>`. Running a source's JavaScript to
+find its images hands the page control of the collector.
+
+**A placeholder of `"#"` resolves to the page itself.** `img.currentSrc` for
+`<img src="#">` is the chapter's own URL — not empty. Without rejecting that,
+four placeholders read as four valid pages, the markup appears to have
+succeeded, and the script is never consulted. MangaKatana returned exactly
+one page that way.
+
+Markup still wins when a page has both, since a site that puts images in tags
+also puts the referrer policy and alt text there. The script list is only
+consulted when no tag yields a usable address, and a list is only accepted
+when it holds at least three entries and is overwhelmingly image URLs — a
+site's navigation array is not a chapter.

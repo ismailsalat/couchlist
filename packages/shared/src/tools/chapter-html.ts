@@ -177,10 +177,96 @@ export function extractChapter(html: string, base: string): ExtractedChapter {
     /<title\b[^>]*>([\s\S]{0,200}?)<\/title>/iu.exec(html)?.[1]?.trim() ||
     'Chapter';
 
+  /*
+   * Order of preference, each falling through to the next:
+   *   1. images inside the reader's own container
+   *   2. a page list embedded in a script
+   *   3. any plausible image on the page
+   *
+   * The script list sits above loose images because when a page has both,
+   * the script is the chapter and the loose ones are decoration. It sits
+   * below the reader container because markup, where it exists, is the
+   * source stating its own intent.
+   */
+  const scripted = scoped.length > 0 ? [] : pagesFromScripts(html, base);
+  const pages = scoped.length > 0 ? scoped : scripted.length > 0 ? scripted : loose;
+
   return {
-    pages: scoped.length > 0 ? scoped : loose,
+    pages,
     links,
     title: title.slice(0, 250),
-    guessed: scoped.length === 0,
+    // Only the last resort is a guess; a script list is as deliberate as markup.
+    guessed: scoped.length === 0 && scripted.length === 0,
   };
+}
+
+/* -------------------------------------------------------------------------
+ * Pages hidden in a script
+ *
+ * Some readers do not put their pages in the markup at all. MangaKatana is
+ * the clearest case: every `<img>` carries `data-src="#"` as a placeholder
+ * and the real, correctly ordered addresses sit in a JavaScript array
+ * (`var thzq = [...]`) that the page fills in later. Read the markup and you
+ * find nothing, which is exactly what happened.
+ *
+ * So this reads the arrays out of the scripts — by pattern, never by running
+ * them. Executing a source's JavaScript to find its images would mean
+ * running a stranger's code on our server, and no page is worth that.
+ *
+ * Written generally rather than as a MangaKatana rule, because the same
+ * shape turns up on a lot of sites: a literal list of image URLs assigned to
+ * some variable. Anything that reaches the array is held to the same checks
+ * as an `<img>`, so a script cannot smuggle in a `javascript:` URL.
+ * ---------------------------------------------------------------------- */
+
+/** The fewest URLs an array must hold before it looks like a chapter. */
+const MIN_SCRIPT_PAGES = 3;
+
+const LOOKS_LIKE_IMAGE = /\.(?:png|jpe?g|webp|avif|gif|bmp)(?:[?#]|$)/iu;
+
+/**
+ * Pull candidate page lists out of inline scripts.
+ *
+ * Returns the longest plausible list. Pages are ordered, and a page list is
+ * normally the biggest array on the page, so length is a good discriminator
+ * against a stray list of thumbnails or advertisement slots.
+ */
+export function pagesFromScripts(html: string, base: string): ChapterImage[] {
+  let best: ChapterImage[] = [];
+
+  const scripts = /<script\b[^>]*>([\s\S]*?)<\/script>/giu;
+  let block: RegExpExecArray | null;
+
+  while ((block = scripts.exec(html)) !== null) {
+    const body = block[1] ?? '';
+    // Any bracketed run of quoted strings. Bounded so a minified bundle
+    // cannot send the regex engine into a long backtrack.
+    const arrays = /\[(\s*(?:"[^"\n]{4,400}"|'[^'\n]{4,400}')\s*(?:,\s*(?:"[^"\n]{4,400}"|'[^'\n]{4,400}')\s*)*),?\s*\]/gu;
+
+    let found: RegExpExecArray | null;
+    while ((found = arrays.exec(body)) !== null) {
+      const items = found[1]?.match(/"[^"\n]*"|'[^'\n]*'/gu) ?? [];
+      if (items.length < MIN_SCRIPT_PAGES) continue;
+
+      const pages: ChapterImage[] = [];
+      const seen = new Set<string>();
+      for (const quoted of items) {
+        const raw = quoted.slice(1, -1).replace(/\\\//gu, '/');
+        if (!LOOKS_LIKE_IMAGE.test(raw)) continue;
+
+        const url = absolute(raw, base);
+        if (!url || seen.has(url) || FURNITURE.test(new URL(url).pathname)) continue;
+        seen.add(url);
+        pages.push({ url, referer: base });
+      }
+
+      // Every entry had to be an image, or this was a list of something else
+      // that merely happened to contain a few.
+      if (pages.length >= MIN_SCRIPT_PAGES && pages.length >= items.length * 0.8) {
+        if (pages.length > best.length) best = pages;
+      }
+    }
+  }
+
+  return best;
 }

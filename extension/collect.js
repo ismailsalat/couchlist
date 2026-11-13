@@ -39,6 +39,20 @@
       const url = new URL(value, location.href);
       if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
       if (/\.(svg|ico)(?:\?|$)/i.test(url.pathname)) return null;
+
+      /*
+       * A placeholder of "#" resolves to the page itself.
+       *
+       * `img.currentSrc` for `<img src="#">` is the chapter's own URL, not
+       * nothing — so without this, four placeholder tags read as four
+       * perfectly good pages, the markup looks successful, and the script
+       * holding the real addresses is never consulted. That is precisely
+       * how MangaKatana returned one page instead of its chapter.
+       */
+      const here = new URL(location.href);
+      if (url.origin === here.origin && url.pathname === here.pathname && url.search === here.search) {
+        return null;
+      }
       return url.toString();
     } catch {
       return null;
@@ -147,9 +161,61 @@
     return location.href;
   }
 
+  /*
+   * Pages that live in a script rather than in the markup.
+   *
+   * MangaKatana is the clearest case: every <img> holds data-src="#" and
+   * the real ordered addresses sit in a JavaScript array the page fills in
+   * later. Read only the tags and a chapter looks empty.
+   *
+   * The arrays are read by pattern, never executed. Running a source's own
+   * code to find its images would hand the page control of the collector.
+   */
+  function fromScripts() {
+    let best = [];
+    for (const script of document.querySelectorAll('script:not([src])')) {
+      const body = script.textContent || '';
+      if (body.length > 600000) continue;
+
+      const arrays = body.match(
+        /\[\s*(?:"[^"\n]{4,400}"|'[^'\n]{4,400}')\s*(?:,\s*(?:"[^"\n]{4,400}"|'[^'\n]{4,400}')\s*)*,?\s*\]/g,
+      );
+      for (const text of arrays || []) {
+        const items = text.match(/"[^"\n]*"|'[^'\n]*'/g) || [];
+        if (items.length < 3) continue;
+
+        const urls = [];
+        for (const quoted of items) {
+          const raw = quoted.slice(1, -1).replace(/\\\//g, '/');
+          if (!/\.(?:png|jpe?g|webp|avif|gif|bmp)(?:[?#]|$)/i.test(raw)) continue;
+          const url = absolute(raw);
+          if (url && !urls.includes(url)) urls.push(url);
+        }
+        // Must be overwhelmingly images, or it was a list of something else.
+        if (urls.length >= 3 && urls.length >= items.length * 0.8 && urls.length > best.length) {
+          best = urls;
+        }
+      }
+    }
+    return best;
+  }
+
   const scan = images();
   const pages = [];
   const seen = new Set();
+
+  /*
+   * Tried when the markup yields nothing usable. Checked before giving up
+   * rather than before looking, because where a page does put its images in
+   * tags, the tags carry the referrer policy and the alt text too.
+   */
+  const usable = scan.nodes.filter(sourceOf).length;
+  if (usable === 0) {
+    for (const url of fromScripts()) {
+      pages.push({ url, label: `Page ${pages.length + 1}`, referer: location.href });
+    }
+  }
+
   for (const img of scan.nodes) {
     const url = sourceOf(img);
     if (!url || seen.has(url)) continue;
@@ -163,10 +229,11 @@
 
   return {
     version: 1,
+    // A script list is as deliberate as markup, so it is not a guess.
     title: (document.querySelector('h1')?.textContent || document.title || 'Chapter').trim().slice(0, 250),
     sourceUrl: location.href,
     pages: pages.slice(0, 1500),
-    guessed: scan.guessed,
+    guessed: scan.guessed && pages.length > 0 && usable > 0,
     ...links(),
   };
 })();
